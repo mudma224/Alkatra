@@ -1,0 +1,153 @@
+# Docker Compose v2 — pas de directive "version:" (dépréciée)
+# Al Katra Bel Qatra — Stack de développement complète
+
+networks:
+  alkatra-net:
+    driver: bridge
+    name: alkatra-net
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  kafka_data:
+  mosquitto_data:
+  grafana_data:
+  prometheus_data:
+  mlflow_data:
+  keycloak_data:
+
+services:
+
+  # ==========================================
+  # POSTGRESQL — Base de données principale
+  # ==========================================
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: alkatra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alkatra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_dev_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alkatra}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # MONGODB — Données IoT time-series
+  # ==========================================
+  mongodb:
+    image: mongo:7.0
+    container_name: alkatra-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-alkatra}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-alkatra_dev_pass}
+      MONGO_INITDB_DATABASE: alkatra_iot
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # REDIS — Cache + Sessions
+  # ==========================================
+  redis:
+    image: redis:7.2-alpine
+    container_name: alkatra-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-alkatra_redis_pass}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-alkatra_redis_pass}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alkatra-net
+
+# ==========================================
+  # KAFKA — KRaft mode (sans ZooKeeper)
+  # ==========================================
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: alkatra-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_LOG_RETENTION_HOURS: 168
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # KAFKA UI — Interface web debug
+  # ==========================================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: alkatra-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: alkatra-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8090:8080"
+    networks:
+      - alkatra-net
+# ==========================================
+  # MAILHOG — Email dev (OTP test Phase 1)
+  # ==========================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: alkatra-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - alkatra-net
