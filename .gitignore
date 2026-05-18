@@ -1,0 +1,80 @@
+# ============================================
+# AL KATRA BEL QATRA — .gitignore
+# ============================================
+
+# Environnement — NE JAMAIS committer
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Spark
+spark-warehouse/
+derby.log
+metastore_db/
+
+# Modèles ML — ne pas committer les .pkl en git (trop lourds)
+*.pkl
+*.joblib
+*.h5
+*.model
+/mlruns/
+
+# IoT — Certificats (jamais dans git)
+infra/mosquitto/certs/*.pem
+infra/mosquitto/certs/*.crt
+infra/mosquitto/certs/*.key
+infra/mosquitto/certs/ca.*
+infra/mosquitto/passwd
+infra/mosquitto/log/
+
+# Kubernetes — Secrets avec vraies valeurs
+infra/kubernetes/secrets.yaml
+
+# Docker volumes (générés localement)
+postgres_data/
+mongo_data/
+redis_data/
+
+# Spark checkpoints
+/tmp/spark-checkpoint/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+*.lcov
+
+# Flutter (Phase 2)
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.dart_tool/
+mobile/build/
