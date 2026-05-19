@@ -5,7 +5,8 @@ KAFKA_BOOTSTRAP="kafka:9092"
 
 echo "🚀 Waiting for Kafka..."
 
-until docker exec $KAFKA_CONTAINER kafka-topics.sh --list --bootstrap-server $KAFKA_BOOTSTRAP; do
+# Correction ici : ajout du chemin absolu /opt/kafka/bin/
+until docker exec $KAFKA_CONTAINER /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server $KAFKA_BOOTSTRAP; do
   echo "Kafka not ready yet..."
   sleep 5
 done
@@ -17,7 +18,7 @@ create_topic() {
   local PARTITIONS=$2
   local RETENTION_MS=$3
 
-  docker exec $KAFKA_CONTAINER kafka-topics.sh \
+  docker exec $KAFKA_CONTAINER /opt/kafka/bin/kafka-topics.sh \
     --create --if-not-exists \
     --bootstrap-server $KAFKA_BOOTSTRAP \
     --topic "$TOPIC" \
@@ -35,5 +36,5 @@ create_topic "recommendations-generated" 3 86400000
 create_topic "alerts-outbound" 3 86400000
 create_topic "sensor-anomalies" 2 604800000
 
-docker exec $KAFKA_CONTAINER kafka-topics.sh \
+docker exec $KAFKA_CONTAINER /opt/kafka/bin/kafka-topics.sh \
   --list --bootstrap-server $KAFKA_BOOTSTRAP
