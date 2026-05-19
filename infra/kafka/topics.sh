@@ -1,0 +1,39 @@
+#!/bin/bash
+
+KAFKA_CONTAINER="alkatra-kafka"
+KAFKA_BOOTSTRAP="kafka:9092"
+
+echo "🚀 Waiting for Kafka..."
+
+until docker exec $KAFKA_CONTAINER kafka-topics.sh --list --bootstrap-server $KAFKA_BOOTSTRAP; do
+  echo "Kafka not ready yet..."
+  sleep 5
+done
+
+echo "🚀 Creating Kafka topics..."
+
+create_topic() {
+  local TOPIC=$1
+  local PARTITIONS=$2
+  local RETENTION_MS=$3
+
+  docker exec $KAFKA_CONTAINER kafka-topics.sh \
+    --create --if-not-exists \
+    --bootstrap-server $KAFKA_BOOTSTRAP \
+    --topic "$TOPIC" \
+    --partitions $PARTITIONS \
+    --replication-factor 1 \
+    --config retention.ms=$RETENTION_MS
+
+  echo "  ✅ $TOPIC"
+}
+
+create_topic "raw-sensor-data" 6 604800000
+create_topic "processed-sensor-data" 6 604800000
+create_topic "ml-inference-requests" 3 3600000
+create_topic "recommendations-generated" 3 86400000
+create_topic "alerts-outbound" 3 86400000
+create_topic "sensor-anomalies" 2 604800000
+
+docker exec $KAFKA_CONTAINER kafka-topics.sh \
+  --list --bootstrap-server $KAFKA_BOOTSTRAP
