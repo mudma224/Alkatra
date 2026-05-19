@@ -1,0 +1,26 @@
+{
+  "id": null,
+  "uid": "alkatra-iot-pipeline",
+  "title": "Al Katra — IoT Pipeline",
+  "tags": ["alkatra", "iot", "kafka"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Services actifs",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "up",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 }
+    }
+  ],
+  "time": { "from": "now-1h", "to": "now" }
+}
