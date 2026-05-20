@@ -1,81 +1,78 @@
-# ============================================
-# AL KATRA BEL QATRA — .gitignore
-# ============================================
+# Dépendances
+node_modules/
+.pnp
+.pnp.js
 
-# Environnement — NE JAMAIS committer
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+.next/
+out/
+
+# Environnement — NE JAMAIS COMMITTER
 .env
 .env.local
 .env.*.local
-.env.example
-
-# Node
-node_modules/
-dist/
-build/
-.turbo/
-*.tsbuildinfo
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-.ruff_cache/
-
-# Spark
-spark-warehouse/
-derby.log
-metastore_db/
-
-# Modèles ML — ne pas committer les .pkl en git (trop lourds)
-*.pkl
-*.joblib
-*.h5
-*.model
-/mlruns/
-
-# IoT — Certificats (jamais dans git)
-infra/mosquitto/certs/*.pem
-infra/mosquitto/certs/*.crt
-infra/mosquitto/certs/*.key
-infra/mosquitto/certs/ca.*
-infra/mosquitto/passwd
-infra/mosquitto/log/
-
-# Kubernetes — Secrets avec vraies valeurs
-infra/kubernetes/secrets.yaml
-
-# Docker volumes (générés localement)
-postgres_data/
-mongo_data/
-redis_data/
-
-# Spark checkpoints
-/tmp/spark-checkpoint/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Logs
-*.log
 logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cache Turborepo
+.turbo/
 
 # Coverage
 coverage/
-*.lcov
+.nyc_output/
 
-# Flutter (Phase 2)
-mobile/.flutter-plugins
-mobile/.flutter-plugins-dependencies
-mobile/.dart_tool/
-mobile/build/
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+.eggs/
+venv/
+.venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Mosquitto
+infra/mosquitto/certs/*.crt
+infra/mosquitto/certs/*.key
+infra/mosquitto/certs/*.pem
+infra/mosquitto/log/
+
+# Secrets K8s — ne jamais committer les vraies valeurs
+# (secrets-template.yaml est OK car pas de vraies valeurs)
+
+# Spark checkpoints
+/tmp/spark-checkpoint/
