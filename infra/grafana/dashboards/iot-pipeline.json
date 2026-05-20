@@ -2,25 +2,91 @@
   "id": null,
   "uid": "alkatra-iot-pipeline",
   "title": "Al Katra — IoT Pipeline",
-  "tags": ["alkatra", "iot", "kafka"],
+  "tags": ["alkatra", "iot", "kafka", "mqtt"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
   "panels": [
     {
       "id": 1,
       "title": "Services actifs",
       "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "up", "legendFormat": "{{job}}" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ]
+        }
+      },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "Messages IoT reçus / min",
+      "type": "timeseries",
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "up",
-          "legendFormat": "{{job}}"
+          "expr": "rate(http_requests_total{job='iot-service'}[1m]) * 60",
+          "legendFormat": "Messages/min"
         }
       ],
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 }
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 }
+    },
+    {
+      "id": 3,
+      "title": "Latence IoT Service (p95)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job='iot-service'}[5m]))",
+          "legendFormat": "p95 latence"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 }
+    },
+    {
+      "id": 4,
+      "title": "Uptime services",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "up{job='iot-service'}", "legendFormat": "IoT Service" },
+        { "expr": "up{job='mlflow'}", "legendFormat": "MLflow" },
+        { "expr": "up{job='prometheus'}", "legendFormat": "Prometheus" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 1,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 12 }
+    },
+    {
+      "id": 5,
+      "title": "Note",
+      "type": "text",
+      "options": {
+        "content": "### 🌿 Al Katra IoT Pipeline\n\n**S2** : IoT Service actif — messages MQTT → Kafka `raw-sensor-data`\n\n**S3** : Spark enrichit → `processed-sensor-data`\n\n**S4** : ML Inference → prédictions dans PostgreSQL\n\nPour tester : `node scripts/simulate-sensor.js 5000`"
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 12 }
     }
-  ],
-  "time": { "from": "now-1h", "to": "now" }
+  ]
 }
