@@ -1,0 +1,9 @@
+# K3s — Namespace Al Katra
+# Requis CdC Section 9.2 S1-S2 : "Setup infrastructure K3s/Docker"
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: alkatra
+  labels:
+    app.kubernetes.io/part-of: alkatra-platform
+    environment: production
