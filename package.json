@@ -1,6 +1,7 @@
 {
   "name": "alkatra-platform",
   "private": true,
+  "packageManager": "npm@11.9.0",
   "version": "0.1.0",
   "description": "Al Katra Bel Qatra — Smart Irrigation IoT+AI Platform",
   "workspaces": [
@@ -11,6 +12,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "test": "turbo run test",
+    "test:cov": "turbo run test:cov",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
@@ -23,11 +25,13 @@
     "models:register": "python3 scripts/register-models.py"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
-    "prettier": "^3.2.0",
+    "@types/jest": "^30.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.57.0"
+    "eslint": "^8.57.0",
+    "mqtt": "^5.15.1",
+    "prettier": "^3.2.0",
+    "turbo": "^2.0.0"
   },
   "engines": {
     "node": ">=20.0.0",
