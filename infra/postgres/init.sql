@@ -16,7 +16,7 @@ CREATE TYPE crop_type_enum AS ENUM ('olive', 'citrus', 'cereal', 'vegetable', 'o
 CREATE TYPE soil_type_enum AS ENUM ('clay', 'silt', 'sandy', 'calcareous', 'mixed');
 CREATE TYPE irrigation_method_enum AS ENUM ('drip', 'sprinkler', 'gravity');
 CREATE TYPE recommendation_feedback_enum AS ENUM ('accepted', 'rejected', 'ignored');
-CREATE TYPE subscription_status_enum AS ENUM ('active', 'expired', 'cancelled', 'fremium');
+CREATE TYPE subscription_status_enum AS ENUM ('active', 'expired', 'cancelled', 'freemium');
 CREATE TYPE payment_method_enum AS ENUM ('cmi', 'mcash', 'orange_money', 'virement', 'cash');
 
 CREATE TYPE recommendation_status_enum AS ENUM (
