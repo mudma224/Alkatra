@@ -84,7 +84,7 @@
       "title": "Note",
       "type": "text",
       "options": {
-        "content": "### 🌿 Al Katra IoT Pipeline\n\n**S2** : IoT Service actif — messages MQTT → Kafka `raw-sensor-data`\n\n**S3** : Spark enrichit → `processed-sensor-data`\n\n**S4** : ML Inference → prédictions dans PostgreSQL\n\nPour tester : `node scripts/simulate-sensor.js 5000`"
+        "content": "### 🌿 Al Katra IoT Pipeline\n\n**Contrat capteur IA v1** : `temperature_min_c`, `temperature_max_c`, `wind_speed_ms`, `solar_radiation_mj_m2_day`, `soil_humidity_pct`, `air_humidity_pct`\n\n**S2** : MQTT → Kafka `raw-sensor-data`\n\n**S3** : Spark enrichit → `processed-sensor-data`\n\n**S4** : ML Inference → prédictions dans PostgreSQL\n\nPour tester : `node scripts/simulate-sensor.js 5000`"
       },
       "gridPos": { "h": 8, "w": 16, "x": 8, "y": 12 }
     }

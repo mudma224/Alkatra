@@ -219,7 +219,7 @@ CREATE TABLE recommendations (
     explanation_text_fr     TEXT,
     explanation_text_darija TEXT,
 
-    soil_moisture_at_gen    DECIMAL(5,2),
+    soil_humidity_pct_at_gen DECIMAL(5,2),
     eto_at_gen              DECIMAL(6,2),
 
     model_version           VARCHAR(20),

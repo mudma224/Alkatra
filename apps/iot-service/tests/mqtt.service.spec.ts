@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { MqttService } from '../src/mqtt/mqtt.service';
 import { KafkaService } from '../src/kafka/kafka.service';
 
-// Mock de la bibliothèque MQTT
 jest.mock('mqtt', () => ({
   connect: jest.fn().mockReturnValue({
     on: jest.fn(),
@@ -12,6 +11,19 @@ jest.mock('mqtt', () => ({
     connected: true,
   }),
 }));
+
+const validPayload = {
+  ts: 1710000000,
+  device_id: 'esp32-001',
+  farm_id: 'farm_001',
+  parcel_id: 'parcel_A',
+  temperature_min_c: 12.5,
+  temperature_max_c: 31.2,
+  wind_speed_ms: 4.7,
+  solar_radiation_mj_m2_day: 21.4,
+  soil_humidity_pct: 46.8,
+  air_humidity_pct: 62.1,
+};
 
 describe('MqttService', () => {
   let service: MqttService;
@@ -40,25 +52,72 @@ describe('MqttService', () => {
     expect(service).toBeDefined();
   });
 
-  it('should detect anomaly for very low moisture', () => {
-    const data = { soil_moisture_1: 2, soil_moisture_2: 50, air_temp: 25, battery_pct: 80 };
-    const result = (service as any).detectAnomalies(data);
-    expect(result.isAnomaly).toBe(true);
-    expect(result.anomalyReasons).toContain('soil_moisture_1 hors limites: 2%');
+  it('should validate the six required AI sensor variables', () => {
+    expect((service as any).isValidPayload(validPayload)).toBe(true);
+    expect((service as any).isValidPayload({ ...validPayload, wind_speed_ms: undefined })).toBe(false);
   });
 
-  it('should detect anomaly for low battery', () => {
-    const data = { soil_moisture_1: 45, soil_moisture_2: 50, air_temp: 25, battery_pct: 10 };
-    const result = (service as any).detectAnomalies(data);
+  it('should detect anomaly when min temperature is greater than max temperature', () => {
+    const result = (service as any).detectAnomalies({
+      ...validPayload,
+      temperature_min_c: 35,
+      temperature_max_c: 20,
+    });
+
     expect(result.isAnomaly).toBe(true);
-    expect(result.anomalyReasons).toContain('batterie faible: 10%');
+    expect(result.anomalyReasons).toContain('temperature_min_c superieure a temperature_max_c: 35C > 20C');
   });
 
-  it('should not detect anomaly for normal data', () => {
-    const data = { soil_moisture_1: 45, soil_moisture_2: 50, air_temp: 25, battery_pct: 80 };
-    const result = (service as any).detectAnomalies(data);
+  it('should detect anomaly for out-of-range humidity', () => {
+    const result = (service as any).detectAnomalies({
+      ...validPayload,
+      soil_humidity_pct: 140,
+    });
+
+    expect(result.isAnomaly).toBe(true);
+    expect(result.anomalyReasons).toContain('soil_humidity_pct hors limites: 140%');
+  });
+
+  it('should not detect anomaly for normal AI features', () => {
+    const result = (service as any).detectAnomalies(validPayload);
     expect(result.isAnomaly).toBe(false);
     expect(result.anomalyReasons).toHaveLength(0);
+  });
+
+  it('should normalize and forward a valid MQTT payload to Kafka', async () => {
+    await (service as any).handleMessage(
+      'alkatra/farm/farm_001/parcel/parcel_A/sensor/esp32-001/data',
+      Buffer.from(JSON.stringify(validPayload)),
+    );
+
+    expect(kafkaService.send).toHaveBeenCalledTimes(1);
+    expect(kafkaService.send).toHaveBeenCalledWith(
+      'raw-sensor-data',
+      'farm_001:parcel_A',
+      expect.objectContaining({
+        schema_version: 'sensor-ai-v1',
+        device_id: 'esp32-001',
+        farm_id: 'farm_001',
+        parcel_id: 'parcel_A',
+        temperature_min_c: 12.5,
+        temperature_max_c: 31.2,
+        wind_speed_ms: 4.7,
+        solar_radiation_mj_m2_day: 21.4,
+        soil_humidity_pct: 46.8,
+        air_humidity_pct: 62.1,
+        is_anomaly: false,
+        anomaly_reasons: [],
+      }),
+    );
+  });
+
+  it('should reject invalid MQTT payloads before Kafka', async () => {
+    await (service as any).handleMessage(
+      'alkatra/farm/farm_001/parcel/parcel_A/sensor/esp32-001/data',
+      Buffer.from(JSON.stringify({ ...validPayload, solar_radiation_mj_m2_day: undefined })),
+    );
+
+    expect(kafkaService.send).not.toHaveBeenCalled();
   });
 
   it('should return stats', () => {

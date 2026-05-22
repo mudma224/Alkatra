@@ -1,105 +1,87 @@
-explication et justification de choix de la config de kafka dans le fichier docker-compose.yml :
+# ADR - Configuration Kafka Docker locale
 
-Kafka = bus d’événements central
+## Statut
 
-Il sert à :
+Accepte.
 
-recevoir les données capteurs (IoT)
-bufferiser les flux
-distribuer vers :
-MongoDB
-ML pipeline
-dashboards
+## Contexte
 
+Kafka est le bus d'evenements central du projet. Il recoit les donnees capteurs validees par `iot-service`, puis les rend disponibles aux futures briques de traitement:
 
-ce qui peut dependre de cette nouvelle configuration : 
+- stream processing;
+- pipeline ML;
+- alertes;
+- recommandations;
+- dashboards.
 
--iot-service Kafka config
--spark job bootstrap servers
--topics.sh
--health-check.sh
--simulate-sensor.js
+## Decision
 
+La stack locale utilise l'image officielle:
 
-***Explication***
+```yaml
+image: apache/kafka:3.7.0
+```
 
+Kafka tourne en mode KRaft single-node:
 
-kafka:
-  image: apache/kafka:3.9.1
+```yaml
+KAFKA_PROCESS_ROLES: "broker,controller"
+KAFKA_NODE_ID: 1
+```
 
-apache/kafka :
+Listeners:
 
- -image officielle (pas wrapper Bitnami)
- -support natif KRaft
- -moins de surprises
+```yaml
+KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093"
+KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094"
+```
 
-version 3.9.1 :
+Cela donne deux usages:
 
- -stable récente
- -support KRaft mature
- -meilleure perf réseau
+- `kafka:9092` depuis les autres conteneurs Docker;
+- `localhost:9094` depuis la machine hote.
 
+## Pourquoi deux ports
 
-ports:
-    - "9092:9092"
+Les conteneurs sur le reseau Docker doivent joindre Kafka avec le nom DNS `kafka`.
 
--expose kafka vers localement 
+Les applications lancees depuis la machine hote doivent joindre Kafka via `localhost`.
 
-KAFKA_NODE_ID: 1  
+Sans listener externe separe, les clients Kafka recoivent parfois une adresse qu'ils ne peuvent pas joindre.
 
--ID unique du broker Kafka
+## Topics
 
-KAFKA_PROCESS_ROLES: broker,controller
+Le script `infra/kafka/topics.sh` cree les topics de developpement:
 
--Kafka devient :
+```text
+raw-sensor-data
+processed-sensor-data
+ml-inference-requests
+recommendations-generated
+alerts-outbound
+sensor-anomalies
+```
 
-  broker → stocke messages
-  controller → gère cluster
+## Limites dev
 
+Cette configuration est volontairement simple:
 
-KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+- replication factor `1`;
+- PLAINTEXT;
+- un seul broker;
+- auto-create topics active.
 
--pourquoi 2 ports
+En production, il faudra prevoir:
 
-   Kafka doit séparer :
-        trafic utilisateur
-        communication interne cluster
+- plusieurs brokers;
+- replication factor superieur a 1;
+- TLS;
+- authentification SASL;
+- monitoring Kafka plus complet;
+- strategie de retention par topic.
 
-KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+## References
 
--Adresse publique annoncée aux clients
-
-KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-
--Indique quel listener est utilisé pour controller
-
-KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-
--Associe protocoles aux listeners
-
-pourquoi PLAINTEXT
-
-✔ dev simplifié
-✔ pas de SSL
-
-mais en production :
-
-TLS obligatoire
-SASL authentication
-
-
-KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-
--Définit les controllers du cluster
-
-KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-
--Nombre de copies des topics internes Kafka mais en production on doit avoir plus 
-
-
-kafka-ui
-
--Interface web Kafka
--Kafka UI se connecte via Docker network
-
-
+- `infra/docker/docker-compose.yml`
+- `infra/kafka/topics.sh`
+- `apps/iot-service/src/kafka/kafka.service.ts`
