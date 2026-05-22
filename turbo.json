@@ -11,6 +11,11 @@
       "outputs": ["coverage/**"],
       "cache": false
     },
+    "test:cov": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
     "lint": {
       "outputs": []
     },
