@@ -292,3 +292,32 @@ services:
       - ./../../infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - alkatra-net
+
+  iot-service:
+    build:
+      context: ./../../apps/iot-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: alkatra-iot
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USER:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      KAFKA_BROKERS: kafka:9092
+      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-alkatra_dev_pass}@mongodb:27017/alkatra_iot?authSource=admin
+    ports:
+      - "3005:3005"
+    volumes:
+      - ./../../apps/iot-service/src:/app/src
+    networks:
+     - alkatra-net
