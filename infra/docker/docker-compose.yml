@@ -293,6 +293,10 @@ services:
     networks:
       - alkatra-net
 
+
+  # ==========================================
+  # iot-service
+  # ==========================================
   iot-service:
     build:
       context: ./../../apps/iot-service
