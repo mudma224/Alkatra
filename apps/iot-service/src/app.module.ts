@@ -12,7 +12,7 @@ import { HealthModule } from './health/health.module';
       envFilePath: '.env',
     }),
     // Modules métier
-    KafkaModule,   // Kafka doit être chargé AVANT MQTT (MQTT en dépend)
+    KafkaModule, // Kafka doit être chargé AVANT MQTT (MQTT en dépend)
     MqttModule,
     HealthModule,
   ],

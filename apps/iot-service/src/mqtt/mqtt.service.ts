@@ -24,11 +24,7 @@ const FIELD_ALIASES: Record<(typeof REQUIRED_AI_FIELDS)[number], string[]> = {
   temperature_min_c: ['temperature_min_c', 'temp_min_c', 'min_temperature_c'],
   temperature_max_c: ['temperature_max_c', 'temp_max_c', 'max_temperature_c'],
   wind_speed_ms: ['wind_speed_ms', 'wind_speed_mps', 'wind_m_s'],
-  solar_radiation_mj_m2_day: [
-    'solar_radiation_mj_m2_day',
-    'solar_radiation',
-    'solar_mj_m2_day',
-  ],
+  solar_radiation_mj_m2_day: ['solar_radiation_mj_m2_day', 'solar_radiation', 'solar_mj_m2_day'],
   soil_humidity_pct: ['soil_humidity_pct', 'soil_moisture_pct', 'soil_moisture_1'],
   air_humidity_pct: ['air_humidity_pct', 'air_humidity'],
 };
@@ -135,7 +131,9 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     try {
       rawData = JSON.parse(payload.toString());
     } catch {
-      this.logger.warn(`Message JSON invalide sur topic ${topic}: ${payload.toString().substring(0, 100)}`);
+      this.logger.warn(
+        `Message JSON invalide sur topic ${topic}: ${payload.toString().substring(0, 100)}`,
+      );
       return;
     }
 
@@ -151,7 +149,9 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
     if (isAnomaly) {
       this.anomaliesDetected++;
-      this.logger.warn(`Anomalie detectee [${enrichedReading.device_id}]: ${anomalyReasons.join(', ')}`);
+      this.logger.warn(
+        `Anomalie detectee [${enrichedReading.device_id}]: ${anomalyReasons.join(', ')}`,
+      );
     }
 
     await this.kafkaService.send(

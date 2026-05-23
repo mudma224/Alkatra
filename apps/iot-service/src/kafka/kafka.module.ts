@@ -3,6 +3,6 @@ import { KafkaService } from './kafka.service';
 
 @Module({
   providers: [KafkaService],
-  exports: [KafkaService],  // ← Exporté pour que MqttModule puisse l'utiliser
+  exports: [KafkaService], // ← Exporté pour que MqttModule puisse l'utiliser
 })
 export class KafkaModule {}

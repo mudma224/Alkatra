@@ -54,7 +54,9 @@ describe('MqttService', () => {
 
   it('should validate the six required AI sensor variables', () => {
     expect((service as any).isValidPayload(validPayload)).toBe(true);
-    expect((service as any).isValidPayload({ ...validPayload, wind_speed_ms: undefined })).toBe(false);
+    expect((service as any).isValidPayload({ ...validPayload, wind_speed_ms: undefined })).toBe(
+      false,
+    );
   });
 
   it('should detect anomaly when min temperature is greater than max temperature', () => {
@@ -65,7 +67,9 @@ describe('MqttService', () => {
     });
 
     expect(result.isAnomaly).toBe(true);
-    expect(result.anomalyReasons).toContain('temperature_min_c superieure a temperature_max_c: 35C > 20C');
+    expect(result.anomalyReasons).toContain(
+      'temperature_min_c superieure a temperature_max_c: 35C > 20C',
+    );
   });
 
   it('should detect anomaly for out-of-range humidity', () => {
