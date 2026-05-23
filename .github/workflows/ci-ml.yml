@@ -1,0 +1,48 @@
+name: CI — IoT Service
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'apps/iot-service/**'
+      - 'packages/shared-types/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'apps/iot-service/**'
+
+jobs:
+  test-iot:
+    name: Test IoT Service
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        working-directory: apps/iot-service
+        run: npm ci
+
+      - name: Lint
+        working-directory: apps/iot-service
+        run: npm run lint
+
+      - name: Unit tests (MQTT + Kafka mocks)
+        working-directory: apps/iot-service
+        run: npm run test:cov
+        env:
+          NODE_ENV: test
+          MQTT_BROKER_URL: mqtt://localhost:1883
+          KAFKA_BROKERS: localhost:9092
+          MONGODB_URI: mongodb://localhost:27017/test
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          directory: apps/iot-service/coverage
+          flags: iot-service
