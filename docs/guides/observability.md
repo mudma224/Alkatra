@@ -44,15 +44,23 @@ Configuration:
 infra/prometheus/prometheus.yml
 ```
 
-Jobs declares:
+Jobs actifs declares:
 
 - `prometheus`
 - `iot-service`
-- `ml-inference-service`
-- `kafka`
-- `mlflow`
 
-Certains jobs peuvent etre down tant que les services applicatifs futurs ne sont pas lances.
+Kafka, MLflow et les autres services Docker sont verifies par les healthchecks Docker et le script `scripts/health-check.sh`.
+Ils ne sont pas scrapes directement par Prometheus tant qu'ils n'exposent pas un endpoint Prometheus compatible.
+
+Le service IoT expose les metriques applicatives suivantes:
+
+- `alkatra_iot_messages_received_total`
+- `alkatra_iot_messages_forwarded_total`
+- `alkatra_iot_anomalies_detected_total`
+- `alkatra_iot_mqtt_connected`
+- `alkatra_iot_kafka_ready`
+- `alkatra_iot_last_sensor_value`
+- `alkatra_iot_last_message_timestamp_seconds`
 
 ## MLflow
 

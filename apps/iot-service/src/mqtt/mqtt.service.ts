@@ -66,6 +66,8 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   private messagesReceived = 0;
   private messagesForwarded = 0;
   private anomaliesDetected = 0;
+  private lastReading: SensorReading | null = null;
+  private lastMessageReceivedAt: string | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -148,6 +150,8 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     const { isAnomaly, anomalyReasons } = this.detectAnomalies(enrichedReading);
     enrichedReading.is_anomaly = isAnomaly;
     enrichedReading.anomaly_reasons = anomalyReasons;
+    this.lastReading = enrichedReading;
+    this.lastMessageReceivedAt = enrichedReading.received_at;
 
     if (isAnomaly) {
       this.anomaliesDetected++;
@@ -291,6 +295,8 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
       messagesForwarded: this.messagesForwarded,
       anomaliesDetected: this.anomaliesDetected,
       mqttConnected: this.client?.connected ?? false,
+      lastMessageReceivedAt: this.lastMessageReceivedAt,
+      lastReading: this.lastReading,
     };
   }
 }

@@ -1,9 +1,5 @@
-/**
- * Al Katra Bel Qatra — IoT Service
- * Point d'entrée NestJS — Bridge MQTT → Kafka
- */
+import { Logger, RequestMethod } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -14,12 +10,17 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn', 'debug'],
   });
 
-  // Prefix global pour toutes les routes
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [
+      { path: 'health', method: RequestMethod.GET },
+      { path: 'metrics', method: RequestMethod.GET },
+    ],
+  });
 
   await app.listen(port);
-  logger.log(`🌿 IoT Service démarré sur le port ${port}`);
-  logger.log(`📊 Health check : http://localhost:${port}/health`);
+  logger.log(`IoT Service started on port ${port}`);
+  logger.log(`Health check: http://localhost:${port}/health`);
+  logger.log(`Metrics: http://localhost:${port}/metrics`);
 }
 
 bootstrap();

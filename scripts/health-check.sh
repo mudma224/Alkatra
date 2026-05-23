@@ -12,6 +12,16 @@ check() {
   fi
 }
 
+check_optional() {
+  local name=$1 url=$2 expected=${3:-200}
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null)
+  if [ "$HTTP_CODE" = "$expected" ]; then
+    echo -e "${GREEN}✅ ${name} (${HTTP_CODE})${NC}"; PASS=$((PASS+1))
+  else
+    echo -e "${YELLOW}⚠️  ${name} optionnel (${HTTP_CODE:-timeout})${NC}"
+  fi
+}
+
 check_docker() {
   local name=$1 container=$2
   STATUS=$(docker inspect -f '{{.State.Health.Status}}' "$container" 2>/dev/null)
@@ -31,6 +41,7 @@ check_docker "MongoDB"      "alkatra-mongodb"
 check_docker "Redis"        "alkatra-redis"
 check_docker "Kafka"        "alkatra-kafka"
 check_docker "Mosquitto"    "alkatra-mosquitto"
+check_docker "IoT Service"  "alkatra-iot"
 
 echo -e "\n🌐 Services Web:"
 check "Grafana"         "http://localhost:3000/api/health"
@@ -41,7 +52,7 @@ check "MLflow"          "http://localhost:5000/health"
 
 echo -e "\n🔬 Services Applicatifs (actifs après S2-S4):"
 check "IoT Service"     "http://localhost:3005/health"
-check "ML Inference"    "http://localhost:8000/health"
+check_optional "ML Inference" "http://localhost:8000/health"
 
 echo -e "\n=============================================="
 echo -e "Résultat: ${GREEN}${PASS} OK${NC} | ${RED}${FAIL} FAIL${NC}"
