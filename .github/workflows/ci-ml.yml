@@ -1,48 +1,50 @@
-name: CI — IoT Service
+name: CI — ML Inference Service
 
 on:
   push:
     branches: [main, develop]
     paths:
-      - 'apps/iot-service/**'
-      - 'packages/shared-types/**'
+      - 'apps/ml-inference-service/**'
+      - 'apps/spark-jobs/**'
   pull_request:
     branches: [main, develop]
     paths:
-      - 'apps/iot-service/**'
+      - 'apps/ml-inference-service/**'
+      - 'apps/spark-jobs/**'
 
 jobs:
-  test-iot:
-    name: Test IoT Service
+  test-ml:
+    name: Test ML + Spark (Feature Engineering)
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: '20'
-          cache: 'npm'
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install deps
-        working-directory: apps/iot-service
-        run: npm ci
+      - name: Install ML deps
+        working-directory: apps/ml-inference-service
+        run: pip install -r requirements.txt pytest pytest-asyncio httpx pytest-cov
 
-      - name: Lint
-        working-directory: apps/iot-service
-        run: npm run lint
-
-      - name: Unit tests (MQTT + Kafka mocks)
-        working-directory: apps/iot-service
-        run: npm run test:cov
+      - name: Run ML tests (mode DEMO — pas de modèles en CI)
+        working-directory: apps/ml-inference-service
+        run: pytest tests/ -v --cov=app --cov-report=xml
         env:
-          NODE_ENV: test
-          MQTT_BROKER_URL: mqtt://localhost:1883
-          KAFKA_BROKERS: localhost:9092
-          MONGODB_URI: mongodb://localhost:27017/test
+          ENVIRONMENT: test
+          MLFLOW_TRACKING_URI: http://localhost:5000   # Non disponible en CI → mode DEMO
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          directory: apps/iot-service/coverage
-          flags: iot-service
+      - name: Install Spark deps
+        working-directory: apps/spark-jobs
+        run: pip install -r requirements.txt pytest
+
+      - name: Test feature engineering (fonctions pures, sans Spark)
+        working-directory: apps/spark-jobs
+        run: pytest tests/ -v -k "not spark"
+
+      - name: Lint Python (ruff)
+        run: |
+          pip install ruff
+          ruff check apps/ml-inference-service/app/ apps/spark-jobs/jobs/
