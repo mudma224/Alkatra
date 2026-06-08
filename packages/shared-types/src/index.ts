@@ -1,2 +1,2 @@
-export * from './src/sensor.types';
+export * from './sensor.types';
 export * from './farm.types';

@@ -93,3 +93,5 @@ Prometheus lit sa configuration dans:
 ```text
 infra/prometheus/prometheus.yml
 ```
+
+Il scrape actuellement `prometheus` et `iot-service`. Les metriques Kafka/MQTT affichees dans Grafana viennent du endpoint `/metrics` de `iot-service`.
