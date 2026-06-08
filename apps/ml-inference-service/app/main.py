@@ -27,7 +27,7 @@ async def health():
         "service": "ml-inference-service",
         "environment": os.getenv("ENVIRONMENT", "development"),
         "phase": "S4 placeholder — XGBoost/MLflow à implémenter",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
 
