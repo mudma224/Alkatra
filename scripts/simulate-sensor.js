@@ -1,6 +1,6 @@
 /**
  * Al Katra Bel Qatra - Simulateur Capteur ESP32
- * Publie le contrat capteur IA v1 vers MQTT.
+ * Publie le contrat capteur IA v2 vers MQTT.
  *
  * Usage: node scripts/simulate-sensor.js [interval_ms]
  * Ex:    node scripts/simulate-sensor.js 10000
@@ -38,6 +38,7 @@ function generatePayload() {
     solar_radiation_mj_m2_day: rand(8, 28),
     soil_humidity_pct: rand(18, 78),
     air_humidity_pct: rand(25, 88),
+    rain_mm_day: rand(0, 18),
   };
 }
 
@@ -70,7 +71,8 @@ client.on('connect', () => {
             `Vent: ${payload.wind_speed_ms}m/s | ` +
             `Solaire: ${payload.solar_radiation_mj_m2_day}MJ/m2/j | ` +
             `Sol: ${payload.soil_humidity_pct}% | ` +
-            `Air: ${payload.air_humidity_pct}%`,
+            `Air: ${payload.air_humidity_pct}% | ` +
+            `Pluie: ${payload.rain_mm_day}mm/j`,
         );
       }
     });

@@ -23,6 +23,7 @@ const validPayload = {
   solar_radiation_mj_m2_day: 21.4,
   soil_humidity_pct: 46.8,
   air_humidity_pct: 62.1,
+  rain_mm_day: 3.4,
 };
 
 describe('MqttService', () => {
@@ -52,9 +53,10 @@ describe('MqttService', () => {
     expect(service).toBeDefined();
   });
 
-  it('should validate the six required AI sensor variables', () => {
+  it('should validate the seven required AI sensor variables', () => {
     expect((service as any).isValidPayload(validPayload)).toBe(true);
     expect((service as any).isValidPayload({ ...validPayload, wind_speed_ms: undefined })).toBe(false);
+    expect((service as any).isValidPayload({ ...validPayload, rain_mm_day: undefined })).toBe(false);
   });
 
   it('should detect anomaly when min temperature is greater than max temperature', () => {
@@ -78,6 +80,16 @@ describe('MqttService', () => {
     expect(result.anomalyReasons).toContain('soil_humidity_pct hors limites: 140%');
   });
 
+  it('should detect anomaly for out-of-range daily rain', () => {
+    const result = (service as any).detectAnomalies({
+      ...validPayload,
+      rain_mm_day: -2,
+    });
+
+    expect(result.isAnomaly).toBe(true);
+    expect(result.anomalyReasons).toContain('rain_mm_day hors limites: -2 mm/jour');
+  });
+
   it('should not detect anomaly for normal AI features', () => {
     const result = (service as any).detectAnomalies(validPayload);
     expect(result.isAnomaly).toBe(false);
@@ -95,7 +107,7 @@ describe('MqttService', () => {
       'raw-sensor-data',
       'farm_001:parcel_A',
       expect.objectContaining({
-        schema_version: 'sensor-ai-v1',
+        schema_version: 'sensor-ai-v2',
         device_id: 'esp32-001',
         farm_id: 'farm_001',
         parcel_id: 'parcel_A',
@@ -105,6 +117,7 @@ describe('MqttService', () => {
         solar_radiation_mj_m2_day: 21.4,
         soil_humidity_pct: 46.8,
         air_humidity_pct: 62.1,
+        rain_mm_day: 3.4,
         is_anomaly: false,
         anomaly_reasons: [],
       }),

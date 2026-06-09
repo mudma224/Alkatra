@@ -16,14 +16,15 @@ Le pipeline IoT utilisait initialement des champs capteurs orientes prototype:
 - `ec`
 - `battery_pct`
 
-Le futur modele IA doit utiliser 6 variables precises:
+Le futur modele IA doit utiliser 7 variables precises:
 
 - temperature minimale en degres Celsius;
 - temperature maximale en degres Celsius;
 - vitesse du vent en m/s;
 - rayonnement solaire en MJ/m^2/jour;
 - humidite du sol en pourcentage;
-- humidite de l'air en pourcentage.
+- humidite de l'air en pourcentage;
+- pluie en mm/jour.
 
 Sans contrat clair, les prochaines etapes ML risquent de recevoir des donnees incoherentes ou difficiles a transformer.
 
@@ -38,9 +39,10 @@ wind_speed_ms
 solar_radiation_mj_m2_day
 soil_humidity_pct
 air_humidity_pct
+rain_mm_day
 ```
 
-`iot-service` valide ces 6 champs avant publication Kafka.
+`iot-service` valide ces 7 champs avant publication Kafka.
 
 Le message Kafka est enrichi avec:
 
@@ -54,7 +56,7 @@ anomaly_reasons
 La version actuelle est:
 
 ```text
-sensor-ai-v1
+sensor-ai-v2
 ```
 
 ## Consequences

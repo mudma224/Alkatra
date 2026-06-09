@@ -27,8 +27,8 @@ services:
     container_name: alkatra-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-gabaski224}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-342742868Gabaski224}
+      POSTGRES_USER: ${POSTGRES_USER:-alkatra_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_dev_pass}
       POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
     ports:
       - "5432:5432"
@@ -36,7 +36,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ../postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gabaski224}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alkatra_user}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,8 +51,8 @@ services:
     container_name: alkatra-mongodb
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-gabaski224}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-342742868Gabaski224}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-alkatra_user}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-alkatra_dev_pass}
       MONGO_INITDB_DATABASE: alkatra_iot
     ports:
       - "27017:27017"
@@ -75,7 +75,7 @@ services:
     restart: unless-stopped
     command: >
       redis-server
-      --requirepass ${REDIS_PASSWORD:-342742868GGabaski224}
+      --requirepass ${REDIS_PASSWORD:-alkatra_dev_pass}
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
     ports:
@@ -83,7 +83,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-342742868Gabaski224}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-alkatra_dev_pass}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -206,8 +206,8 @@ services:
       - mlflow_data:/mlruns
       - ../../infra/mlflow/start.sh:/start.sh:ro
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-gabaski224}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-342742868Gabaski224}
+      POSTGRES_USER: ${POSTGRES_USER:-alkatra_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_dev_pass}
       POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
     ports:
       - "5000:5000"
@@ -233,11 +233,11 @@ services:
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-alkatra_db}
-      KC_DB_USERNAME: ${POSTGRES_USER:-gabaski224}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-342742868GGabaski224}
+      KC_DB_USERNAME: ${POSTGRES_USER:-alkatra_user}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_dev_pass}
       KC_DB_SCHEMA: keycloak
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-gabaski224}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-342742868Gabaski224}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-alkatra_user}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-alkatra_dev_pass}
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
     ports:
@@ -281,7 +281,7 @@ services:
       - prometheus
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-342742868Gabaski224}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-alkatra_dev_pass}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_INSTALL_PLUGINS: grafana-clock-panel
     ports:
@@ -315,8 +315,8 @@ services:
       NODE_ENV: development
       PORT: 3005
       MQTT_BROKER_URL: mqtt://mosquitto:1883
-      MQTT_USERNAME: ${MQTT_USER:-}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_USERNAME: ${MQTT_USER:-alkatra_user}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-alkatra_dev_pass}
       KAFKA_BROKERS: kafka:9092
       MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-alkatra_dev_pass}@mongodb:27017/alkatra_iot?authSource=admin
     ports:

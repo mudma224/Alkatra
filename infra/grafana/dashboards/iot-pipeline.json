@@ -108,7 +108,7 @@
       "title": "Note",
       "type": "text",
       "options": {
-        "content": "### Al Katra IoT Pipeline\n\nContrat capteur IA v1: `temperature_min_c`, `temperature_max_c`, `wind_speed_ms`, `solar_radiation_mj_m2_day`, `soil_humidity_pct`, `air_humidity_pct`.\n\nFlux attendu: simulateur MQTT -> Mosquitto -> iot-service -> Kafka `raw-sensor-data` -> Kafka UI / prochaines etapes IA.\n\nPour tester: `node scripts/simulate-sensor.js 5000`."
+        "content": "### Al Katra IoT Pipeline\n\nContrat capteur IA v2: `temperature_min_c`, `temperature_max_c`, `wind_speed_ms`, `solar_radiation_mj_m2_day`, `soil_humidity_pct`, `air_humidity_pct`, `rain_mm_day`.\n\nFlux attendu: simulateur MQTT -> Mosquitto -> iot-service -> Kafka `raw-sensor-data` -> Kafka UI / prochaines etapes IA.\n\nPour tester: `node scripts/simulate-sensor.js 5000`."
       },
       "gridPos": { "h": 4, "w": 8, "x": 16, "y": 16 }
     }

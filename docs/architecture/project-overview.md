@@ -43,6 +43,7 @@ wind_speed_ms
 solar_radiation_mj_m2_day
 soil_humidity_pct
 air_humidity_pct
+rain_mm_day
 ```
 
 Ces champs sont documentes dans [le contrat payload capteur](../reference/iot-sensor-payload.md).

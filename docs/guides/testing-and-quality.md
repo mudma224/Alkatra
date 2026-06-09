@@ -42,7 +42,7 @@ Ils valident:
 
 - instanciation des services;
 - connexion mockee MQTT/Kafka;
-- validation des 6 variables IA;
+- validation des 7 variables IA;
 - detection d'anomalies simples;
 - rejet des payloads incomplets;
 - publication Kafka vers `raw-sensor-data`.

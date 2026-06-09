@@ -26,7 +26,7 @@ Le projet est un monorepo npm/Turborepo. A ce stade, la partie la plus avancee e
 - tests Jest fonctionnels;
 - stack Docker locale avec Kafka, Mosquitto, Postgres, MLflow, Prometheus et Grafana.
 
-Le contrat capteur actuel est centre sur 6 variables IA:
+Le contrat capteur actuel est centre sur 7 variables IA:
 
 - `temperature_min_c`
 - `temperature_max_c`
@@ -34,6 +34,7 @@ Le contrat capteur actuel est centre sur 6 variables IA:
 - `solar_radiation_mj_m2_day`
 - `soil_humidity_pct`
 - `air_humidity_pct`
+- `rain_mm_day`
 
 ## Dossiers de documentation
 
