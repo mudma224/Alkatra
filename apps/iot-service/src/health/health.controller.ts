@@ -4,7 +4,6 @@ import { KafkaService } from '../kafka/kafka.service';
 
 @Controller()
 export class HealthController {
-
   constructor(
     private readonly mqttService: MqttService,
     private readonly kafkaService: KafkaService,
