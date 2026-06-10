@@ -271,7 +271,7 @@ CREATE TABLE subscriptions (
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     plan_id         UUID NOT NULL REFERENCES subscription_plans(id),
 
-    status          subscription_status_enum NOT NULL DEFAULT 'fremium',
+    status          subscription_status_enum NOT NULL DEFAULT 'freemium',
 
     start_date      DATE NOT NULL,
     end_date        DATE NOT NULL,
