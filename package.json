@@ -38,6 +38,6 @@
     "npm": ">=10.0.0"
   },
   "dependencies": {
-    "@nestjs/platform-express": "^11.1.23"
+    "@nestjs/platform-express": "^11.1.26"
   }
 }
