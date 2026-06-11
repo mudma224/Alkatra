@@ -1,0 +1,7 @@
+# Dépendances pour le DÉVELOPPEMENT / TESTS locaux (hors conteneur Spark).
+# Dans le conteneur, PySpark provient de l'image apache/spark:3.5.1 et seul
+# redis est installé via le Dockerfile (redis==5.3.1).
+pyspark==3.5.1
+redis==5.3.1
+pytest==8.2.0
+fakeredis==2.36.1

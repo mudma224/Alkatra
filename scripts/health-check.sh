@@ -42,6 +42,7 @@ check_docker "Redis"        "alkatra-redis"
 check_docker "Kafka"        "alkatra-kafka"
 check_docker "Mosquitto"    "alkatra-mosquitto"
 check_docker "IoT Service"  "alkatra-iot"
+check_docker "Spark Job"    "alkatra-spark"
 
 echo -e "\n🌐 Services Web:"
 check "Grafana"         "http://localhost:3000/api/health"
@@ -52,7 +53,7 @@ check "MLflow"          "http://localhost:5000/health"
 
 echo -e "\n🔬 Services Applicatifs (actifs après S2-S4):"
 check "IoT Service"     "http://localhost:3005/health"
-check_optional "ML Inference" "http://localhost:8000/health"
+check "ML Inference" "http://localhost:8000/health"
 
 echo -e "\n=============================================="
 echo -e "Résultat: ${GREEN}${PASS} OK${NC} | ${RED}${FAIL} FAIL${NC}"
