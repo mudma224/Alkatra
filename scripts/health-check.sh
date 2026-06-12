@@ -44,6 +44,7 @@ check_docker "Redis"        "alkatra-redis"
 check_docker "Kafka"        "alkatra-kafka"
 check_docker "Mosquitto"    "alkatra-mosquitto"
 check_docker "IoT Service"  "alkatra-iot"
+check_docker "Spark Job"    "alkatra-spark"
 
 echo -e "\n🌐 Services Web:"
 check "Grafana"         "http://localhost:3000/api/health"

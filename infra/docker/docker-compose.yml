@@ -1,7 +1,12 @@
 # Docker Compose v2 — pas de directive "version:" (dépréciée)
 # Al Katra Bel Qatra — Stack de développement complète
 
+# Nom de projet explicite : garantit que TOUS les conteneurs (dont spark-job)
+# appartiennent au projet "al-katra-bel-qatra" quel que soit le dossier courant.
+name: al-katra-bel-qatra
+
 networks:
+
   alkatra-net:
     driver: bridge
     name: alkatra-net
@@ -16,6 +21,7 @@ volumes:
   prometheus_data:
   mlflow_data:
   keycloak_data:
+  spark-job:
 
 services:
 
@@ -280,7 +286,7 @@ services:
       - prometheus
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-342742868Gabaski224}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-alkatra_dev_pass}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_INSTALL_PLUGINS: grafana-clock-panel
     ports:
@@ -314,8 +320,8 @@ services:
       NODE_ENV: development
       PORT: 3005
       MQTT_BROKER_URL: mqtt://mosquitto:1883
-      MQTT_USERNAME: ${MQTT_USER:-}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_USERNAME: ${MQTT_USER:-alkatra_user}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-alkatra_dev_pass}
       KAFKA_BROKERS: kafka:9092
       MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/alkatra_iot?authSource=admin
     ports:
@@ -330,3 +336,34 @@ services:
       start_period: 45s
     networks:
      - alkatra-net
+
+  spark-job:
+    build:
+      context: ./../../apps/spark-jobs
+      dockerfile: Dockerfile
+    container_name: alkatra-spark
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_INPUT_TOPIC: raw-sensor-data
+      KAFKA_OUTPUT_TOPIC: processed-sensor-data
+      # latest (défaut prod) ; mettre "earliest" pour rejouer tout le topic en test
+      KAFKA_STARTING_OFFSETS: ${KAFKA_STARTING_OFFSETS:-latest}
+      KAFKA_FAIL_ON_DATA_LOSS: ${KAFKA_FAIL_ON_DATA_LOSS:-false}
+      # DRY_RUN=1 : enrichit et logge sans publier dans Kafka (debug)
+      DRY_RUN: ${SPARK_DRY_RUN:-0}
+      SPARK_CHECKPOINT_DIR: /tmp/spark-checkpoint
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
+
+    volumes:
+      - ./../../apps/spark-jobs/jobs:/app/jobs
+      - spark-job:/tmp/spark-checkpoint
+    networks:
+      - alkatra-net

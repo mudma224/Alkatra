@@ -1,0 +1,4 @@
+mlflow==2.13.0
+xgboost
+joblib
+numpy

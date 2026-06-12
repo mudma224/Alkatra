@@ -1,4 +1,4 @@
-export const SENSOR_SCHEMA_VERSION = 'sensor-ai-v1';
+export const SENSOR_SCHEMA_VERSION = 'sensor-ai-v2';
 
 export interface RawSensorPayload {
   ts: number;

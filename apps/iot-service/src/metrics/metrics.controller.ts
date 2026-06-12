@@ -41,29 +41,15 @@ export class MetricsController {
 
       lines.push('# HELP alkatra_iot_last_sensor_value Latest received sensor values by field.');
       lines.push('# TYPE alkatra_iot_last_sensor_value gauge');
-      lines.push(
-        `alkatra_iot_last_sensor_value${this.withField(labels, 'temperature_min_c')} ${reading.temperature_min_c}`,
-      );
-      lines.push(
-        `alkatra_iot_last_sensor_value${this.withField(labels, 'temperature_max_c')} ${reading.temperature_max_c}`,
-      );
-      lines.push(
-        `alkatra_iot_last_sensor_value${this.withField(labels, 'wind_speed_ms')} ${reading.wind_speed_ms}`,
-      );
-      lines.push(
-        `alkatra_iot_last_sensor_value${this.withField(labels, 'solar_radiation_mj_m2_day')} ${reading.solar_radiation_mj_m2_day}`,
-      );
-      lines.push(
-        `alkatra_iot_last_sensor_value${this.withField(labels, 'soil_humidity_pct')} ${reading.soil_humidity_pct}`);
-      lines.push(
-        `alkatra_iot_last_sensor_value${this.withField(labels, 'air_humidity_pct')} ${reading.air_humidity_pct}`);
-      lines.push(
-        `alkatra_iot_last_sensor_value${this.withField(labels, 'rain_mm_day')} ${reading.rain_mm_day}`,
-      );
+      lines.push(`alkatra_iot_last_sensor_value${this.withField(labels, 'temperature_min_c')} ${reading.temperature_min_c}`);
+      lines.push(`alkatra_iot_last_sensor_value${this.withField(labels, 'temperature_max_c')} ${reading.temperature_max_c}`);
+      lines.push(`alkatra_iot_last_sensor_value${this.withField(labels, 'wind_speed_ms')} ${reading.wind_speed_ms}`);
+      lines.push(`alkatra_iot_last_sensor_value${this.withField(labels, 'solar_radiation_mj_m2_day')} ${reading.solar_radiation_mj_m2_day}`);
+      lines.push(`alkatra_iot_last_sensor_value${this.withField(labels, 'soil_humidity_pct')} ${reading.soil_humidity_pct}`);
+      lines.push(`alkatra_iot_last_sensor_value${this.withField(labels, 'air_humidity_pct')} ${reading.air_humidity_pct}`);
+      lines.push(`alkatra_iot_last_sensor_value${this.withField(labels, 'rain_mm_day')} ${reading.rain_mm_day}`);
 
-      lines.push(
-        '# HELP alkatra_iot_last_message_timestamp_seconds Timestamp of the latest valid sensor message.',
-      );
+      lines.push('# HELP alkatra_iot_last_message_timestamp_seconds Timestamp of the latest valid sensor message.');
       lines.push('# TYPE alkatra_iot_last_message_timestamp_seconds gauge');
       lines.push(
         `alkatra_iot_last_message_timestamp_seconds${labels} ${Math.floor(Date.parse(reading.received_at) / 1000)}`,

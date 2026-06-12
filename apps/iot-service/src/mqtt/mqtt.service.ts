@@ -10,7 +10,7 @@ import { KafkaService } from '../kafka/kafka.service';
 const MQTT_TOPIC = 'alkatra/farm/+/parcel/+/sensor/+/data';
 const KAFKA_RAW_TOPIC = 'raw-sensor-data';
 
-const SENSOR_SCHEMA_VERSION = 'sensor-ai-v1';
+const SENSOR_SCHEMA_VERSION = 'sensor-ai-v2';
 const REQUIRED_AI_FIELDS = [
   'temperature_min_c',
   'temperature_max_c',
@@ -28,7 +28,7 @@ const FIELD_ALIASES: Record<(typeof REQUIRED_AI_FIELDS)[number], string[]> = {
   solar_radiation_mj_m2_day: ['solar_radiation_mj_m2_day', 'solar_radiation', 'solar_mj_m2_day'],
   soil_humidity_pct: ['soil_humidity_pct', 'soil_moisture_pct', 'soil_moisture_1'],
   air_humidity_pct: ['air_humidity_pct', 'air_humidity'],
-  rain_mm_day: ['rain_mm_day', 'rainfall_mm', 'rain_mm'],
+  rain_mm_day: ['rain_mm_day', 'rainfall_mm_day', 'rain_mm'],
 };
 
 const ANOMALY_THRESHOLDS = {
@@ -145,7 +145,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
     const enrichedReading = this.buildSensorReading(topic, rawData);
     if (!enrichedReading) {
-      this.logger.warn(`Payload invalide sur ${topic}: les 6 variables IA sont obligatoires`);
+      this.logger.warn(`Payload invalide sur ${topic}: les 7 variables IA sont obligatoires`);
       return;
     }
 
@@ -288,6 +288,13 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
       ) {
         reasons.push(`${field} hors limites: ${features[field]}%`);
       }
+    }
+
+    if (
+      features.rain_mm_day < ANOMALY_THRESHOLDS.rain_mm_day_min ||
+      features.rain_mm_day > ANOMALY_THRESHOLDS.rain_mm_day_max
+    ) {
+      reasons.push(`rain_mm_day hors limites: ${features.rain_mm_day} mm/jour`);
     }
 
     return { isAnomaly: reasons.length > 0, anomalyReasons: reasons };

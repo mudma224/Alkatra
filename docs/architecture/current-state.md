@@ -47,7 +47,7 @@ Le simulateur:
 node scripts/simulate-sensor.js 5000
 ```
 
-publie des messages MQTT conformes au contrat IA v1.
+publie des messages MQTT conformes au contrat IA v2.
 
 ### Observabilite
 
@@ -93,7 +93,7 @@ Correction:
 
 ### Contrat capteur IA
 
-Ancien payload prototype remplace par 6 variables IA:
+Ancien payload prototype remplace par 7 variables IA:
 
 ```text
 temperature_min_c
@@ -102,6 +102,7 @@ wind_speed_ms
 solar_radiation_mj_m2_day
 soil_humidity_pct
 air_humidity_pct
+rain_mm_day
 ```
 
 `iot-service` enrichit ensuite le message avec:
