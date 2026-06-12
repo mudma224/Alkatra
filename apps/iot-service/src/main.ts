@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, RequestMethod } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
@@ -10,8 +10,13 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn', 'debug'],
   });
 
-  // ❌ NE PAS inclure health/metrics dans le prefix
-  app.setGlobalPrefix('api/v1');
+  // ❌ NE PAS inclure health/metrics dans le prefix — les exclure explicitement
+  app.setGlobalPrefix('api/v1', {
+    exclude: [
+      { path: 'metrics', method: RequestMethod.GET },
+      { path: 'health', method: RequestMethod.GET },
+    ],
+  });
 
   await app.listen(port, '0.0.0.0');
 
