@@ -51,7 +51,9 @@ export class MetricsController {
 
       lines.push('# HELP alkatra_iot_last_message_timestamp_seconds Timestamp of the latest valid sensor message.');
       lines.push('# TYPE alkatra_iot_last_message_timestamp_seconds gauge');
-      lines.push(`alkatra_iot_last_message_timestamp_seconds${labels} ${Math.floor(Date.parse(reading.received_at) / 1000)}`);
+      lines.push(
+        `alkatra_iot_last_message_timestamp_seconds${labels} ${Math.floor(Date.parse(reading.received_at) / 1000)}`,
+      );
     }
 
     return `${lines.join('\n')}\n`;

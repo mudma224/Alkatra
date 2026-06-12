@@ -1,4 +1,3 @@
-
 /**
  * Al Katra Bel Qatra — Kafka Producer Service
  * Envoie les données capteurs vers le topic raw-sensor-data
@@ -18,7 +17,9 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
-    const brokers = (this.configService.get<string>('KAFKA_BROKERS') || 'localhost:9094').split(',');
+    const brokers = (this.configService.get<string>('KAFKA_BROKERS') || 'localhost:9094').split(
+      ',',
+    );
 
     this.kafka = new Kafka({
       clientId: 'alkatra-iot-service',
@@ -51,7 +52,7 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       this.isConnected = true;
       this.logger.log('✅ Kafka producer connecté');
     } catch (error: unknown) {
-      this.logger.error(`❌ Kafka connexion échouée: ${ (error as Error).message }`);
+      this.logger.error(`❌ Kafka connexion échouée: ${(error as Error).message}`);
       this.logger.warn('Retry dans 5 secondes...');
       setTimeout(() => this.connect(), 5000);
     }
@@ -82,7 +83,7 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
         ],
       });
     } catch (error: unknown) {
-      this.logger.error(`Erreur envoi Kafka [${topic}]: ${ (error as Error).message }`);
+      this.logger.error(`Erreur envoi Kafka [${topic}]: ${(error as Error).message}`);
     }
   }
 

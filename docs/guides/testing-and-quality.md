@@ -98,3 +98,28 @@ Sans ce champ, `npm run test` echoue avec:
 Could not resolve workspaces.
 Missing packageManager field in package.json
 ```
+
+## Pipelines CI/CD GitHub Actions
+
+Les pipelines sont documentés en détail dans [ci-cd.md](./ci-cd.md).
+
+Résumé rapide pour les tests :
+
+**Vérifier en local avant de pousser :**
+
+```bash
+npm run lint
+npx prettier --check "**/*.{ts,js,json}"
+npm run test
+npm run build
+```
+
+**Trois workflows actifs :**
+
+- `ci-common.yml` — lint + build Docker + K8s dry-run (tout push / PR)
+- `ci-iot.yml` — tests Jest IoT (changements dans `apps/iot-service/`)
+- `ci-ml.yml` — tests pytest ML + Spark (changements dans `apps/ml-inference-service/` ou `apps/spark-jobs/`)
+
+**Règle importante** : les tests Jest du service IoT utilisent des mocks pour MQTT et Kafka. Ils ne nécessitent pas que la stack Docker soit démarrée pour passer.
+
+**Couverture actuelle :** voir `ci-iot.yml` → step `Upload coverage`. Le rapport est uploadé sur Codecov après chaque passage du pipeline IoT.

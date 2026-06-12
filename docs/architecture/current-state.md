@@ -154,6 +154,45 @@ soil_humidity_pct_at_gen
 
 Attention: `init.sql` ne s'applique automatiquement qu'a la creation initiale du volume Postgres.
 
+## Sprint S2 — Ajouts Dev1
+
+### Scaffolds des services Phase 1 et suivants
+
+Trois services ont été initialisés avec une structure minimale fonctionnelle.
+Ils exposent chacun un endpoint `/health` et peuvent être buildés en Docker,
+mais leur code métier sera écrit dans les sprints ultérieurs.
+
+**`apps/auth-service/`**
+
+Service NestJS Phase 1 (OTP SMS, JWT, Keycloak). Actuellement : placeholder avec endpoint `/health` sur le port 3001. Activé via le profil Docker `phase1`.
+
+**`apps/spark-jobs/`**
+
+Jobs PySpark Sprint S3 (feature engineering ETo, Kc, cumul pluie). Actuellement : Dockerfile Bitnami Spark prêt, dossiers `jobs/` et `tests/` vides en attente des scripts Dev2.
+
+**`apps/ml-inference-service/`**
+
+Service FastAPI Sprint S4 (XGBoost via MLflow). Actuellement : FastAPI minimal avec endpoint `/health` sur le port 8000. Le code de prédiction (modèles, SHAP, endpoints predict) sera ajouté en S4.
+
+### Pipelines CI/CD GitHub Actions
+
+Trois workflows ont été créés dans `.github/workflows/` :
+
+- `ci-common.yml` : lint TypeScript, vérification Prettier, build Docker des trois services, validation dry-run des manifests Kubernetes. Se déclenche sur tout push ou PR vers `main` / `develop`.
+- `ci-iot.yml` : tests Jest du service IoT avec mocks MQTT et Kafka. Se déclenche uniquement si `apps/iot-service/` ou `packages/shared-types/` ont changé.
+- `ci-ml.yml` : tests pytest FastAPI (mode DEMO), tests unitaires feature engineering Spark, lint Python ruff. Se déclenche sur changements dans `apps/ml-inference-service/` ou `apps/spark-jobs/`.
+
+### Configuration qualité racine
+
+Trois fichiers de configuration ont été ajoutés à la racine du monorepo :
+
+- `.eslintrc.js` : règles ESLint TypeScript partagées pour tous les services NestJS
+- `tsconfig.json` : configuration TypeScript racine (base pour ESLint et Prettier)
+- `.prettierrc` : formatage unifié (single quote, trailing comma, tabWidth 2)
+
+Ces fichiers garantissent que tous les services produisent du code formaté de façon identique indépendamment de l'éditeur utilisé.
+
+
 ## Verification rapide
 
 ```bash

@@ -49,10 +49,8 @@ describe('KafkaService', () => {
   it('should send a message to Kafka', async () => {
     const sendSpy = jest.spyOn(service, 'send');
     await service.send('raw-sensor-data', 'farm_001:parcel_A', { device_id: 'esp32-001' });
-    expect(sendSpy).toHaveBeenCalledWith(
-      'raw-sensor-data',
-      'farm_001:parcel_A',
-      { device_id: 'esp32-001' }
-    );
+    expect(sendSpy).toHaveBeenCalledWith('raw-sensor-data', 'farm_001:parcel_A', {
+      device_id: 'esp32-001',
+    });
   });
 });

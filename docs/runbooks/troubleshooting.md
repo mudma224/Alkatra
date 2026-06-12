@@ -206,3 +206,94 @@ npm run docker:reset
 ```
 
 Attention: cela supprime les donnees locales.
+
+## CI GitHub Actions : lint échoue sur des dossiers vides
+
+**Symptôme :**
+
+```
+Parsing error: Cannot read file 'tsconfig.json'
+```
+
+ou
+
+```
+No files matching the pattern were found
+```
+
+**Cause :**
+ESLint cherche un `tsconfig.json` à la racine. Si le fichier manque ou que le projet n'a pas encore de fichiers TypeScript, ESLint échoue.
+
+**Correction :**
+Vérifier que `tsconfig.json` existe à la racine du monorepo et que `.eslintrc.js` est commité.
+
+---
+
+## CI GitHub Actions : build Docker iot-service échoue
+
+**Symptôme :**
+
+```
+ERROR: failed to solve: failed to read dockerfile: open apps/iot-service/Dockerfile
+```
+
+**Cause :**
+Le `Dockerfile` de `iot-service` n'existe pas encore (Dev2 doit le créer).
+
+**Impact :**
+Le job `build-docker-images` dans `ci-common.yml` échoue. Les autres jobs (`lint-and-typecheck`, `validate-k8s-manifests`) ne sont pas affectés.
+
+**À faire :**
+Attendre que Dev2 crée `apps/iot-service/Dockerfile` (Sprint S2). En attendant, le build iot-service peut être passé en `continue-on-error: true` si nécessaire.
+
+---
+
+## CI GitHub Actions : npm ci échoue avec "package-lock.json is missing"
+
+**Symptôme :**
+
+```
+npm error The `npm ci` command can only install with an existing package-lock.json
+```
+
+**Cause :**
+`package-lock.json` n'a pas été commité, ou le fichier local ne correspond pas aux dépendances déclarées.
+
+**Correction :**
+
+```bash
+npm install
+git add package-lock.json
+git commit -m "chore: update package-lock.json"
+```
+
+---
+
+## CI GitHub Actions : prettier échoue sur les fins de ligne Windows
+
+**Symptôme :**
+
+```
+[warn] apps/iot-service/src/main.ts
+```
+
+et la correction Prettier génère des diffs uniquement sur les `\r\n`.
+
+**Cause :**
+Git Bash sur Windows peut convertir les fins de ligne en CRLF même avec `.gitattributes`.
+
+**Correction :**
+
+```bash
+git config --global core.autocrlf false
+npx prettier --write "**/*.{ts,js,json}"
+git add -A
+git commit -m "chore: normalize line endings"
+```
+
+S'assurer que `.gitattributes` contient :
+
+```
+* text=auto eol=lf
+*.sh text eol=lf
+```

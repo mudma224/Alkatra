@@ -40,4 +40,5 @@ export interface SensorAnomaly {
   detected_at: string;
 }
 
-export const MQTT_TOPIC_PATTERN = 'alkatra/farm/{farm_id}/parcel/{parcel_id}/sensor/{device_id}/data';
+export const MQTT_TOPIC_PATTERN =
+  'alkatra/farm/{farm_id}/parcel/{parcel_id}/sensor/{device_id}/data';

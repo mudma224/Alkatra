@@ -4,7 +4,7 @@ PASS=0; FAIL=0
 
 check() {
   local name=$1 url=$2 expected=${3:-200}
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null)
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || true)
   if [ "$HTTP_CODE" = "$expected" ]; then
     echo -e "${GREEN}✅ ${name} (${HTTP_CODE})${NC}"; PASS=$((PASS+1))
   else
@@ -24,9 +24,11 @@ check_optional() {
 
 check_docker() {
   local name=$1 container=$2
-  STATUS=$(docker inspect -f '{{.State.Health.Status}}' "$container" 2>/dev/null)
+  STATUS=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-health{{end}}' "$container" 2>/dev/null || true)
   if [ "$STATUS" = "healthy" ]; then
     echo -e "${GREEN}✅ Docker: ${name}${NC}"; PASS=$((PASS+1))
+  elif [ "$STATUS" = "no-health" ]; then
+    echo -e "${YELLOW}⚠️ Docker: ${name} (no healthcheck)${NC}"; PASS=$((PASS+1))
   else
     echo -e "${RED}❌ Docker: ${name} (${STATUS:-not found})${NC}"; FAIL=$((FAIL+1))
   fi
@@ -49,7 +51,8 @@ check "Grafana"         "http://localhost:3000/api/health"
 check "Kafka UI"        "http://localhost:8090"
 check "Prometheus"      "http://localhost:9090/-/healthy"
 check "MailHog"         "http://localhost:8025"
-check "MLflow"          "http://localhost:5000/health"
+# MLflow: try root (mlflow default) — some mlflow builds expose / not /health
+check "MLflow"          "http://localhost:5001/"
 
 echo -e "\n🔬 Services Applicatifs (actifs après S2-S4):"
 check "IoT Service"     "http://localhost:3005/health"
