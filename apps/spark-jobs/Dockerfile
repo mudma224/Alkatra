@@ -1,25 +1,57 @@
-FROM bitnami/spark:3.5
+FROM apache/spark:3.5.1
 
 USER root
 WORKDIR /app
 
-# Python deps
-RUN pip install --no-cache-dir \
-    kafka-python==2.0.2 \
-    httpx==0.27.0 \
-    pyspark==3.5.1
+# Dépendances système
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Dépendances Python (runtime minimal — PySpark est fourni par l'image de base)
+RUN pip install --no-cache-dir redis==5.3.1
 
+# Code des jobs
 COPY jobs/ ./jobs/
+COPY tests/ ./tests/
+
+# Vendor Kafka connector jars (scala 2.12 = binaire de l'image Spark 3.5.1)
+# pour éviter toute résolution Ivy/runtime au démarrage du conteneur.
+# --retry-connrefused / --tries pour fiabiliser le build hors-ligne instable.
+RUN mkdir -p /opt/spark/jars && \
+    for url in \
+      "https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.1/spark-sql-kafka-0-10_2.12-3.5.1.jar" \
+      "https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.1/spark-token-provider-kafka-0-10_2.12-3.5.1.jar" \
+      "https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar" \
+      "https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar" ; do \
+        wget -q --tries=3 --retry-connrefused --timeout=30 "$url" -P /opt/spark/jars/ ; \
+    done && \
+    chown -R 1001:0 /opt/spark/jars && chmod -R g+rw /opt/spark/jars
+
+
+ENV HOME=/tmp
+ENV _JAVA_OPTIONS="-Duser.home=/tmp -Duser.name=spark"
+ENV HADOOP_USER_NAME=spark
+ENV USER=spark
+ENV LOGNAME=spark
+
+# Ensure Ivy cache location exists and is writable by the non-root spark user
+RUN mkdir -p /tmp/.ivy2/cache /tmp/.ivy2/jars && \
+    chown -R 1001:0 /tmp/.ivy2 /tmp && chmod -R g+rw /tmp/.ivy2 /tmp
+# Ensure a passwd entry exists for UID 1001 so UnixPrincipal can resolve a name
+RUN echo 'spark:x:1001:0:spark user:/tmp:/bin/sh' >> /etc/passwd || true
 
 USER 1001
-WORKDIR /app/jobs
+WORKDIR /app
 
-CMD ["spark-submit", \
-     "--master", "local[2]", \
-     "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1", \
-     "--conf", "spark.driver.memory=1g", \
-     "--conf", "spark.executor.memory=1g", \
-     "sensor_stream_processor.py"]
+# Use absolute spark-submit and avoid --packages (we vendor jars above)
+CMD ["/opt/spark/bin/spark-submit", \
+    "--master", "local[2]", \
+    "--conf", "spark.driver.memory=1g", \
+    "--conf", "spark.executor.memory=1g", \
+    "--conf", "spark.sql.streaming.checkpointLocation=/tmp/spark-checkpoint", \
+    "--conf", "spark.hadoop.hadoop.security.authentication=simple", \
+    "--conf", "spark.driver.extraJavaOptions=-Duser.name=spark -Duser.home=/tmp", \
+    "--conf", "spark.executor.extraJavaOptions=-Duser.name=spark -Duser.home=/tmp", \
+    "jobs/sensor_stream_processor.py"]
