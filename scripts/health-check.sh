@@ -46,12 +46,29 @@ check_docker "Mosquitto"    "alkatra-mosquitto"
 check_docker "IoT Service"  "alkatra-iot"
 check_docker "Spark Job"    "alkatra-spark"
 
+# ================================
+# MongoDB sensor validation
+# ================================
+echo -e "\n🗄️ MongoDB Data Validation (IoT):"
+
+MONGO_URI="mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@localhost:27017/alkatra_iot?authSource=admin"
+
+DOC_COUNT=$(docker exec alkatra-mongodb mongosh alkatra_iot \
+  -u "${MONGO_USER:-alkatra}" -p "${MONGO_PASSWORD:-123}" \
+  --authenticationDatabase admin --quiet \
+  --eval "db.ai_sensor_features.countDocuments({})" 2>/dev/null | tail -1 || echo "ERR")
+
+if [ "$DOC_COUNT" = "ERR" ] || [ "$DOC_COUNT" = "0" ]; then
+  echo -e "${YELLOW}⚠️ MongoDB ai_sensor_features — $DOC_COUNT docs (normal si aucun capteur actif)${NC}"
+else
+  echo -e "${GREEN}✅ MongoDB ai_sensor_features — $DOC_COUNT documents${NC}"
+fi
+
 echo -e "\n🌐 Services Web:"
 check "Grafana"         "http://localhost:3000/api/health"
 check "Kafka UI"        "http://localhost:8090"
 check "Prometheus"      "http://localhost:9090/-/healthy"
 check "MailHog"         "http://localhost:8025"
-# MLflow: try root (mlflow default) — some mlflow builds expose / not /health
 check "MLflow"          "http://localhost:5001/"
 
 echo -e "\n🔬 Services Applicatifs (actifs après S2-S4):"
