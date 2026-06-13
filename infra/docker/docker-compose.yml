@@ -317,13 +317,13 @@ services:
     volumes:
       - ./../../apps/iot-service/src:/app/src
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3005/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3005/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
       start_period: 45s
     networks:
-      - alkatra-net   # FIXED indentation
+      - alkatra-net  
 
   spark-job:
     build:
