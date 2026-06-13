@@ -23,7 +23,9 @@
     "health": "bash scripts/health-check.sh",
     "setup": "bash scripts/setup.sh",
     "models:register": "python3 scripts/register-models.py",
-    "validate:mongodb": "node scripts/validate-mongodb-indexes.js"
+    "validate:mongodb": "node scripts/validate-mongodb-indexes.js",
+    "validate:pipeline": "bash scripts/validate-pipeline.sh"
+
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
