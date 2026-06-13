@@ -41,4 +41,4 @@ exec mlflow server \
   --backend-store-uri "postgresql://${POSTGRES_USER}:${ENCODED_PASSWORD}@postgres:5432/${POSTGRES_DB:-alkatra_db}" \
   --default-artifact-root /mlruns \
   --host 0.0.0.0 \
-  --port 5000
+  --port 5001
