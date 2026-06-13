@@ -35,3 +35,4 @@ But: Points d'attention / production
 - Pour CI/CD, publier l'image dans un registry privé et remplacer `build` par `image` dans le compose.
 
 But: Si vous êtes sur Windows et que vous testez localement, assurez-vous que Docker Desktop a accès au réseau `alkatra-net` et que `kafka`/`redis` démarrent (utiliser `docker compose ps`).
+

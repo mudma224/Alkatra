@@ -123,3 +123,4 @@ npm run build
 **Règle importante** : les tests Jest du service IoT utilisent des mocks pour MQTT et Kafka. Ils ne nécessitent pas que la stack Docker soit démarrée pour passer.
 
 **Couverture actuelle :** voir `ci-iot.yml` → step `Upload coverage`. Le rapport est uploadé sur Codecov après chaque passage du pipeline IoT.
+

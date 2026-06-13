@@ -22,7 +22,10 @@
     "simulate": "node scripts/simulate-sensor.js",
     "health": "bash scripts/health-check.sh",
     "setup": "bash scripts/setup.sh",
-    "models:register": "python scripts/register-models.py --classifier C:\\Users\\E L I T E B O O K\\Desktop\\olive_project\\model_classification_xgb.json --regressor C:\\Users\\E L I T E B O O K\\Desktop\\olive_project\\model_regression_xgb.json"
+    "models:register": "python3 scripts/register-models.py",
+    "validate:mongodb": "node scripts/validate-mongodb-indexes.js",
+    "validate:pipeline": "bash scripts/validate-pipeline.sh"
+
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -30,6 +33,7 @@
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
     "fakeredis": "^2.0.0",
+    "mongodb": "^7.3.0",
     "mqtt": "^5.15.1",
     "prettier": "^3.2.0",
     "turbo": "^2.0.0"

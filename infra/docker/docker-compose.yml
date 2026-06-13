@@ -1,6 +1,8 @@
 # Docker Compose v2 — pas de directive "version:" (dépréciée)
 # Al Katra Bel Qatra — Stack de développement complète
 
+name: al-katra-bel-qatra
+
 networks:
   alkatra-net:
     driver: bridge
@@ -92,7 +94,7 @@ services:
     networks:
       - alkatra-net
 
-# ==========================================
+  # ==========================================
   # KAFKA — KRaft mode (Apache officiel 3.7.0)
   # ==========================================
   kafka:
@@ -106,16 +108,12 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_CLUSTER_ID: "MkQkTkRETkDTkT"
-
-      # Listeners — une seule ligne, pas de > YAML
       KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093"
       KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-
-      # Single node
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -155,7 +153,6 @@ services:
       retries: 10
       start_period: 40s
 
-
   # ==========================================
   # MAILHOG — Email dev (OTP test Phase 1)
   # ==========================================
@@ -169,7 +166,7 @@ services:
     networks:
       - alkatra-net
 
-# ==========================================
+  # ==========================================
   # MOSQUITTO — MQTT Broker
   # ==========================================
   mosquitto:
@@ -190,9 +187,8 @@ services:
     networks:
       - alkatra-net
 
-# ==========================================
+  # ==========================================
   # MLFLOW — Model Registry + Tracking
-  # Build custom : image officielle + psycopg2 (requis pour PostgreSQL backend)
   # ==========================================
   mlflow:
     build:
@@ -220,9 +216,7 @@ services:
       - alkatra-net
 
   # ==========================================
-  # KEYCLOAK — Auth OIDC (Phase 1 placeholder)
-  # Requis CdC Section 6.4.1 — NestJS + Keycloak
-  # Container prêt dès M0, configuré en Phase 1 S1-S2
+  # KEYCLOAK — Auth OIDC
   # ==========================================
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
@@ -247,7 +241,7 @@ services:
     networks:
       - alkatra-net
     profiles:
-      - auth   # Démarré via: docker compose --profile auth up
+      - auth
 
   # ==========================================
   # PROMETHEUS — Métriques
@@ -292,7 +286,6 @@ services:
     networks:
       - alkatra-net
 
-
   # ==========================================
   # iot-service
   # ==========================================
@@ -323,13 +316,13 @@ services:
     volumes:
       - ./../../apps/iot-service/src:/app/src
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3005/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3005/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
       start_period: 45s
     networks:
-     - alkatra-net
+      - alkatra-net  
 
 
   spark-job:
@@ -347,17 +340,15 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_INPUT_TOPIC: raw-sensor-data
       KAFKA_OUTPUT_TOPIC: processed-sensor-data
-      # latest (défaut prod) ; mettre "earliest" pour rejouer tout le topic en test
       KAFKA_STARTING_OFFSETS: ${KAFKA_STARTING_OFFSETS:-latest}
       KAFKA_FAIL_ON_DATA_LOSS: ${KAFKA_FAIL_ON_DATA_LOSS:-false}
-      # DRY_RUN=1 : enrichit et logge sans publier dans Kafka (debug)
       DRY_RUN: ${SPARK_DRY_RUN:-0}
       SPARK_CHECKPOINT_DIR: /tmp/spark-checkpoint
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
-
     volumes:
       - ./../../apps/spark-jobs/jobs:/app/jobs
+    # Entrypoint in image takes care of fixing checkpoint ownership at startup.
     networks:
       - alkatra-net

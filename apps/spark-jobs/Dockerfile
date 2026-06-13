@@ -41,11 +41,15 @@ RUN mkdir -p /tmp/.ivy2/cache /tmp/.ivy2/jars && \
     chown -R 1001:0 /tmp/.ivy2 /tmp && chmod -R g+rw /tmp/.ivy2 /tmp
 # Ensure a passwd entry exists for UID 1001 so UnixPrincipal can resolve a name
 RUN echo 'spark:x:1001:0:spark user:/tmp:/bin/sh' >> /etc/passwd || true
+# Copy entrypoint that will attempt to fix volume permissions at container start
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 USER 1001
 WORKDIR /app
 
 # Use absolute spark-submit and avoid --packages (we vendor jars above)
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["/opt/spark/bin/spark-submit", \
     "--master", "local[2]", \
     "--conf", "spark.driver.memory=1g", \
