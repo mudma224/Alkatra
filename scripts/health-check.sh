@@ -55,7 +55,7 @@ check "MailHog"         "http://localhost:8025"
 check "MLflow"          "http://localhost:5001/"
 
 echo -e "\n🔬 Services Applicatifs (actifs après S2-S4):"
-check "IoT Service"     "http://localhost:3005/api/v1/health"
+check "IoT Service"     "http://localhost:3005/health"
 check_optional "ML Inference" "http://localhost:8000/health"
 
 echo -e "\n=============================================="
