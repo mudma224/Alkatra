@@ -125,3 +125,4 @@ Les badges dans `README.md` reflètent le statut des deux workflows principaux :
 ```
 
 Un badge vert = le dernier push sur la branche par défaut passe tous les checks.
+

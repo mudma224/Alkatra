@@ -72,3 +72,4 @@ python scripts/smoke_ml_integration.py
 
 ---
 Fait par l'audit: `scripts/register-models.py` mis à jour pour gérer proprement les chemins hôtes.
+
