@@ -22,7 +22,7 @@
     "simulate": "node scripts/simulate-sensor.js",
     "health": "bash scripts/health-check.sh",
     "setup": "bash scripts/setup.sh",
-    "models:register": "python3 scripts/register-models.py"
+    "models:register": "python scripts/register-models.py --classifier C:\\Users\\E L I T E B O O K\\Desktop\\olive_project\\model_classification_xgb.json --regressor C:\\Users\\E L I T E B O O K\\Desktop\\olive_project\\model_regression_xgb.json"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

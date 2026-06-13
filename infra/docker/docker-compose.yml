@@ -36,7 +36,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ../postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-alkatra_db}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -359,6 +359,5 @@ services:
 
     volumes:
       - ./../../apps/spark-jobs/jobs:/app/jobs
-      - spark-job:/tmp/spark-checkpoint
     networks:
       - alkatra-net

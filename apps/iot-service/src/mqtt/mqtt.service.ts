@@ -43,8 +43,6 @@ const ANOMALY_THRESHOLDS = {
   humidity_pct_max: 100,
   rain_mm_day_min: 0,
   rain_mm_day_max: 200,
-  rain_mm_day_min: 0,
-  rain_mm_day_max: 200,
 };
 
 type AiFieldName = (typeof REQUIRED_AI_FIELDS)[number];

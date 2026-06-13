@@ -1,9 +1,9 @@
 r"""
 Al Katra Bel Qatra — Enregistrement des modèles XGBoost dans MLflow.
 Usage :
-    python3 scripts/register-models.py \\
-        --classifier C:\Users\E L I T E B O O K\Desktop\olive_project\model_classification_xgb.json \\
-        --regressor  C:\Users\E L I T E B O O K\Desktop\olive_project\model_regression_xgb.json \\
+    python3 scripts/register-models.py \
+        --classifier C:\Users\E L I T E B O O K\Desktop\olive_project\model_classification_xgb.json \
+        --regressor  C:\Users\E L I T E B O O K\Desktop\olive_project\model_regression_xgb.json \
         --bias       C:\Users\E L I T E B O O K\Desktop\olive_project\champ_bias_dict.joblib
 
 Les modèles sont des fichiers XGBoost natifs (.json).
@@ -27,7 +27,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
 CLASSIFIER_MODEL_NAME = "AlKatra-Classifier"
 REGRESSOR_MODEL_NAME = "AlKatra-Regressor"
 EXPERIMENT_NAME = "AlKatra-IrrigationModels"
@@ -240,7 +240,7 @@ def main() -> None:
 
     print()
     print("🎉 Tous les artifacts sont enregistrés dans MLflow !")
-    print(f"   → MLflow UI : http://localhost:5000")
+    print(f"   → MLflow UI : {MLFLOW_TRACKING_URI}")
     print(f"   → {CLASSIFIER_MODEL_NAME} : Production ✅")
     print(f"   → {REGRESSOR_MODEL_NAME} : Production ✅")
     print(f"   → champ_bias_dict : artifact ✅")
