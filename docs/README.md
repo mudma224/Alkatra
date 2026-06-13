@@ -27,21 +27,7 @@ Le projet est un monorepo npm/Turborepo. Les parties les plus avancées sont :
 - tests Jest fonctionnels
 - stack Docker locale avec Kafka, Mosquitto, Postgres, MLflow, Prometheus et Grafana
 
-<<<<<<< HEAD
-**Scaffolds actifs (Sprint S2) :**
-- `apps/auth-service/` — placeholder NestJS Phase 1 avec `/health`
-- `apps/spark-jobs/` — Dockerfile Spark prêt pour les jobs S3
-- `apps/ml-inference-service/` — FastAPI minimal avec `/health` pour S4
-
-**CI/CD (Sprint S2) :**
-- `ci-common.yml` — lint + build Docker + validation K8s sur chaque PR
-- `ci-iot.yml` — tests Jest IoT en isolation
-- `ci-ml.yml` — tests pytest ML + Spark
-
-Le contrat capteur actuel est centré sur 7 variables IA :
-=======
 Le contrat capteur actuel est centre sur 7 variables IA:
->>>>>>> feat/s3-spark-ml
 
 - `temperature_min_c`
 - `temperature_max_c`

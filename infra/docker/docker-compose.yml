@@ -350,5 +350,6 @@ services:
     volumes:
       - ./../../apps/spark-jobs/jobs:/app/jobs
       - spark-job:/tmp/spark-checkpoint
+    # Entrypoint in image takes care of fixing checkpoint ownership at startup.
     networks:
       - alkatra-net
