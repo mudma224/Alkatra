@@ -150,6 +150,12 @@ MSG_PROCESSED=$(docker exec alkatra-kafka /opt/kafka/bin/kafka-run-class.sh kafk
   --topic processed-sensor-data \
   --time -1 2>/dev/null | awk -F: '{sum+=$3} END {print sum}' || echo "0")
 
+# Ensure MSG_PROCESSED is a numeric value (default 0) to avoid "integer expression expected"
+MSG_PROCESSED=$(echo "$MSG_PROCESSED" | tr -d ' \t\r\n')
+if ! [[ "$MSG_PROCESSED" =~ ^[0-9]+$ ]]; then
+  MSG_PROCESSED=0
+fi
+
 if [ "$MSG_PROCESSED" -gt "0" ]; then
   result "OK" "Messages dans processed-sensor-data ($MSG_PROCESSED) — Spark operationnel"
 else
