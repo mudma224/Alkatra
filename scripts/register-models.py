@@ -2,9 +2,9 @@ r"""
 Al Katra Bel Qatra — Enregistrement des modèles XGBoost dans MLflow.
 Usage :
     python scripts/register-models.py \
-        --classifier "C:\Users\E L I T E B O O K\Desktop\olive_project\model_classification_xgb.json" \
-        --regressor  "C:\Users\E L I T E B O O K\Desktop\olive_project\model_regression_xgb.json" \
-        --bias       "C:\Users\E L I T E B O O K\Desktop\olive_project\champ_bias_dict.joblib"
+        --classifier "C:\Users\PC\\Downloads\model_classification_xgb.json" \
+        --regressor  "C:\Users\PC\Downloads\model_regression_xgb.json" \
+        --bias       "C:\Users\PC\Downloads\champ_bias_dict.joblib"
 
 Les modèles sont des fichiers XGBoost natifs (.json).
 Le bias dict est enregistré comme artifact MLflow.
