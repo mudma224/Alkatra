@@ -14,11 +14,16 @@ import json
 import logging
 import os
 import sys
+import tempfile
+from pathlib import Path
 
+import boto3
+from botocore.exceptions import ClientError
 import joblib
 import mlflow
 import mlflow.xgboost
 import numpy as np
+import pandas as pd
 import xgboost as xgb
 
 logging.basicConfig(
@@ -27,7 +32,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_env_file(env_path: Path = REPO_ROOT / ".env") -> None:
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+def _env_path(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return str(Path(value).expanduser())
+    return None
+
+
+_load_env_file()
+
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
+MLFLOW_S3_ENDPOINT_URL = os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://localhost:9000")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "minioadmin"))
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", os.getenv("MINIO_ROOT_PASSWORD", "minioadmin"))
+MLFLOW_ARTIFACT_BUCKET = os.getenv("MLFLOW_ARTIFACT_BUCKET", "mlflow-artifacts")
+DEFAULT_CLASSIFIER_PATH = _env_path("ALKATRA_CLASSIFIER_MODEL_PATH", "CLASSIFIER_MODEL_PATH")
+DEFAULT_REGRESSOR_PATH = _env_path("ALKATRA_REGRESSOR_MODEL_PATH", "REGRESSOR_MODEL_PATH")
+DEFAULT_BIAS_PATH = _env_path("ALKATRA_BIAS_MODEL_PATH", "BIAS_MODEL_PATH")
 CLASSIFIER_MODEL_NAME = "AlKatra-Classifier"
 REGRESSOR_MODEL_NAME = "AlKatra-Regressor"
 EXPERIMENT_NAME = "AlKatra-IrrigationModels"
@@ -66,6 +104,37 @@ SAMPLE_Y_REGRESSOR = np.array([
 ])
 
 
+def _sample_frame() -> pd.DataFrame:
+    return pd.DataFrame(SAMPLE_X, columns=FEATURE_NAMES)
+
+
+def _configure_s3_environment() -> None:
+    os.environ.setdefault("MLFLOW_S3_ENDPOINT_URL", MLFLOW_S3_ENDPOINT_URL)
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID)
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY)
+
+
+def _ensure_artifact_bucket() -> None:
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=MLFLOW_S3_ENDPOINT_URL,
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    )
+    try:
+        s3.head_bucket(Bucket=MLFLOW_ARTIFACT_BUCKET)
+        logger.info(f"Bucket MinIO OK ({MLFLOW_ARTIFACT_BUCKET})")
+    except ClientError as e:
+        status_code = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        error_code = e.response.get("Error", {}).get("Code")
+        if status_code == 404 or error_code in {"404", "NoSuchBucket"}:
+            s3.create_bucket(Bucket=MLFLOW_ARTIFACT_BUCKET)
+            logger.info(f"Bucket MinIO cree ({MLFLOW_ARTIFACT_BUCKET})")
+            return
+        logger.error(f"MinIO inaccessible ou credentials invalides : {e}")
+        sys.exit(1)
+
+
 def _check_mlflow_connection() -> None:
     try:
         client = mlflow.tracking.MlflowClient()
@@ -83,8 +152,25 @@ def _transition_to_production(model_name: str, version: str) -> None:
         name=model_name,
         version=version,
         stage="Production",
+        archive_existing_versions=True,
     )
     logger.info(f"  → {model_name} v{version} passé en Production")
+
+
+def _ensure_registered_model(model_name: str) -> None:
+    client = mlflow.tracking.MlflowClient()
+    try:
+        client.create_registered_model(model_name)
+    except Exception:
+        pass
+
+
+def _register_model_version(model_name: str, run_id: str, source_uri: str) -> str:
+    _ensure_registered_model(model_name)
+    client = mlflow.tracking.MlflowClient()
+    mv = client.create_model_version(name=model_name, source=source_uri, run_id=run_id)
+    _transition_to_production(model_name, mv.version)
+    return mv.version
 
 
 def register_classifier(classifier_path: str) -> None:
@@ -114,7 +200,15 @@ def register_classifier(classifier_path: str) -> None:
         mlflow.log_param("features", json.dumps(FEATURE_NAMES))
 
         # Log du fichier modèle natif comme artifact
-        mlflow.log_artifact(classifier_path, artifact_path="xgb_model")
+        artifact_path = "classifier_model"
+        with tempfile.TemporaryDirectory() as tmp:
+            model_dir = os.path.join(tmp, artifact_path)
+            mlflow.xgboost.save_model(
+                xgb_model=clf,
+                path=model_dir,
+                input_example=_sample_frame().head(1),
+            )
+            mlflow.log_artifacts(model_dir, artifact_path=artifact_path)
 
         # Enregistrement dans le Model Registry.
         # On utilise une URI de la forme `runs:/<run_id>/xgb_model/<file>` afin
@@ -122,19 +216,11 @@ def register_classifier(classifier_path: str) -> None:
         # l'hôte (Windows). Le client MLflow upload l'artifact au serveur
         # et registration via `runs:/` fonctionne de manière robuste.
         run_id = mlflow.active_run().info.run_id
-        model_uri = f"runs:/{run_id}/xgb_model/{os.path.basename(classifier_path)}"
-
         # Register model version directly to avoid using the logged-models/search
         # endpoint which may not be available in some server setups. This creates
         # a model version pointing to the artifact we just logged.
-        client = mlflow.tracking.MlflowClient()
-        try:
-            client.create_registered_model(CLASSIFIER_MODEL_NAME)
-        except Exception:
-            # already exists
-            pass
-        mv = client.create_model_version(name=CLASSIFIER_MODEL_NAME, source=model_uri, run_id=run_id)
-        _transition_to_production(CLASSIFIER_MODEL_NAME, mv.version)
+        source_uri = mlflow.get_artifact_uri(artifact_path)
+        _register_model_version(CLASSIFIER_MODEL_NAME, run_id, source_uri)
 
     logger.info(f"✅ {CLASSIFIER_MODEL_NAME} enregistré (accuracy échantillon : {accuracy:.2f})")
 
@@ -164,18 +250,19 @@ def register_regressor(regressor_path: str) -> None:
         mlflow.log_param("n_features", len(FEATURE_NAMES))
         mlflow.log_param("features", json.dumps(FEATURE_NAMES))
 
-        mlflow.log_artifact(regressor_path, artifact_path="xgb_model")
+        artifact_path = "regressor_model"
+        with tempfile.TemporaryDirectory() as tmp:
+            model_dir = os.path.join(tmp, artifact_path)
+            mlflow.xgboost.save_model(
+                xgb_model=reg,
+                path=model_dir,
+                input_example=_sample_frame().head(1),
+            )
+            mlflow.log_artifacts(model_dir, artifact_path=artifact_path)
 
         run_id = mlflow.active_run().info.run_id
-        model_uri = f"runs:/{run_id}/xgb_model/{os.path.basename(regressor_path)}"
-
-        client = mlflow.tracking.MlflowClient()
-        try:
-            client.create_registered_model(REGRESSOR_MODEL_NAME)
-        except Exception:
-            pass
-        mv = client.create_model_version(name=REGRESSOR_MODEL_NAME, source=model_uri, run_id=run_id)
-        _transition_to_production(REGRESSOR_MODEL_NAME, mv.version)
+        source_uri = mlflow.get_artifact_uri(artifact_path)
+        _register_model_version(REGRESSOR_MODEL_NAME, run_id, source_uri)
 
     logger.info(f"✅ {REGRESSOR_MODEL_NAME} enregistré (MAE échantillon : {mae:.2f}mm)")
 
@@ -205,16 +292,31 @@ def main() -> None:
         description="Enregistrer les modèles XGBoost Al Katra dans MLflow"
     )
     parser.add_argument(
-        "--classifier", required=True,
-        help="Chemin vers model_classification_xgb.json",
+        "--classifier",
+        required=(DEFAULT_CLASSIFIER_PATH is None),
+        default=DEFAULT_CLASSIFIER_PATH,
+        help=(
+            "Chemin vers model_classification_xgb.json "
+            "(ou définir ALKATRA_CLASSIFIER_MODEL_PATH dans .env)"
+        ),
     )
     parser.add_argument(
-        "--regressor", required=True,
-        help="Chemin vers model_regression_xgb.json",
+        "--regressor",
+        required=(DEFAULT_REGRESSOR_PATH is None),
+        default=DEFAULT_REGRESSOR_PATH,
+        help=(
+            "Chemin vers model_regression_xgb.json "
+            "(ou définir ALKATRA_REGRESSOR_MODEL_PATH dans .env)"
+        ),
     )
     parser.add_argument(
-        "--bias", required=True,
-        help="Chemin vers champ_bias_dict.joblib",
+        "--bias",
+        required=(DEFAULT_BIAS_PATH is None),
+        default=DEFAULT_BIAS_PATH,
+        help=(
+            "Chemin vers champ_bias_dict.joblib "
+            "(ou définir ALKATRA_BIAS_MODEL_PATH dans .env)"
+        ),
     )
     args = parser.parse_args()
 
@@ -224,8 +326,10 @@ def main() -> None:
             logger.error(f"Fichier introuvable : {path}")
             sys.exit(1)
 
+    _configure_s3_environment()
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     _check_mlflow_connection()
+    _ensure_artifact_bucket()
 
     # Créer l'expérience
     try:
