@@ -39,8 +39,18 @@ ENV LOGNAME=spark
 # Ensure Ivy cache location exists and is writable by the non-root spark user
 RUN mkdir -p /tmp/.ivy2/cache /tmp/.ivy2/jars && \
     chown -R 1001:0 /tmp/.ivy2 /tmp && chmod -R g+rw /tmp/.ivy2 /tmp
+
+# PRE-CREATE checkpoint directory with correct permissions (tolerant aux pannes)
+# —— Peut être overridé via CHECKPOINT_OWNER_UID, CHECKPOINT_OWNER_GID, CHECKPOINT_PERMISSIONS
+# —— à travers le docker-compose ou docker run -e
+RUN mkdir -p /tmp/spark-checkpoint && \
+    chown -R 1001:0 /tmp/spark-checkpoint && \
+    chmod -R 775 /tmp/spark-checkpoint && \
+    echo "✓ Checkpoint directory pre-created: /tmp/spark-checkpoint (UID 1001:0, perms 775)"
+
 # Ensure a passwd entry exists for UID 1001 so UnixPrincipal can resolve a name
 RUN echo 'spark:x:1001:0:spark user:/tmp:/bin/sh' >> /etc/passwd || true
+
 # Copy entrypoint that will attempt to fix volume permissions at container start
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
