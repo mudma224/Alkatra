@@ -1,40 +1,72 @@
-"""
-Al Katra Bel Qatra — ML Inference Service
-Phase 0 S4 placeholder — FastAPI minimal avec /health
-Le code complet (XGBoost, MLflow, SHAP, endpoints predict) sera ajouté en S4 par Dev2
-"""
-from fastapi import FastAPI
-from datetime import datetime
-import os
+"""FastAPI — ML Inference Service Al Katra Bel Qatra."""
+import logging
+from contextlib import asynccontextmanager
 
-app = FastAPI(
-    title="Al Katra — ML Inference Service",
-    description="Service de prédiction d'irrigation XGBoost via MLflow",
-    version="0.1.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-)
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+from app.config import settings
+from app.schemas.prediction import PredictionRequest, PredictionResponse
+from app.services.model_service import model_service
+from app.core.metrics import PREDICTIONS_TOTAL, PREDICTION_LATENCY
+
+logging.basicConfig(level=settings.LOG_LEVEL)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    model_service.load()
+    import app.services.mongo_writer as mw
+    if settings.ENABLE_KAFKA_CONSUMER and not model_service.demo_mode:
+        try:
+            mw.mongo_writer = mw.MongoWriter()
+            from app.services.kafka_consumer import ml_kafka_consumer
+            ml_kafka_consumer.start()
+        except Exception as exc:
+            logger.warning("Consumer/Mongo non démarrés: %s", exc)
+    yield
+    try:
+        from app.services.kafka_consumer import ml_kafka_consumer
+        ml_kafka_consumer.stop()
+        if mw.mongo_writer:
+            mw.mongo_writer.close()
+    except Exception:
+        pass
+
+
+app = FastAPI(title="Al Katra ML Inference", version="1.0.0", lifespan=lifespan)
 
 
 @app.get("/health")
-async def health():
-    """
-    Health check endpoint.
-    Utilisé par Docker healthcheck, K8s liveness probe et scripts/health-check.sh
-    """
+def health():
+    models_ready = model_service._classifier is not None and model_service._regressor is not None
     return {
-        "status": "ok",
-        "service": "ml-inference-service",
-        "environment": os.getenv("ENVIRONMENT", "development"),
-        "phase": "S4 placeholder — XGBoost/MLflow à implémenter",
-        "timestamp": datetime.now().isoformat(),
+        "status": "ok" if models_ready else "degraded",
+        "demo_mode": model_service.demo_mode,
+        "models_loaded": models_ready,
+        "mlflow_uri": settings.MLFLOW_TRACKING_URI,
     }
 
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Al Katra ML Inference Service",
-        "docs": "/api/docs",
-        "health": "/health",
-    }
+@app.post("/predict", response_model=PredictionResponse)
+def predict(req: PredictionRequest):
+    try:
+        with PREDICTION_LATENCY.time():
+            response = model_service.predict(req)
+        PREDICTIONS_TOTAL.labels(
+            source="http",
+            result="irrigate" if response.should_irrigate else "no_irrigate",
+        ).inc()
+        return response
+    except KeyError as exc:
+        raise HTTPException(status_code=422, detail=f"Feature manquante: {exc}")
+    except Exception as exc:
+        logger.exception("Erreur prédiction")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
