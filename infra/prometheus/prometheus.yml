@@ -15,6 +15,11 @@ scrape_configs:
       - targets: ['iot-service:3005']
     metrics_path: /metrics
 
+  - job_name: 'ml-inference-service'
+    static_configs:
+      - targets: ['ml-inference-service:8000']
+    metrics_path: /metrics
+
   # Phase 1 — décommenter quand auth-service actif
   # - job_name: 'auth-service'
   #   static_configs:
