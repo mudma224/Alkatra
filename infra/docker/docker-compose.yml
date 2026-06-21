@@ -17,6 +17,7 @@ volumes:
   grafana_data:
   prometheus_data:
   mlflow_data:
+  minio_data:
   keycloak_data:
   spark-job:
 
@@ -168,6 +169,30 @@ services:
       - alkatra-net
 
   # ==========================================
+  # MINIO — S3-compatible object storage
+  # ==========================================
+  minio:
+    image: minio/minio:latest
+    container_name: alkatra-minio
+    restart: unless-stopped
+    command: minio server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - alkatra-net
+
+  # ==========================================
   # MOSQUITTO — MQTT Broker
   # ==========================================
   mosquitto:
@@ -176,7 +201,7 @@ services:
     restart: unless-stopped
     ports:
       - "1883:1883"
-      - "9001:9001"
+      - "9010:9010"
     volumes:
       - ./../../infra/mosquitto/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf
       - mosquitto_data:/mosquitto/data
@@ -199,16 +224,20 @@ services:
     restart: unless-stopped
     depends_on:
       - postgres
+      - minio
     volumes:
       - mlflow_data:/mlruns
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-alkatra}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123}
       POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
     ports:
       - "5001:5001"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request, sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:5000/', timeout=5).getcode()==200 else sys.exit(1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request, sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:5001/', timeout=5).getcode()==200 else sys.exit(1)\""]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -352,6 +381,52 @@ services:
     volumes:
       - ./../../apps/spark-jobs/jobs:/app/jobs
       - spark-job:/tmp/spark-checkpoint
-    # Entrypoint in image takes care of fixing checkpoint ownership at startup.
     networks:
       - alkatra-net
+  
+  # ==========================================
+  # ML INFERENCE SERVICE — FastAPI + XGBoost ✅ S4
+  # ==========================================
+  ml-inference-service:
+    build:
+      context: ./../../apps/ml-inference-service
+      dockerfile: Dockerfile
+    container_name: alkatra-ml
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: INFO
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+      MLFLOW_CLASSIFIER_NAME: AlKatra-Classifier
+      MLFLOW_REGRESSOR_NAME: AlKatra-Regressor
+      MLFLOW_MODEL_STAGE: Production
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_INPUT_TOPIC: processed-sensor-data
+      KAFKA_GROUP_ID: ml-inference-group
+      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/alkatra_iot?authSource=admin
+      MONGO_DB: alkatra_iot
+      MONGO_RECO_COLLECTION: irrigation_recommendations
+      CLASSIFICATION_THRESHOLD: "0.35"
+      ENABLE_KAFKA_CONSUMER: "true"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8000:8000"
+    volumes:
+      - mlflow_data:/mlruns
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
