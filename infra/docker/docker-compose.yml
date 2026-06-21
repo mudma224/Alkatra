@@ -312,6 +312,7 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       KAFKA_BROKERS: kafka:9092
       MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/alkatra_iot?authSource=admin
+      ML_INFERENCE_URL: http://ml-inference-service:8000
     ports:
       - "3005:3005"
     volumes:
