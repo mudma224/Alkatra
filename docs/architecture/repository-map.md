@@ -36,6 +36,21 @@ Activé via profil Docker `phase1`.
 | `src/app.controller.ts` | Endpoint `/health` |
 | `Dockerfile` | Multi-stage (development / build / production) |
 
+### apps/user-service *(Phase 1 — profil utilisateur)*
+
+Service NestJS orienté profil utilisateur. Il est branché sur PostgreSQL, protège ses routes métier avec JWT et expose un endpoint de santé.
+
+| Chemin | Rôle |
+|--------|------|
+| `src/main.ts` | Entrypoint NestJS, préfixe global `api/v1`, validation globale |
+| `src/app.module.ts` | Configuration globale, TypeORM, modules métiers |
+| `src/auth/` | Stratégie JWT et guard Passport |
+| `src/health/` | Endpoint de santé et readiness DB |
+| `src/user/` | API profil, DTO et entité `User` |
+| `src/farms/` | Route placeholder `GET /farms` |
+| `Dockerfile` | Build multi-stage de l'image du service |
+| `.env.example` | Variables locales minimales |
+
 ### apps/spark-jobs *(Sprint S2 — scaffold S3)*
 
 Jobs PySpark pour le feature engineering (ETo Penman-Monteith, Kc phénologique, cumul pluie).
