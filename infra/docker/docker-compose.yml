@@ -429,3 +429,36 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  user-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/user-service/Dockerfile
+    container_name: alkatra-user
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3002:3002"                # Accessible en direct ET via Gateway
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      # --- PostgreSQL ---
+      DB_HOST: postgres            # ⚠️ nom DNS du conteneur, pas localhost
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-alkatra}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_dev_pass}
+      DB_NAME: ${POSTGRES_DB:-alkatra_db}
+      # --- JWT (doit matcher auth-service) ---
+      JWT_SECRET: ${JWT_SECRET:-alkatra_jwt_dev_secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
