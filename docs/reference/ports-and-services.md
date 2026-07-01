@@ -15,6 +15,7 @@
 | Grafana | `alkatra-grafana` | `http://localhost:3000` | dashboards |
 | MailHog | `alkatra-mailhog` | `http://localhost:8025` | emails dev |
 | Keycloak | `alkatra-keycloak` | `http://localhost:8080` | profile `auth` |
+| User Service | `alkatra-user` | `http://localhost:3002` | NestJS, profil utilisateur, profil Docker `phase1` |
 | IoT Service | local app | `http://localhost:3005` | NestJS, hors compose actuellement |
 
 ## Commandes utiles
