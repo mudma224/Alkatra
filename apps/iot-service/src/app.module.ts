@@ -6,7 +6,6 @@ import { KafkaModule } from './kafka/kafka.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { MqttModule } from './mqtt/mqtt.module';
 import { KafkaConsumerModule } from './kafka-consumer/kafka-consumer.module';
-import { RecommendationModule } from './recommendations/recommendation.module';
 
 @Module({
   imports: [
@@ -29,7 +28,6 @@ import { RecommendationModule } from './recommendations/recommendation.module';
     MqttModule,
     HealthModule,
     MetricsModule,
-    RecommendationModule,
   ],
 })
 export class AppModule {}
