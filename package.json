@@ -6,7 +6,8 @@
   "description": "Al Katra Bel Qatra — Smart Irrigation IoT+AI Platform",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "frontend/*"
   ],
   "scripts": {
     "build": "turbo run build",
