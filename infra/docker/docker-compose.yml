@@ -3,6 +3,7 @@
 
 name: al-katra-bel-qatra
 
+
 networks:
   alkatra-net:
     driver: bridge
@@ -39,6 +40,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-alkatra_db}"]
       interval: 10s
@@ -268,10 +271,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
     networks:
       - alkatra-net
     profiles:
-      - auth
+      - phase1
 
   # ==========================================
   # PROMETHEUS — Métriques
@@ -430,3 +439,47 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    
+  auth-service:
+    build:
+      context: ./../../apps/auth-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: alkatra-auth
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    environment:
+      NODE_ENV: development
+      AUTH_SERVICE_PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-alkatra_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-CHANGE_ME_REFRESH_SECRET_32_CHARS}
+      JWT_ACCESS_EXPIRATION: 3600
+      JWT_REFRESH_EXPIRATION: 2592000
+      OTP_TTL_SECONDS: 3600
+      OTP_MAX_ATTEMPTS: 3
+      OTP_BLOCK_DURATION_SECONDS: 3600
+      INFOBIP_API_KEY: ${INFOBIP_API_KEY:-}
+      INFOBIP_BASE_URL: ${INFOBIP_BASE_URL:-https://api.infobip.com}
+      INFOBIP_SENDER: ${INFOBIP_SENDER:-AlKatra}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: alkatra
+      KEYCLOAK_CLIENT_ID: alkatra-web
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./../../apps/auth-service/src:/app/src
+    networks:
+      - alkatra-net
+    profiles:
+      - phase1
