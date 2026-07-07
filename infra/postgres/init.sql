@@ -1,3 +1,19 @@
+-- Create alkatra user
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'alkatra') THEN
+    CREATE USER alkatra WITH PASSWORD 'alkatra_postgres_pass';
+  END IF;
+END $$;
+
+-- Grant permissions
+GRANT ALL PRIVILEGES ON DATABASE alkatra_db TO alkatra;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO alkatra;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO alkatra;
+
+
+
+
+
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "postgis";
@@ -63,23 +79,17 @@ $$ LANGUAGE plpgsql;
 
 CREATE TABLE users (
     id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-    phone_number          VARCHAR(20) UNIQUE NOT NULL,
-    full_name             VARCHAR(100) NOT NULL,
-
-    preferred_language    user_language_enum NOT NULL DEFAULT 'darija',
-    role                  user_role_enum NOT NULL DEFAULT 'farmer',
-
-    is_verified           BOOLEAN NOT NULL DEFAULT FALSE,
-
-    keycloak_id           VARCHAR(100) UNIQUE,
-
-    created_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    phone                 VARCHAR(20) UNIQUE NOT NULL,
+    name                  VARCHAR(100),
+    preferred_language    user_language_enum DEFAULT 'darija',
+    otp_attempts          INT DEFAULT 0,
+    otp_blocked_until     TIMESTAMP WITH TIME ZONE,
     last_login_at         TIMESTAMP WITH TIME ZONE,
-
-    CHECK (phone_number ~ '^\+212[67]\d{8}$')
+    keycloak_id           VARCHAR(100) UNIQUE,
+    created_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
 
 CREATE INDEX idx_users_phone ON users(phone_number);
 CREATE INDEX idx_users_role  ON users(role);
