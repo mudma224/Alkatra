@@ -5,11 +5,12 @@ OTP_MAX_ATTEMPTS: 3
 OTP_BLOCK_DURATION_SECONDS: 3600
 
 
-
+0. Prérequis
+npm install
 
 1. Build
 npm run build --workspace=@alkatra/auth-service
-2. Lint
+2. Lint (optionnel)
 npm run lint --workspace=@alkatra/auth-service
 3. Tests
 npm run test --workspace=@alkatra/auth-service
@@ -30,7 +31,14 @@ ou sur une seule ligne :
 
 $body = '{"phone":"+212612345678"}'; Invoke-WebRequest -Uri http://localhost:3001/api/v1/auth/register -Method POST -Headers @{"Content-Type"="application/json"} -Body $body
 
-7. Verify OTP (pour OTP tu dois le trouver avec: docker logs alkatra-auth 2>&1 | findstr "DEV-OTP")
+
+Résultat attendu :
+
+{
+  "message": "OTP sent successfully"
+}
+
+7. Verify OTP (pour OTP tu dois le recupérer avec: docker logs alkatra-auth 2>&1 | findstr "DEV-OTP")
 
 $body = '{"phone":"+212601010101","otp":"666649"}'; Invoke-WebRequest -Uri http://localhost:3001/api/v1/auth/verify-otp -Method POST -Headers @{"Content-Type"="application/json"} -Body $body
 
@@ -60,19 +68,19 @@ Invoke-WebRequest `
         Authorization = "Bearer VOTRE_ACCESS_TOKEN"
     }
 
-10. Endpoint protégé
+10. Endpoint protégé (user-service doit etre fait)
 
 Invoke-WebRequest `
     -Uri http://localhost:3001/api/v1/farms `
     -Headers @{
-        Authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ZDlmYWJmOC1jOGE0LTRiZjMtODI1Mi1lODA2ZDBmYmE2ZmUiLCJwaG9uZSI6IisyMTI2MDEwMTAxMDEiLCJpYXQiOjE3ODM0NjU5NDYsImV4cCI6MTc4MzQ2OTU0Nn0.dHALFBDZetPRJiJplS_GDDDZtSa3NsBQfz-JxJMF2F0"
+        Authorization = "Bearer VOTRE_ACCESS_TOKEN"
     }
 
 Résultat attendu :
 
 []
 
-11. Sans JWT
+11. Sans JWT (user-service doit etre fait)
 Invoke-WebRequest `
     -Uri http://localhost:3001/api/v1/farms
 
