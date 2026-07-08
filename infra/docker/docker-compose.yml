@@ -443,7 +443,7 @@ services:
       NODE_ENV: development
       PORT: 3002
       # --- PostgreSQL ---
-      DB_HOST: postgres            # ⚠️ nom DNS du conteneur, pas localhost
+      DB_HOST: postgres            #  nom DNS du conteneur, pas localhost
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-alkatra}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_dev_pass}

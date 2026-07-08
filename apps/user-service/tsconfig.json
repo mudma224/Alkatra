@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "rootDir": "./src",
+    "types": ["node"],
     "module": "commonjs",
     "declaration": true,
     "removeComments": true,
