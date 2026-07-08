@@ -1,0 +1,42 @@
+name: CI - Auth Service
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'apps/auth-service/**'
+      - 'packages/shared-types/**'
+      - '.github/workflows/ci-auth.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'apps/auth-service/**'
+      - 'packages/shared-types/**'
+      - '.github/workflows/ci-auth.yml'
+
+jobs:
+  test:
+    name: Lint, Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configuration Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Installation des dépendances (monorepo)
+        run: npm ci
+
+      - name: Lint auth-service
+        run: npm run lint --workspace=auth-service
+
+      - name: Build auth-service
+        run: npm run build --workspace=auth-service
+
+      - name: Tests unitaires auth-service
+        run: npm run test --workspace=auth-service

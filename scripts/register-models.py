@@ -2,9 +2,9 @@ r"""
 Al Katra Bel Qatra — Enregistrement des modèles XGBoost dans MLflow.
 Usage :
     python scripts/register-models.py \
-        --classifier "C:\Users\E L I T E B O O K\Desktop\olive_project\model_classification_xgb.json" \
-        --regressor  "C:\Users\E L I T E B O O K\Desktop\olive_project\model_regression_xgb.json" \
-        --bias       "C:\Users\E L I T E B O O K\Desktop\olive_project\champ_bias_dict.joblib"
+        --classifier "C:\Users\PC\Downloads\olive_project_v2\model_classification_xgb.json" \
+        --regressor  "C:\Users\PC\Downloads\olive_project_v2\model_regression_xgb.json" \
+        --bias       "C:\Users\PC\Downloads\olive_project_v2\champ_bias_dict.joblib"
 
 Les modèles sont des fichiers XGBoost natifs (.json).
 Le bias dict est enregistré comme artifact MLflow.
@@ -60,8 +60,8 @@ _load_env_file()
 
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
 MLFLOW_S3_ENDPOINT_URL = os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://localhost:9000")
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "minioadmin"))
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", os.getenv("MINIO_ROOT_PASSWORD", "minioadmin"))
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "minio"))
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", os.getenv("MINIO_ROOT_PASSWORD", "minio123"))
 MLFLOW_ARTIFACT_BUCKET = os.getenv("MLFLOW_ARTIFACT_BUCKET", "mlflow-artifacts")
 DEFAULT_CLASSIFIER_PATH = _env_path("ALKATRA_CLASSIFIER_MODEL_PATH", "CLASSIFIER_MODEL_PATH")
 DEFAULT_REGRESSOR_PATH = _env_path("ALKATRA_REGRESSOR_MODEL_PATH", "REGRESSOR_MODEL_PATH")
@@ -109,9 +109,10 @@ def _sample_frame() -> pd.DataFrame:
 
 
 def _configure_s3_environment() -> None:
-    os.environ.setdefault("MLFLOW_S3_ENDPOINT_URL", MLFLOW_S3_ENDPOINT_URL)
-    os.environ.setdefault("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID)
-    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY)
+    os.environ["MLFLOW_S3_ENDPOINT_URL"] = MLFLOW_S3_ENDPOINT_URL
+    os.environ["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
+    os.environ["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
+    os.environ["AWS_S3_ADDRESSING_STYLE"] = "path"
 
 
 def _ensure_artifact_bucket() -> None:
@@ -333,7 +334,7 @@ def main() -> None:
 
     # Créer l'expérience
     try:
-        mlflow.create_experiment(EXPERIMENT_NAME)
+        mlflow.create_experiment(EXPERIMENT_NAME,artifact_location="s3://mlflow-artifacts")
     except Exception:
         pass
     mlflow.set_experiment(EXPERIMENT_NAME)

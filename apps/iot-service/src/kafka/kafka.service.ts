@@ -5,7 +5,7 @@
  */
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Kafka, Producer, CompressionTypes, logLevel } from 'kafkajs';
+import { Kafka, Producer, CompressionTypes, logLevel, Consumer } from 'kafkajs';
 
 @Injectable()
 export class KafkaService implements OnModuleInit, OnModuleDestroy {
@@ -57,6 +57,22 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       setTimeout(() => this.connect(), 5000);
     }
   }
+
+  // Dans KafkaService
+private consumer: Consumer; // Importez Consumer depuis kafkajs
+
+async subscribe(topic: string, callback: (message: any) => Promise<void>) {
+  this.consumer = this.kafka.consumer({ groupId: 'iot-service-group' });
+  await this.consumer.connect();
+  await this.consumer.subscribe({ topic, fromBeginning: false });
+  
+  await this.consumer.run({
+    eachMessage: async ({ message }) => {
+      const data = JSON.parse(message.value.toString());
+      await callback(data);
+    },
+  });
+}
 
   /**
    * Envoie un message dans un topic Kafka
