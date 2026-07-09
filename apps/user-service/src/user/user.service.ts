@@ -1,48 +1,48 @@
-// apps/user-service/src/user/user.service.ts
-
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from './entities/user.entity';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios, { AxiosError } from 'axios';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class UserService {
-  constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-  ) {}
+  private readonly logger = new Logger(UserService.name);
+  private readonly authServiceUrl: string;
 
-  private toProfile(user: User) {
-    return {
-      id: user.id,
-      phone: user.phone,
-      name: user.name,
-      preferredLanguage: user.preferredLanguage,
-      createdAt: user.createdAt.toISOString(),
-    };
+  constructor(private readonly configService: ConfigService) {
+    const authHost = this.configService.get<string>('AUTH_SERVICE_HOST') ?? 'localhost';
+    const authPort = this.configService.get<string>('AUTH_SERVICE_PORT') ?? '3001';
+    this.authServiceUrl = `http://${authHost}:${authPort}/internal/user`;
   }
 
   async getProfile(userId: string) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('Utilisateur introuvable');
+    try {
+      const response = await axios.get(`${this.authServiceUrl}/${userId}`);
+      return response.data;
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      if (axiosError.response?.status === 404) {
+        throw new NotFoundException('Utilisateur introuvable');
+      }
+      this.logger.error(
+        `Erreur lors de l'appel à auth-service pour getProfile(${userId}): ${axiosError.message}`,
+      );
+      throw error;
     }
-    return this.toProfile(user);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('Utilisateur introuvable');
+    try {
+      const response = await axios.patch(`${this.authServiceUrl}/${userId}`, dto);
+      return response.data;
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      if (axiosError.response?.status === 404) {
+        throw new NotFoundException('Utilisateur introuvable');
+      }
+      this.logger.error(
+        `Erreur lors de l'appel à auth-service pour updateProfile(${userId}): ${axiosError.message}`,
+      );
+      throw error;
     }
-
-    if (dto.name !== undefined) user.name = dto.name;
-    if (dto.preferredLanguage !== undefined) {
-      user.preferredLanguage = dto.preferredLanguage;
-    }
-
-    await this.userRepository.save(user);
-    return this.toProfile(user);
   }
 }
