@@ -452,16 +452,13 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3002
-      # --- PostgreSQL ---
-      DB_HOST: postgres            #  nom DNS du conteneur, pas localhost
-      DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-alkatra}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_dev_pass}
-      DB_NAME: ${POSTGRES_DB:-alkatra_db}
+      # --- Auth-service (service-to-service) ---
+      AUTH_SERVICE_HOST: auth-service
+      AUTH_SERVICE_PORT: 3001
       # --- JWT (doit matcher auth-service) ---
       JWT_SECRET: ${JWT_SECRET:-alkatra_jwt_dev_secret}
     depends_on:
-      postgres:
+      auth-service:
         condition: service_healthy
     networks:
       - alkatra-net
@@ -499,9 +496,9 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-CHANGE_ME_REFRESH_SECRET_32_CHARS}
       JWT_ACCESS_EXPIRATION: 3600
       JWT_REFRESH_EXPIRATION: 2592000
-      OTP_TTL_SECONDS: 300
+      OTP_TTL_SECONDS: 3600
       OTP_MAX_ATTEMPTS: 3
-      OTP_BLOCK_DURATION_SECONDS: 1800
+      OTP_BLOCK_DURATION_SECONDS: 3600
       INFOBIP_API_KEY: ${INFOBIP_API_KEY:-}
       INFOBIP_BASE_URL: ${INFOBIP_BASE_URL:-https://api.infobip.com}
       INFOBIP_SENDER: ${INFOBIP_SENDER:-AlKatra}
@@ -513,6 +510,12 @@ services:
       - "3001:3001"
     volumes:
       - ./../../apps/auth-service/src:/app/src
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
     networks:
       - alkatra-net
     profiles:
