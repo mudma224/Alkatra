@@ -45,6 +45,7 @@
   "dependencies": {
     "@nestjs/platform-express": "^11.1.26",
     "axios": "^1.18.1",
-    "ioredis": "^5.11.1"
+    "ioredis": "^5.11.1",
+    "prom-client": "^15.1.3"
   }
 }
