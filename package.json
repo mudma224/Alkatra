@@ -6,7 +6,8 @@
   "description": "Al Katra Bel Qatra — Smart Irrigation IoT+AI Platform",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "frontend/*"
   ],
   "scripts": {
     "build": "turbo run build",
@@ -25,7 +26,6 @@
     "models:register": "python3 scripts/register-models.py",
     "validate:mongodb": "node scripts/validate-mongodb-indexes.js",
     "validate:pipeline": "bash scripts/validate-pipeline.sh"
-
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -43,6 +43,9 @@
     "npm": ">=10.0.0"
   },
   "dependencies": {
-    "@nestjs/platform-express": "^11.1.26"
+    "@nestjs/platform-express": "^11.1.26",
+    "axios": "^1.18.1",
+    "ioredis": "^5.11.1",
+    "prom-client": "^15.1.3"
   }
 }

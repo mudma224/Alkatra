@@ -16,10 +16,8 @@ jobs:
   test-ml:
     name: Test ML + Spark (Feature Engineering)
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -34,7 +32,7 @@ jobs:
         run: pytest tests/ -v --cov=app --cov-report=xml
         env:
           ENVIRONMENT: test
-          MLFLOW_TRACKING_URI: http://localhost:5000   # Non disponible en CI → mode DEMO
+          MLFLOW_TRACKING_URI: http://localhost:5000  # Non dispo en CI → mode DEMO
 
       - name: Install Spark deps
         working-directory: apps/spark-jobs

@@ -3,8 +3,42 @@
 Controle effectue le 2026-06-08.
 
 Ce document resume la structure actuelle du projet Al Katra Platform et ce qui fonctionne a ce stade. Il distingue les elements confirmes par commande locale, les elements configures dans le code, et les points encore a surveiller.
+# Etat actuel du projet - structure et fonctionnement
+
+Contrôle effectué le 2026-06-15.
+
+Ce document fournit une analyse technique et factuelle de l'état actuel du projet "Al Katra Bel Qatra".
+Il s'appuie exclusivement sur le code et les scripts présents dans le dépôt et indique clairement :
+- ce qui est implémenté et opérationnel ;
+- ce qui est partiellement implémenté ;
+- ce qui est manquant ou déclaré "NOT IMPLEMENTED".
 
 ## Resume rapide
+
+Monorepo TypeScript / Python orienté IoT → Streaming → Feature Engineering → ML.
+
+Pipeline principal implémenté (end-to-end components présents) :
+
+```text
+ESP32 (simulateur) -> Mosquitto MQTT -> apps/iot-service (NestJS) -> Kafka (raw-sensor-data)
+  -> apps/spark-jobs (Spark Structured Streaming) -> Kafka (processed-sensor-data)
+  -> apps/iot-service Kafka consumer -> MongoDB (ai_sensor_features)
+```
+
+Éléments confirmés par lecture de code et scripts :
+
+- Simulateur MQTT : [scripts/simulate-sensor.js](scripts/simulate-sensor.js)
+- Bridge MQTT → Kafka : [apps/iot-service/src/mqtt/mqtt.service.ts](apps/iot-service/src/mqtt/mqtt.service.ts#L1-L300)
+- Kafka producer : [apps/iot-service/src/kafka/kafka.service.ts](apps/iot-service/src/kafka/kafka.service.ts#L1-L200)
+- Kafka consumer → MongoDB : [apps/iot-service/src/kafka-consumer/sensor-data.consumer.ts](apps/iot-service/src/kafka-consumer/sensor-data.consumer.ts#L1-L300)
+- MongoDB schema et repository : [apps/iot-service/src/mongodb/schemas/ai-sensor-feature.schema.ts](apps/iot-service/src/mongodb/schemas/ai-sensor-feature.schema.ts#L1-L240) et [apps/iot-service/src/mongodb/repositories/ai-sensor-reading.repository.ts](apps/iot-service/src/mongodb/repositories/ai-sensor-reading.repository.ts#L1-L200)
+- Spark feature engineering jobs : [apps/spark-jobs/jobs/sensor_stream_processor.py](apps/spark-jobs/jobs/sensor_stream_processor.py#L1-L400), [apps/spark-jobs/jobs/feature_engineering.py](apps/spark-jobs/jobs/feature_engineering.py#L1-L240)
+- Redis-backed state manager for Spark jobs : [apps/spark-jobs/jobs/state_manager.py](apps/spark-jobs/jobs/state_manager.py#L1-L240)
+- Docker stack orchestration : [infra/docker/docker-compose.yml](infra/docker/docker-compose.yml#L1-L420)
+- Kafka topics creation script : [infra/kafka/topics.sh](infra/kafka/topics.sh#L1-L200)
+- Pipeline validation scripts : [scripts/validate-pipeline.sh](scripts/validate-pipeline.sh#L1-L240) and [scripts/validate-mongodb-indexes.js](scripts/validate-mongodb-indexes.js#L1-L200)
+
+Remarques : la pile CI/CD inclut des workflows pour l'IoT, le ML et Spark : [/.github/workflows](.github/workflows) (voir `ci-iot.yml`, `ci-ml.yml`, `ci-spark.yml`).
 
 Le projet est un monorepo npm/Turborepo pour une plateforme Smart Irrigation IoT + IA. La partie la plus avancee est le pipeline IoT:
 
@@ -23,7 +57,18 @@ Etat confirme:
 - Prometheus scrape bien `prometheus` et `iot-service`;
 - Grafana, Kafka UI, MLflow, MailHog et Prometheus repondent en HTTP 200.
 
-## Structure du repository
+## Structure du repository (extrait)
+
+Le repo suit une organisation monorepo : `apps/` (services TypeScript/Python), `infra/` (docker, kafka, monitoring), `scripts/` (helpers, validation), `packages/` (shared types).
+
+Principaux éléments :
+
+- `apps/iot-service`: bridge NestJS MQTT → Kafka + Kafka consumer → MongoDB (sprint S2/S3). [app.module.ts](apps/iot-service/src/app.module.ts#L1-L80)
+- `apps/spark-jobs`: jobs PySpark pour feature engineering et streaming. [jobs/](apps/spark-jobs/jobs)
+- `apps/ml-inference-service`: service FastAPI placeholder (health only) prêt pour S4. [app/main.py](apps/ml-inference-service/app/main.py#L1-L120)
+- `infra/docker/docker-compose.yml`: orchestration locale et liens réseau entre services.
+- `infra/kafka/topics.sh`: script de création de topics Kafka attendus.
+- `scripts/validate-pipeline.sh` et `scripts/validate-mongodb-indexes.js`: validations end-to-end et index MongoDB.
 
 ```text
 alkatra-platform/
@@ -88,7 +133,17 @@ alkatra-platform/
 | `scripts` | Scripts de setup, health check et simulation capteur. |
 | `docs` | Documentation architecture, guides, references, runbooks et ADR. |
 
-## Services Docker configures
+## Services Docker (vue rapide)
+
+Le fichier `infra/docker/docker-compose.yml` orchestre : Postgres, MongoDB, Redis, Kafka (KRaft), Kafka UI, Mosquitto, MLflow, Prometheus, Grafana, MailHog, `iot-service`, et un `spark-job` (image construite depuis `apps/spark-jobs`). Voir [infra/docker/docker-compose.yml](infra/docker/docker-compose.yml#L1-L420).
+
+Points importants repérés dans la configuration Docker :
+
+- `iot-service` dépend de `kafka`, `mosquitto`, `mongodb` et reçoit `MONGODB_URI` via variables d'environnement.
+- Le service `spark-job` est configuré pour construire depuis `apps/spark-jobs` et publie vers `processed-sensor-data`.
+- Kafka est configuré avec `KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"` (auto-creation possible) mais le dépôt fournit aussi `infra/kafka/topics.sh` pour créer explicitement les topics attendus.
+
+Utilisez `docker compose --env-file .env -f infra/docker/docker-compose.yml up --build` pour démarrer la stack locale.
 
 Le fichier `infra/docker/docker-compose.yml` declare actuellement:
 
@@ -124,7 +179,7 @@ docker compose --env-file .env -f infra/docker/docker-compose.yml config --quiet
 | Grafana | `http://localhost:3000` |
 | Prometheus | `http://localhost:9090` |
 | Kafka UI | `http://localhost:8090` |
-| MLflow | `http://localhost:5000` |
+| MLflow | `http://localhost:5001` |
 | MailHog | `http://localhost:8025` |
 | PostgreSQL | `localhost:5432` |
 | MongoDB | `localhost:27017` |
@@ -134,7 +189,20 @@ docker compose --env-file .env -f infra/docker/docker-compose.yml config --quiet
 | Kafka depuis l'hote | `localhost:9094` |
 | Kafka depuis Docker | `kafka:9092` |
 
-## Ce qui fonctionne actuellement
+## Ce qui fonctionne actuellement (TRUTH-BASED)
+
+Basé exclusivement sur l'inspection du code et des scripts :
+
+- Ingestion MQTT et normalisation : implémenté par [apps/iot-service/src/mqtt/mqtt.service.ts](apps/iot-service/src/mqtt/mqtt.service.ts#L1-L300). Le simulateur MQTT est opérationnel : [scripts/simulate-sensor.js](scripts/simulate-sensor.js#L1-L200).
+- Publication Kafka (producer) : [apps/iot-service/src/kafka/kafka.service.ts](apps/iot-service/src/kafka/kafka.service.ts#L1-L200) — la logique de connexion et d'envoi est présente.
+- Consumer Kafka → persistance MongoDB : [apps/iot-service/src/kafka-consumer/sensor-data.consumer.ts](apps/iot-service/src/kafka-consumer/sensor-data.consumer.ts#L1-L300) et repository [apps/iot-service/src/mongodb/repositories/ai-sensor-reading.repository.ts](apps/iot-service/src/mongodb/repositories/ai-sensor-reading.repository.ts#L1-L200).
+- Schéma MongoDB et indexation (TTL 90 jours) : [apps/iot-service/src/mongodb/schemas/ai-sensor-feature.schema.ts](apps/iot-service/src/mongodb/schemas/ai-sensor-feature.schema.ts#L1-L240).
+- Spark Structured Streaming + feature engineering : [apps/spark-jobs/jobs/sensor_stream_processor.py](apps/spark-jobs/jobs/sensor_stream_processor.py#L1-L400) et [apps/spark-jobs/jobs/feature_engineering.py](apps/spark-jobs/jobs/feature_engineering.py#L1-L240). Ces jobs calculent les features (ETo, ETc, etc.) et publient vers `processed-sensor-data`.
+- Redis state management pour features stateful : [apps/spark-jobs/jobs/state_manager.py](apps/spark-jobs/jobs/state_manager.py#L1-L240).
+- Scripts de validation end-to-end : [scripts/validate-pipeline.sh](scripts/validate-pipeline.sh#L1-L240) vérifie topics, ingestion, persistance et presence de documents MongoDB ; [scripts/validate-mongodb-indexes.js](scripts/validate-mongodb-indexes.js#L1-L200) vérifie les index MongoDB.
+- Orchestration locale Docker : [infra/docker/docker-compose.yml](infra/docker/docker-compose.yml#L1-L420) définit les services et variables d'environnement.
+
+Observation runtime : plusieurs scripts et le compose indiquent que les services sont pensés pour démarrer ensemble; la logique de connexion/retentative est présente (MQTT reconnect, Kafka retries, consumer retry loops).
 
 ### Build et tests
 
@@ -332,7 +400,17 @@ http://localhost:8025
 
 Il est pret pour les tests emails en developpement.
 
-## Commandes principales
+## Commandes principales (exemples)
+
+```bash
+npm install
+docker compose --env-file .env -f infra/docker/docker-compose.yml up --build
+node scripts/simulate-sensor.js 5000
+bash scripts/validate-pipeline.sh
+node scripts/validate-mongodb-indexes.js
+```
+
+Note Windows (PowerShell) : utiliser `npm.cmd` si nécessaire.
 
 ```bash
 npm install
@@ -352,65 +430,3 @@ npm.cmd run test
 npm.cmd run build
 ```
 
-## Points a surveiller
-
-### `health-check.sh` sur Windows
-
-La commande suivante n'a pas pu etre lancee dans l'environnement courant:
-
-```bash
-bash scripts/health-check.sh
-```
-
-Erreur observee:
-
-```text
-execvpe(/bin/bash) failed: No such file or directory
-```
-
-Cause observee:
-
-```text
-bash => C:\Windows\System32\bash.exe
-```
-
-Cela indique que PowerShell trouve le lanceur WSL Windows, mais pas un environnement Bash Linux utilisable. Le script lui-meme existe, mais il faut Git Bash, WSL fonctionnel, ou une variante PowerShell du health check pour l'executer sur cette machine.
-
-### Donnees capteur non encore observees dans cette session
-
-Le service IoT est up et connecte, mais les compteurs indiquaient encore:
-
-```text
-messagesReceived: 0
-messagesForwarded: 0
-```
-
-Donc l'infrastructure fonctionne, mais le flux de donnees complet doit etre confirme en relancant le simulateur pendant que la stack tourne:
-
-```bash
-node scripts/simulate-sensor.js 5000
-```
-
-Puis verifier:
-
-```text
-http://localhost:3005/health
-http://localhost:3005/metrics
-http://localhost:8090
-http://localhost:3000
-```
-
-### Documentation a aligner
-
-Le fichier `docs/reference/ports-and-services.md` indique encore que le service IoT est une app locale hors Compose. Dans l'etat actuel du Compose, `iot-service` est bien declare comme service Docker `alkatra-iot`.
-
-### Etat Git local
-
-Au moment du controle, `infra/docker/docker-compose.yml` etait modifie dans le working tree.
-
-## Prochaines mises a jour utiles
-
-- Ajouter ou adapter une version PowerShell de `scripts/health-check.sh`.
-- Creer explicitement le topic Kafka `raw-sensor-data` au demarrage si l'on veut qu'il apparaisse dans Kafka UI avant le premier message.
-- Ajouter un test smoke automatisable qui publie un message MQTT unique et verifie l'increment des compteurs IoT, la presence du topic `raw-sensor-data` et la visibilite du message dans Kafka.
-- Aligner `docs/reference/ports-and-services.md` avec le Compose actuel.

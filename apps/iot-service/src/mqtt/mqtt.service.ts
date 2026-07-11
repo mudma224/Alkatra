@@ -19,7 +19,6 @@ const REQUIRED_AI_FIELDS = [
   'soil_humidity_pct',
   'air_humidity_pct',
   'rain_mm_day',
-  'rain_mm_day',
 ] as const;
 
 const FIELD_ALIASES: Record<(typeof REQUIRED_AI_FIELDS)[number], string[]> = {

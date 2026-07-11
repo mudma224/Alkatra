@@ -1,11 +1,16 @@
-// apps/user-service/src/health/health.controller.ts
-
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly dataSource: DataSource) {}
+  private readonly authServiceUrl: string;
+
+  constructor(private readonly configService: ConfigService) {
+    const authHost = this.configService.get<string>('AUTH_SERVICE_HOST') ?? 'localhost';
+    const authPort = this.configService.get<string>('AUTH_SERVICE_PORT') ?? '3001';
+    this.authServiceUrl = `http://${authHost}:${authPort}`;
+  }
 
   @Get()
   async check() {
@@ -24,16 +29,16 @@ export class HealthController {
   @Get('ready')
   async readiness() {
     try {
-      await this.dataSource.query('SELECT 1');
+      await axios.get(`${this.authServiceUrl}/health`);
       return {
         status: 'ready',
-        checks: { database: 'up' },
+        checks: { authService: 'up' },
         timestamp: new Date().toISOString(),
       };
     } catch {
       throw new ServiceUnavailableException({
         status: 'not_ready',
-        checks: { database: 'down' },
+        checks: { authService: 'down' },
       });
     }
   }

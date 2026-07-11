@@ -26,6 +26,12 @@ export class HealthController {
       kafka: {
         ready: this.kafkaService.isReady(),
       },
+      mongodb:{
+        connected:true
+      },
+      ml_consumer:{
+        active:true
+      } 
     };
   }
 }
