@@ -591,7 +591,7 @@ docker compose --env-file .env -f infra/docker/docker-compose.yml --profile auth
 | Kafka UI | http://localhost:8090 |
 | MLflow | http://localhost:5001 |
 | MailHog | http://localhost:8025 |
-| Keycloak | http://localhost:8080 |
+| Keycloak | http://localhost:8081 |
 | MinIO Console | http://localhost:9001 |
 
 ---
@@ -1174,7 +1174,7 @@ cd apps/ml-inference-service && uvicorn app.main:app --reload  # ML sur 8000
 | 5001 | MLflow |
 | 9000/9001 | MinIO (API/Console) |
 | 1025/8025 | MailHog (SMTP/UI) |
-| 8080 | Keycloak |
+| 8081 | Keycloak |
 | 9090 | Prometheus |
 | 3000 | Grafana |
 | 8090 | Kafka UI |
