@@ -1,0 +1,151 @@
+# =============================================================================
+# Al Katra Bel Qatra — NGINX API Gateway (Template)
+# =============================================================================
+# Fichier : infra/nginx/nginx.conf.template
+# Port    : 8080
+# Routage : ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT}, ${USER_SERVICE_HOST}:${USER_SERVICE_PORT}
+# Note    : Ce fichier est un template — NE PAS utiliser directement.
+#           Il est traite par envsubst au demarrage du conteneur.
+# =============================================================================
+
+events {
+    worker_connections 1024;
+    multi_accept on;
+    use epoll;
+}
+
+http {
+    # =========================================================================
+    # Parametres generaux
+    # =========================================================================
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    client_max_body_size 10M;
+
+    proxy_connect_timeout 30s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+
+    # =========================================================================
+    # Resolution DNS runtime — resolver interne Docker (RFC 6891 compliant)
+    # 127.0.0.11 est l'adresse DNS interne fixe de Docker, presente sur tous
+    # les conteneurs, independamment des redemarrages ou de la scalabilite.
+    # =========================================================================
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
+
+    # =========================================================================
+    # Format de log structure
+    # =========================================================================
+    log_format gateway_json escape=json '{'
+        '"timestamp":"$time_iso8601",'
+        '"remote_addr":"$remote_addr",'
+        '"request":"$request",'
+        '"status":$status,'
+        '"body_bytes_sent":$body_bytes_sent,'
+        '"http_referer":"$http_referer",'
+        '"http_user_agent":"$http_user_agent",'
+        '"upstream_addr":"$upstream_addr",'
+        '"upstream_status":"$upstream_status",'
+        '"request_time":$request_time,'
+        '"upstream_response_time":"$upstream_response_time"'
+    '}';
+
+    access_log /var/log/nginx/access.log gateway_json;
+    error_log /var/log/nginx/error.log warn;
+
+    # =========================================================================
+    # Rate limiting
+    # =========================================================================
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=30r/s;
+    limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/s;
+
+    # =========================================================================
+    # Serveur principal
+    # =========================================================================
+    server {
+        listen 8080 default_server;
+        server_name localhost;
+
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+        # =====================================================================
+        # HEALTH CHECKS
+        # =====================================================================
+
+        location /health {
+            default_type application/json;
+            return 200 '{"status":"ok","service":"alkatra-gateway","timestamp":"$time_iso8601"}';
+        }
+
+        location /_internal/check_auth {
+            internal;
+            set $auth_upstream http://${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
+            proxy_pass $auth_upstream/health;
+            proxy_method HEAD;
+        }
+
+        location /_internal/check_user {
+            internal;
+            set $user_upstream http://${USER_SERVICE_HOST}:${USER_SERVICE_PORT};
+            proxy_pass $user_upstream/api/v1/health/live;
+            proxy_method HEAD;
+        }
+
+        # =====================================================================
+        # ROUTES API
+        # =====================================================================
+
+        # ---- Auth Service ----
+        location /api/v1/auth/ {
+            limit_req zone=auth_limit burst=20 nodelay;
+
+            set $auth_upstream http://${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
+            proxy_pass $auth_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_buffering off;
+        }
+
+        # ---- User Service ----
+        location /api/v1/user/ {
+            set $user_upstream http://${USER_SERVICE_HOST}:${USER_SERVICE_PORT};
+            proxy_pass $user_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # ---- Farms (via user-service) ----
+        location /api/v1/farms/ {
+            set $user_upstream http://${USER_SERVICE_HOST}:${USER_SERVICE_PORT};
+            proxy_pass $user_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # =====================================================================
+        # FALLBACK
+        # =====================================================================
+        location / {
+            default_type application/json;
+            return 404 '{"error":"Not Found","message":"Route introuvable sur le gateway","path":"$uri"}';
+        }
+    }
+}
