@@ -24,7 +24,7 @@ export class InternalUserService {
     };
   }
 
-  async updateProfile(userId: string, data: { name?: string | null; preferredLanguage?: 'fr' | 'ar' | 'darija' }) {
+  async updateProfile(userId: string, data: { name?: string | null; preferredLanguage?: 'french' | 'arabic' | 'darija' }) {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Utilisateur introuvable');
