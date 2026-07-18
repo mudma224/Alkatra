@@ -35,11 +35,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_postgres_pass}
       POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_dev_pass}
+      FARM_DB_PASSWORD: ${FARM_DB_PASSWORD:-farm_dev_pass}
+      RECOMMENDATION_DB_PASSWORD: ${RECOMMENDATION_DB_PASSWORD:-recommendation_dev_pass}
+      NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:-notify_dev_pass}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_pass}
+      MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_dev_pass}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ../postgres/00-create-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh
+      - ../postgres/schemas:/scripts/schemas
 
 
     healthcheck:
@@ -231,9 +238,9 @@ services:
     volumes:
       - mlflow_data:/mlruns
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-alkatra}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123}
-      POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
+      POSTGRES_USER: mlflow_user
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_dev_pass}
+      POSTGRES_DB: mlflow_db
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
@@ -258,9 +265,9 @@ services:
     command: start-dev
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-alkatra_db}
-      KC_DB_USERNAME: ${POSTGRES_USER:-alkatra}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-123}
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_pass}
       KC_DB_SCHEMA: keycloak
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-123}
@@ -349,7 +356,7 @@ services:
       MQTT_USERNAME: ${MQTT_USER:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       KAFKA_BROKERS: kafka:9092
-      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/alkatra_iot?authSource=admin
+      MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
       ML_INFERENCE_URL: http://ml-inference-service:8000
     ports:
       - "3005:3005"
@@ -419,7 +426,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_INPUT_TOPIC: processed-sensor-data
       KAFKA_GROUP_ID: ml-inference-group
-      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/alkatra_iot?authSource=admin
+      MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
       MONGO_DB: alkatra_iot
       MONGO_RECO_COLLECTION: irrigation_recommendations
       CLASSIFICATION_THRESHOLD: "0.35"
@@ -520,7 +527,7 @@ services:
     environment:
       NODE_ENV: development
       AUTH_SERVICE_PORT: 3001
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-alkatra_db}
+      DATABASE_URL: postgresql://auth_user:${AUTH_DB_PASSWORD:-auth_dev_pass}@postgres:5432/auth_db
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
