@@ -520,3 +520,63 @@ services:
       - alkatra-net
     profiles:
       - phase1
+
+
+    # ==========================================
+  # FARM SERVICE — Gestion des exploitations
+  # Phase 1
+  # ==========================================
+
+  farm-service:
+    build:
+      context: ./../../apps/farm-service
+      dockerfile: Dockerfile
+      target: development
+
+    container_name: alkatra-farm
+
+    restart: unless-stopped
+
+    profiles:
+      - phase1
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: development
+
+      PORT: 3003
+
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-alkatra_postgres_pass}@postgres:5432/${POSTGRES_DB:-alkatra_db}
+
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+
+
+    ports:
+      - "3003:3003"
+
+
+    volumes:
+      - ./../../apps/farm-service/src:/app/src
+
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "-q",
+          "http://localhost:3003/health"
+        ]
+
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+
+    networks:
+      - alkatra-net
