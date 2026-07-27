@@ -1,0 +1,59 @@
+name: CI - farm-service
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'apps/farm-service/**'
+      - 'packages/shared-types/**'
+      - '.github/workflows/ci-farm.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'apps/farm-service/**'
+      - 'packages/shared-types/**'
+      - '.github/workflows/ci-farm.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_USER: alkatra_test
+          POSTGRES_PASSWORD: alkatra_test_pass
+          POSTGRES_DB: alkatra_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alkatra_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --workspace=apps/farm-service
+
+      - name: Test
+        run: npm run test --workspace=apps/farm-service
+        env:
+          DATABASE_URL: postgresql://alkatra_test:alkatra_test_pass@localhost:5432/alkatra_test_db
+          JWT_SECRET: test_jwt_secret_for_ci_only
+
+      - name: Build
+        run: npm run build --workspace=apps/farm-service
