@@ -104,7 +104,7 @@ http {
         }
 
         # =====================================================================
-        # ROUTES API
+        # ROUTES API — regex support pour slash final optionnel
         # =====================================================================
 
         # ---- Auth Service ----
@@ -130,14 +130,35 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # ---- Farms (via user-service) ----
-        location /api/v1/farms/ {
-            set $user_upstream http://${USER_SERVICE_HOST}:${USER_SERVICE_PORT};
-            proxy_pass $user_upstream;
+        # ---- Farm Service — accepte /farms, /farms/, /farms/:id, etc. ----
+        location ~ ^/api/v1/farms(?:/.*)?$ {
+            set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
+            proxy_pass $farm_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            limit_req zone=api_limit burst=20 nodelay;
+        }
+
+        location ~ ^/api/v1/parcels(?:/.*)?$ {
+            set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
+            proxy_pass $farm_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            limit_req zone=api_limit burst=20 nodelay;
+        }
+
+        location ~ ^/api/v1/sensors(?:/.*)?$ {
+            set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
+            proxy_pass $farm_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            limit_req zone=api_limit burst=20 nodelay;
         }
 
         # =====================================================================

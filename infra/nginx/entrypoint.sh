@@ -11,7 +11,7 @@ set -e
 # -----------------------------------------------------------------------------
 # Validation des variables requises (fail fast)
 # -----------------------------------------------------------------------------
-REQUIRED_VARS="AUTH_SERVICE_HOST AUTH_SERVICE_PORT USER_SERVICE_HOST USER_SERVICE_PORT"
+REQUIRED_VARS="AUTH_SERVICE_HOST AUTH_SERVICE_PORT USER_SERVICE_HOST USER_SERVICE_PORT FARM_SERVICE_HOST FARM_SERVICE_PORT"
 
 for VAR in $REQUIRED_VARS; do
     eval VALUE=\$$VAR
@@ -27,7 +27,8 @@ echo "       AUTH_SERVICE_HOST=${AUTH_SERVICE_HOST}"
 echo "       AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT}"
 echo "       USER_SERVICE_HOST=${USER_SERVICE_HOST}"
 echo "       USER_SERVICE_PORT=${USER_SERVICE_PORT}"
-
+echo "       FARM_SERVICE_HOST=${FARM_SERVICE_HOST}"
+echo "       FARM_SERVICE_PORT=${FARM_SERVICE_PORT}"
 # -----------------------------------------------------------------------------
 # Génération de nginx.conf depuis le template
 # -----------------------------------------------------------------------------
@@ -36,7 +37,7 @@ OUTPUT_PATH="/etc/nginx/nginx.conf"
 
 echo "[INFO] Génération de la configuration nginx depuis le template..."
 
-envsubst '${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} ${USER_SERVICE_HOST} ${USER_SERVICE_PORT}' \
+envsubst '${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} ${USER_SERVICE_HOST} ${USER_SERVICE_PORT} ${FARM_SERVICE_HOST} ${FARM_SERVICE_PORT}' \
     < "$TEMPLATE_PATH" \
     > "$OUTPUT_PATH"
 
