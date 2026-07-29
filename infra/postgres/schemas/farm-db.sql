@@ -19,7 +19,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE TABLE farms (
     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id        UUID NOT NULL,
+    owner_id       UUID NOT NULL,
     name           VARCHAR(150) NOT NULL,
     region         VARCHAR(100),
     location       GEOMETRY(POINT, 4326),
@@ -29,7 +29,7 @@ CREATE TABLE farms (
     CHECK (total_area_ha > 0)
 );
 
-CREATE INDEX idx_farms_user_id ON farms(user_id);
+CREATE INDEX idx_farms_owner_id ON farms(owner_id);
 CREATE INDEX idx_farms_location ON farms USING GIST(location);
 
 CREATE TRIGGER set_farms_updated_at
