@@ -9,6 +9,6 @@ export class UpdateProfileDto {
   name?: string;
 
   @IsOptional()
-  @IsIn(['fr', 'ar', 'darija'])
-  preferredLanguage?: 'fr' | 'ar' | 'darija';
+  @IsIn(['french', 'arabic', 'darija'])
+  preferredLanguage?: 'french' | 'arabic' | 'darija';
 }
