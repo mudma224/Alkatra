@@ -465,10 +465,14 @@ services:
       AUTH_SERVICE_PORT: ${AUTH_SERVICE_PORT:-3001}
       USER_SERVICE_HOST: ${USER_SERVICE_HOST:-user-service}
       USER_SERVICE_PORT: ${USER_SERVICE_PORT:-3002}
+      FARM_SERVICE_HOST: ${FARM_SERVICE_HOST:-farm-service}
+      FARM_SERVICE_PORT: ${FARM_SERVICE_PORT:-3003}
     depends_on:
       auth-service:
         condition: service_healthy
       user-service:
+        condition: service_healthy
+      farm-service:
         condition: service_healthy
     networks:
       - alkatra-net
@@ -495,7 +499,7 @@ services:
       AUTH_SERVICE_HOST: auth-service
       AUTH_SERVICE_PORT: 3001
       # --- JWT (doit matcher auth-service) ---
-      JWT_SECRET: ${JWT_SECRET:-alkatra_jwt_dev_secret}
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
     depends_on:
       auth-service:
         condition: service_healthy
@@ -559,3 +563,35 @@ services:
       - alkatra-net
     profiles:
       - phase1
+
+  # ==========================================
+  # FARM SERVICE — Farm, Parcels & Sensors CRUD
+  # ==========================================
+  farm-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/farm-service/Dockerfile
+    container_name: alkatra-farm
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgresql://farm_user:${FARM_DB_PASSWORD:-farm_dev_pass}@postgres:5432/farm_db
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      AUTH_SERVICE_URL: http://auth-service:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3003/api/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
