@@ -1,6 +1,6 @@
 # `apps/farm-service` — Documentation factuelle
 
-> **Mise à jour : juillet 2026** — Cette documentation reflète l'état réel du code source, de la configuration Docker et de l'intégration dans le docker-compose.
+> **Mise à jour : juillet 2026** — Cette documentation reflète l'état réel du code source, de la configuration et des tests. Elle est basée uniquement sur le code implémenté, pas sur les commentaires.
 
 ---
 
@@ -8,132 +8,282 @@
 
 1. [Rôle du service](#1-rôle-du-service)
 2. [Architecture et flux](#2-architecture-et-flux)
-3. [Démarrage](#3-démarrage)
-4. [Variables d'environnement](#4-variables-denvironnement)
-5. [Routes HTTP](#5-routes-http)
-6. [Fonctionnement interne par fichier](#6-fonctionnement-interne-par-fichier)
-7. [Sécurité : authentification JWT](#7-sécurité--authentification-jwt)
-8. [Communication inter-service : AuthClientService](#8-communication-inter-service--authclientservice)
-9. [Modèle de données (PostgreSQL + PostGIS)](#9-modèle-de-données-postgresql--postgis)
-10. [Validation des entrées](#10-validation-des-entrées)
-11. [Health checks](#11-health-checks)
-12. [Tests](#12-tests)
-13. [Docker](#13-docker)
-14. [Dépendances et ordre de démarrage](#14-dépendances-et-ordre-de-démarrage)
-15. [Limites constatées](#15-limites-constatées)
-16. [Résumé opérationnel](#16-résumé-opérationnel)
+3. [Arborescence complète](#3-arborescence-complète)
+4. [Démarrage](#4-démarrage)
+5. [Variables d'environnement](#5-variables-denvironnement)
+6. [Routes HTTP](#6-routes-http)
+7. [Fonctionnement interne par fichier](#7-fonctionnement-interne-par-fichier)
+8. [Authentification et sécurité](#8-authentification-et-sécurité)
+9. [Modèle de données (PostgreSQL)](#9-modèle-de-données-postgresql)
+10. [Logique métier implémentée](#10-logique-métier-implémentée)
+11. [Validation des entrées (DTOs)](#11-validation-des-entrées-dtos)
+12. [Gestion des erreurs](#12-gestion-des-erreurs)
+13. [Health checks](#13-health-checks)
+14. [Tests](#14-tests)
+15. [Docker](#15-docker)
+16. [Configuration TypeScript et Jest](#16-configuration-typescript-et-jest)
+17. [Ce que le service NE fait PAS](#17-ce-que-le-service-ne-fait-pas)
+18. [Limites constatées](#18-limites-constatées)
+19. [Résumé opérationnel](#19-résumé-opérationnel)
 
 ---
 
 ## 1. Rôle du service
 
-`farm-service` est le microservice NestJS de gestion des exploitations agricoles (farms), des parcelles (parcels) et des capteurs IoT (sensors) de la plateforme Al Katra Bel Qatra.
+`farm-service` est un microservice REST NestJS chargé de gérer le cycle de vie des **fermes**, **parcelles** et **capteurs IoT** d'une plateforme agricole. Il assure l'isolation des données par propriétaire et la cohérence métier entre fermes et parcelles.
 
 **Ce qu'il fait :**
-- Il gère le **CRUD complet des fermes** (création, lecture, mise à jour, suppression) avec vérification que l'utilisateur propriétaire existe via `auth-service`
-- Il gère le **CRUD complet des parcelles** liées à une ferme, avec validation de cohérence des surfaces (somme des surfaces des parcelles ≤ surface de la ferme)
-- Il gère **l'association de capteurs physiques** (`deviceId`) à des parcelles, avec réassociation possible et protection contre le vol de capteur
-- Il expose des endpoints REST authentifiés par JWT
-- Il utilise **PostGIS** pour les données géospatiales (polygones de parcelles, centroïdes, localisation des fermes)
-- Il vérifie l'existence des utilisateurs auprès de `auth-service` via un endpoint interne HTTP
+
+- Il gère le CRUD complet des fermes (création, lecture, modification, suppression)
+- Il gère le CRUD complet des parcelles (création, lecture par ferme, modification, suppression)
+- Il gère l'association de capteurs IoT à des parcelles (endpoint unique `POST /associate`)
+- Il vérifie l'existence d'un utilisateur auprès de `auth-service` avant la création d'une ferme
+- Il valide la cohérence des surfaces : la somme des parcelles ne peut pas dépasser la surface de la ferme
+- Il empêche la suppression d'une ferme qui possède des parcelles
+- Il empêche le « vol » de capteur entre utilisateurs
+- Il expose deux endpoints de santé (liveness + readiness avec test DB)
+- Il authentifie toutes les requêtes métier via JWT (sauf health)
 
 **Ce qu'il ne fait PAS :**
-- ❌ Il ne gère pas l'authentification (login, OTP, inscription) — c'est le rôle de `auth-service`
-- ❌ Il ne stocke pas les profils utilisateur — c'est le rôle de `auth-service`
-- ❌ Il ne gère pas les données IoT temps réel (capteurs) — c'est le rôle de `iot-service`
-- ❌ Il ne génère pas de recommandations d'irrigation — c'est le rôle de `recommendation-service`
+
+- ❌ Il n'ingère pas de données de mesures capteurs (température, humidité, etc.)
+- ❌ Il n'expose pas d'endpoint de liste, mise à jour ou suppression pour les capteurs (seul `POST /associate` existe)
+- ❌ Il n'a pas de pagination sur les listes
+- ❌ Il n'a pas de métriques Prometheus
+- ❌ Il n'a pas de tests d'intégration (uniquement des tests unitaires avec mocks)
+- ❌ Il ne crée pas le schéma DB automatiquement (`synchronize: false`)
 
 ---
 
 ## 2. Architecture et flux
 
-### Flux de création d'une ferme
+### Flux d'authentification et création de ferme
 
 ```
-Client (mobile/web)
-      │
-      │ POST /api/v1/farms { name, totalAreaHa, region }
-      │ Authorization: Bearer <JWT>
-      ▼
-┌──────────────────────────────────────────────────────────────┐
-│                    farm-service (port 3003)                    │
-│                                                                │
-│  ┌──────────────────┐    ┌──────────────────────────────┐    │
-│  │  JwtAuthGuard     │───▶│  JwtStrategy                 │    │
-│  │  (garde NestJS)   │    │  (valide le token JWT,      │    │
-│  │                   │    │   extrait userId + phone)    │    │
-│  └──────────────────┘    └──────────────────────────────┘    │
-│                                                                │
-│  ┌────────────────────────────────────────────────────────┐   │
-│  │                FarmsService.create()                    │   │
-│  │  1. Vérifier que l'utilisateur existe                  │   │
-│  │     → AuthClientService.verifyUserExists(userId)       │   │
-│  │  2. Créer la ferme en base (PostgreSQL)                │   │
-│  └──────────────────────┬─────────────────────────────────┘   │
-│                         │                                      │
-│  ┌──────────────────────▼─────────────────────────────────┐   │
-│  │              AuthClientService                          │   │
-│  │  GET http://auth-service:3001/internal/user/:userId     │   │
-│  └────────────────────────────────────────────────────────┘   │
-└─────────────────────────┬────────────────────────────────────┘
-                          │
-                          │ HTTP (réseau Docker interne)
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│                  auth-service (port 3001)                      │
-│  Endpoint INTERNE : GET /internal/user/:userId                │
-│  Retourne : { id, phone, name, preferredLanguage, createdAt } │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Flux de création d'une parcelle
-
-```
-Client
-  │ POST /api/v1/parcels { farmId, name, areaHa, cropType, ... }
-  ▼
-ParcelsService.create()
-  1. Vérifier que la ferme appartient à l'utilisateur
-  2. Vérifier la cohérence des surfaces (total ≤ farm.totalAreaHa)
-  3. Créer la parcelle en base (PostGIS pour polygon/centroid)
-```
-
-### Flux d'association d'un capteur
-
-```
-Client
-  │ POST /api/v1/sensors/associate { deviceId, parcelId }
-  ▼
-SensorsService.associate()
-  1. Vérifier que la parcelle appartient à l'utilisateur
-  2. Chercher le capteur par deviceId
-  3. Si le capteur existe déjà :
-     a. Si déjà sur la même parcelle → ne rien faire (idempotent)
-     b. Si sur une autre parcelle → vérifier que l'ancienne parcelle
-        appartient aussi à l'utilisateur (anti-vol)
-     c. Réassocier à la nouvelle parcelle
-  4. Si le capteur n'existe pas → le créer
+┌──────────┐     ┌──────────────┐     ┌──────────┐     ┌──────────┐
+│  Client  │     │ farm-service │     │  auth-   │     │PostgreSQL │
+│ (mobile/ │     │   (NestJS)   │     │ service  │     │  farm_db  │
+│   web)   │     │              │     │          │     │           │
+└────┬─────┘     └──────┬───────┘     └────┬─────┘     └─────┬─────┘
+     │                  │                  │                 │
+     │ 1. POST /farms   │                  │                 │
+     │    Authorization:│                  │                 │
+     │    Bearer <JWT>  │                  │                 │
+     │    { name, ... } │                  │                 │
+     │─────────────────▶│                  │                 │
+     │                  │ 2. JwtStrategy   │                 │
+     │                  │    valide token  │                 │
+     │                  │    → { userId }  │                 │
+     │                  │ 3. verifyUserExists(userId)        │
+     │                  │─────────────────▶│                 │
+     │                  │    GET /internal/user/:userId      │
+     │                  │◀─────────────────│                 │
+     │                  │ 4. INSERT farm   │                 │
+     │                  │    ownerId=userId│                 │
+     │                  │──────────────────────────────────▶│
+     │                  │ 5. { id, name, ownerId, ... }      │
+     │◀─────────────────│                  │                 │
 ```
 
 ### Architecture des dépendances
 
 ```
-farm-service
+farm-service (port 3003)
 │
-├── PostgreSQL (via TypeORM + PostGIS)
-│   └── Base: farm_db
-│       ├── Table: farms (id, owner_id, name, region, location, total_area_ha)
-│       ├── Table: parcels (id, farm_id, name, area_ha, crop_type, soil_type,
-│       │                   irrigation_method, polygon, centroid, ...)
-│       └── Table: sensors (id, parcel_id, device_id, device_type, ...)
+├── PostgreSQL — farm_db (via TypeORM)
+│   ├── Table: farms
+│   ├── Table: parcels
+│   └── Table: sensors
 │
-└── auth-service (via HTTP)
+└── auth-service (via HTTP, @nestjs/axios)
     └── GET /internal/user/:userId → vérification existence utilisateur
+```
+
+### Hiérarchie des données
+
+```
+User (auth-service)
+ └── Farm (ownerId = user.id)
+      └── Parcel (farmId = farm.id)
+           └── Sensor (parcelId = parcel.id)
 ```
 
 ---
 
-## 3. Démarrage
+## 3. Arborescence complète
+
+```
+apps/farm-service/
+├── .env.example                          # Modèle de variables d'environnement
+├── Dockerfile                            # Build multi-stage (deps → builder → runner)
+├── jest.config.js                        # Configuration Jest (ts-jest, coverage)
+├── package.json                          # Dépendances et scripts NestJS
+├── tsconfig.json                         # Configuration TypeScript (étend la racine)
+│
+├── src/
+│   ├── main.ts                           # Point d'entrée NestJS (CORS, ValidationPipe, filtre global)
+│   ├── main.d.ts                         # Déclaration compilée
+│   ├── main.js                           # JavaScript compilé
+│   ├── main.js.map                       # Source map
+│   ├── app.module.ts                     # Module racine (imports tous les modules)
+│   ├── app.module.d.ts                   # Déclaration compilée
+│   ├── app.module.js                     # JavaScript compilé
+│   ├── app.module.js.map                 # Source map
+│   │
+│   ├── config/
+│   │   ├── configuration.ts              # Configuration centralisée (registerAs 'app')
+│   │   ├── configuration.d.ts            # Déclaration compilée
+│   │   ├── configuration.js              # JavaScript compilé
+│   │   └── configuration.js.map          # Source map
+│   │
+│   ├── database/
+│   │   ├── database.module.ts            # Module TypeORM (connexion PostgreSQL)
+│   │   ├── database.module.d.ts          # Déclaration compilée
+│   │   ├── database.module.js            # JavaScript compilé
+│   │   ├── database.module.js.map        # Source map
+│   │   └── entities/
+│   │       ├── farm.entity.ts            # Entité Farm (table farms)
+│   │       ├── farm.entity.d.ts          # Déclaration compilée
+│   │       ├── farm.entity.js            # JavaScript compilé
+│   │       ├── farm.entity.js.map        # Source map
+│   │       ├── parcel.entity.ts          # Entité Parcel (table parcels)
+│   │       ├── parcel.entity.d.ts        # Déclaration compilée
+│   │       ├── parcel.entity.js          # JavaScript compilé
+│   │       ├── parcel.entity.js.map      # Source map
+│   │       ├── sensor.entity.ts          # Entité Sensor (table sensors)
+│   │       ├── sensor.entity.d.ts        # Déclaration compilée
+│   │       ├── sensor.entity.js          # JavaScript compilé
+│   │       └── sensor.entity.js.map      # Source map
+│   │
+│   ├── auth/
+│   │   ├── auth-client.module.ts         # Module client auth (HttpModule + Passport)
+│   │   ├── auth-client.module.d.ts       # Déclaration compilée
+│   │   ├── auth-client.module.js         # JavaScript compilé
+│   │   ├── auth-client.module.js.map     # Source map
+│   │   ├── auth-client.service.ts        # Service d'appel HTTP vers auth-service
+│   │   ├── auth-client.service.d.ts      # Déclaration compilée
+│   │   ├── auth-client.service.js        # JavaScript compilé
+│   │   └── auth-client.service.js.map    # Source map
+│   │
+│   ├── common/
+│   │   ├── decorators/
+│   │   │   ├── current-user.decorator.ts # Décorateur @CurrentUser()
+│   │   │   ├── current-user.decorator.d.ts
+│   │   │   ├── current-user.decorator.js
+│   │   │   ├── current-user.decorator.js.map
+│   │   │   ├── index.ts                  # Barrel export
+│   │   │   ├── index.d.ts
+│   │   │   ├── index.js
+│   │   │   └── index.js.map
+│   │   ├── filters/
+│   │   │   ├── all-exceptions.filter.ts  # Filtre d'erreurs global (format JSON français)
+│   │   │   ├── all-exceptions.filter.d.ts
+│   │   │   ├── all-exceptions.filter.js
+│   │   │   ├── all-exceptions.filter.js.map
+│   │   │   ├── index.ts                  # Barrel export
+│   │   │   ├── index.d.ts
+│   │   │   ├── index.js
+│   │   │   └── index.js.map
+│   │   ├── guards/
+│   │   │   ├── jwt-auth.guard.ts         # Guard JWT (extends AuthGuard('jwt'))
+│   │   │   ├── jwt-auth.guard.d.ts
+│   │   │   ├── jwt-auth.guard.js
+│   │   │   └── jwt-auth.guard.js.map
+│   │   ├── strategies/
+│   │   │   ├── jwt.strategy.ts           # Stratégie Passport JWT (extraction Bearer)
+│   │   │   ├── jwt.strategy.d.ts
+│   │   │   ├── jwt.strategy.js
+│   │   │   └── jwt.strategy.js.map
+│   │   ├── types/
+│   │   │   ├── geojson.ts                # Types GeoJsonPoint, GeoJsonPolygon, GeoJsonPosition
+│   │   │   ├── geojson.d.ts
+│   │   │   ├── geojson.js
+│   │   │   └── geojson.js.map
+│   │   └── validators/                   # (vide — aucun fichier)
+│   │
+│   └── modules/
+│       ├── farms/
+│       │   ├── farms.controller.ts       # Controller /api/v1/farms (CRUD)
+│       │   ├── farms.controller.d.ts
+│       │   ├── farms.controller.js
+│       │   ├── farms.controller.js.map
+│       │   ├── farms.module.ts           # Module farms
+│       │   ├── farms.module.d.ts
+│       │   ├── farms.module.js
+│       │   ├── farms.module.js.map
+│       │   ├── farms.service.ts          # Service farms (logique métier + vérif auth)
+│       │   ├── farms.service.d.ts
+│       │   ├── farms.service.js
+│       │   ├── farms.service.js.map
+│       │   └── dto/
+│       │       ├── create-farm.dto.ts    # DTO création ferme
+│       │       ├── create-farm.dto.d.ts
+│       │       ├── create-farm.dto.js
+│       │       ├── create-farm.dto.js.map
+│       │       ├── update-farm.dto.ts    # DTO modification ferme
+│       │       ├── update-farm.dto.d.ts
+│       │       ├── update-farm.dto.js
+│       │       └── update-farm.dto.js.map
+│       │
+│       ├── parcels/
+│       │   ├── parcels.controller.ts     # Controller /api/v1/parcels (CRUD)
+│       │   ├── parcels.controller.d.ts
+│       │   ├── parcels.controller.js
+│       │   ├── parcels.controller.js.map
+│       │   ├── parcels.module.ts         # Module parcels
+│       │   ├── parcels.module.d.ts
+│       │   ├── parcels.module.js
+│       │   ├── parcels.module.js.map
+│       │   ├── parcels.service.ts        # Service parcels (logique + cohérence surfaces)
+│       │   ├── parcels.service.d.ts
+│       │   ├── parcels.service.js
+│       │   ├── parcels.service.js.map
+│       │   └── dto/
+│       │       ├── create-parcel.dto.ts  # DTO création parcelle
+│       │       ├── create-parcel.dto.d.ts
+│       │       ├── create-parcel.dto.js
+│       │       ├── create-parcel.dto.js.map
+│       │       ├── update-parcel.dto.ts  # DTO modification parcelle
+│       │       ├── update-parcel.dto.d.ts
+│       │       ├── update-parcel.dto.js
+│       │       └── update-parcel.dto.js.map
+│       │
+│       ├── sensors/
+│       │   ├── sensors.controller.ts     # Controller /api/v1/sensors (POST /associate)
+│       │   ├── sensors.controller.d.ts
+│       │   ├── sensors.controller.js
+│       │   ├── sensors.controller.js.map
+│       │   ├── sensors.module.ts         # Module sensors
+│       │   ├── sensors.module.d.ts
+│       │   ├── sensors.module.js
+│       │   ├── sensors.module.js.map
+│       │   ├── sensors.service.ts        # Service sensors (association/réassociation)
+│       │   ├── sensors.service.d.ts
+│       │   ├── sensors.service.js
+│       │   ├── sensors.service.js.map
+│       │   └── dto/
+│       │       ├── associate-sensor.dto.ts  # DTO association capteur
+│       │       ├── associate-sensor.dto.d.ts
+│       │       ├── associate-sensor.dto.js
+│       │       └── associate-sensor.dto.js.map
+│       │
+│       └── health/
+│           ├── health.controller.ts      # Controller health (live + ready)
+│           ├── health.controller.d.ts
+│           ├── health.controller.js
+│           └── health.controller.js.map
+│
+└── test/
+    ├── farms.controller.spec.ts          # Tests unitaires du FarmsController
+    ├── parcels.service.spec.ts           # Tests unitaires du ParcelsService
+    └── sensors.service.spec.ts           # Tests unitaires du SensorsService
+```
+
+> **Note :** Les fichiers `.d.ts`, `.js` et `.js.map` sont des artefacts de compilation TypeScript. Les fichiers source de vérité sont les fichiers `.ts`.
+
+---
+
+## 4. Démarrage
 
 ### Depuis le package du service
 
@@ -142,751 +292,850 @@ cd apps/farm-service
 
 npm run build          # nest build
 npm run start          # nest start
-npm run start:dev      # nest start --watch
+npm run start:dev      # nest start --watch (hot reload)
 npm run start:prod     # node dist/main
 npm run lint           # eslint "{src,test}/**/*.ts" --fix
+npm run format         # prettier --write "src/**/*.ts" "test/**/*.ts"
 npm run test           # jest
 npm run test:watch     # jest --watch
 npm run test:cov       # jest --coverage
+npm run test:debug     # node --inspect-brk ... jest --runInBand
 ```
 
 ### Depuis la racine du monorepo
 
 ```bash
-npm run dev            # Lance tous les workspaces en parallèle via Turbo
+npm run dev            # Lance tous les workspaces via Turbo
 ```
 
-### Avec Docker Compose
+### Prérequis
 
-```bash
-# Démarrer la stack complète avec le profil phase1 (inclut farm-service)
-docker compose --profile phase1 -f infra/docker/docker-compose.yml up -d
-
-# Voir les logs
-docker compose -f infra/docker/docker-compose.yml logs -f farm-service
-```
-
-> ⚠️ `farm-service` est déclaré avec `profiles: ["phase1"]` dans le docker-compose.  
-> Il ne démarre pas avec un simple `docker compose up` — il faut activer le profil `phase1`.
+- PostgreSQL avec une base `farm_db` et le schéma `farms`, `parcels`, `sensors` déjà créé (`synchronize: false`)
+- `auth-service` accessible à l'URL configurée (défaut : `http://auth-service:3001`)
+- `JWT_SECRET` identique à celui utilisé par `auth-service`
 
 ---
 
-## 4. Variables d'environnement
+## 5. Variables d'environnement
 
 ### Configuration centralisée (`src/config/configuration.ts`)
 
+La configuration utilise `registerAs('app')` et expose une interface `AppConfig` typée.
+
 ```typescript
-export default registerAs('app', (): AppConfig => ({
-  port: parseInt(process.env.PORT || '3003', 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
+export interface AppConfig {
+  port: number;
+  nodeEnv: string;
   database: {
-    host: process.env.POSTGRES_HOST || 'postgres',
-    port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
-    username: process.env.FARM_DB_USER || 'farm_user',
-    password: process.env.FARM_DB_PASSWORD || 'farm_dev_pass',
-    name: process.env.FARM_DB_NAME || 'farm_db',
-  },
-  authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://auth-service:3001',
-  jwtSecret: process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION',
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000').split(','),
-}));
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    name: string;
+  };
+  authServiceUrl: string;
+  jwtSecret: string;
+  corsOrigins: string[];
+}
 ```
+
+### Logique de parsing de la configuration DB
+
+Le code implémente un **double mode de configuration** de la base de données :
+
+1. **Si `DATABASE_URL` est définie** : l'URL est parsée avec `new URL()` pour extraire `hostname`, `port`, `username`, `password`, et `pathname` (nom de la base).
+2. **Variables individuelles** (`POSTGRES_HOST`, `FARM_DB_USER`, etc.) : prennent le dessus sur les valeurs issues de `DATABASE_URL`.
 
 ### Tableau récapitulatif
 
-| Variable | Défaut | Utilisation | Source |
-|----------|--------|-------------|--------|
-| `PORT` | `3003` | Port d'écoute | `configuration.ts` |
-| `NODE_ENV` | `development` | Environnement | `configuration.ts` |
-| `POSTGRES_HOST` | `postgres` | Hôte PostgreSQL | `configuration.ts` |
-| `POSTGRES_PORT` | `5432` | Port PostgreSQL | `configuration.ts` |
-| `FARM_DB_USER` | `farm_user` | Utilisateur PostgreSQL | `configuration.ts` |
-| `FARM_DB_PASSWORD` | `farm_dev_pass` | Mot de passe PostgreSQL | `configuration.ts` |
-| `FARM_DB_NAME` | `farm_db` | Nom de la base de données | `configuration.ts` |
-| `AUTH_SERVICE_URL` | `http://auth-service:3001` | URL du auth-service | `configuration.ts` |
-| `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION` | Secret HMAC pour JWT (HS256) | `configuration.ts` |
-| `CORS_ORIGINS` | `http://localhost:3000` | Origines CORS autorisées | `configuration.ts` |
+| Variable | Défaut | Utilisation |
+|----------|--------|-------------|
+| `PORT` | `3003` | Port d'écoute du service |
+| `NODE_ENV` | `development` | Environnement (active le logging SQL si ≠ `production`) |
+| `DATABASE_URL` | (vide) | URL PostgreSQL (parsée si présente) |
+| `POSTGRES_HOST` | `postgres` (ou hostname de `DATABASE_URL`) | Hôte PostgreSQL |
+| `POSTGRES_PORT` | `5432` (ou port de `DATABASE_URL`) | Port PostgreSQL |
+| `FARM_DB_USER` | `farm_user` (ou username de `DATABASE_URL`) | Utilisateur PostgreSQL |
+| `FARM_DB_PASSWORD` | `farm_dev_pass` (ou password de `DATABASE_URL`) | Mot de passe PostgreSQL |
+| `FARM_DB_NAME` | `farm_db` (ou pathname de `DATABASE_URL`) | Nom de la base |
+| `AUTH_SERVICE_URL` | `http://auth-service:3001` | URL du service d'authentification |
+| `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION` | Secret JWT (doit être identique à auth-service) |
+| `CORS_ORIGINS` | `http://localhost:3000` | Origines CORS autorisées (séparées par virgules) |
 
-> ⚠️ `JWT_SECRET` doit être **strictement identique** à celui configuré dans `auth-service`, sinon la validation des tokens JWT échouera.
+### Fichier `.env.example`
+
+```env
+PORT=3003
+NODE_ENV=development
+DATABASE_URL=postgresql://farm_user:farm_dev_pass@postgres:5432/farm_db
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+FARM_DB_USER=farm_user
+FARM_DB_PASSWORD=farm_dev_pass
+FARM_DB_NAME=farm_db
+AUTH_SERVICE_URL=http://auth-service:3001
+JWT_SECRET=change_me_in_production_use_32_chars_minimum
+CORS_ORIGINS=http://localhost:3000,http://localhost:8080
+```
+
+> ⚠️ `JWT_SECRET` doit être **identique** à celui utilisé par `auth-service` pour que la validation des tokens fonctionne.
 
 ---
 
-## 5. Routes HTTP
+## 6. Routes HTTP
 
-Toutes les routes sont protégées par `JwtAuthGuard` (sauf health checks).  
-Le préfixe global est défini dans chaque contrôleur : `api/v1/farms`, `api/v1/parcels`, `api/v1/sensors`.
+Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `JwtAuthGuard`, sauf les endpoints de santé.
 
-### Farms
+### Farms — `/api/v1/farms` (protégé JWT)
+
+| Méthode | Route | DTO | Comportement |
+|---------|-------|-----|-------------|
+| `POST` | `/` | `CreateFarmDto` | Crée une ferme. **Vérifie via auth-service que l'utilisateur existe** (sinon 404). Assigne `ownerId = userId` du token JWT. |
+| `GET` | `/` | — | Liste les fermes de l'utilisateur connecté (`WHERE ownerId = userId`), avec relations `parcels`. |
+| `GET` | `/:id` | — | Récupère une ferme par ID avec relations `parcels`. **404** si introuvable, **403** si `ownerId !== userId`. |
+| `PATCH` | `/:id` | `UpdateFarmDto` | Modifie une ferme (après vérification de propriété via `findOne`). |
+| `DELETE` | `/:id` | — | Supprime une ferme. **Refuse si des parcelles existent** (compte les parcelles → 409 CONFLICT si > 0). |
+
+### Parcels — `/api/v1/parcels` (protégé JWT)
+
+| Méthode | Route | DTO | Comportement |
+|---------|-------|-----|-------------|
+| `POST` | `/` | `CreateParcelDto` | Crée une parcelle. Vérifie : (1) la ferme appartient à l'utilisateur, (2) **la somme des surfaces des parcelles + la nouvelle ne dépasse pas `totalAreaHa`** de la ferme (sinon 422). |
+| `GET` | `/farm/:farmId` | — | Liste les parcelles d'une ferme (vérifie propriété de la ferme → 404 si non autorisé). |
+| `GET` | `/:id` | — | Récupère une parcelle avec relation `farm`. **404** si introuvable, **403** si `farm.ownerId !== userId`. |
+| `PATCH` | `/:id` | `UpdateParcelDto` | Modifie une parcelle. Si `areaHa` change, **re-vérifie la cohérence des surfaces** (422 si dépassement). |
+| `DELETE` | `/:id` | — | Supprime une parcelle (après vérification de propriété). |
+
+### Sensors — `/api/v1/sensors` (protégé JWT)
+
+| Méthode | Route | DTO | Comportement |
+|---------|-------|-----|-------------|
+| `POST` | `/associate` | `AssociateSensorDto` | Associe ou réassocie un capteur (`deviceId`) à une parcelle (`parcelId`). Voir [logique détaillée](#logique-dassociation-sensorsserviceassociate). |
+
+### Health — non protégé
 
 | Méthode | Route | Comportement |
 |---------|-------|-------------|
-| `POST` | `/api/v1/farms` | Crée une ferme. Vérifie que l'utilisateur existe via `auth-service`. Corps : `{ name, totalAreaHa, region?, location? }` |
-| `GET` | `/api/v1/farms` | Liste toutes les fermes de l'utilisateur connecté (avec leurs parcelles) |
-| `GET` | `/api/v1/farms/:id` | Détail d'une ferme (vérifie que l'utilisateur est le propriétaire) |
-| `PATCH` | `/api/v1/farms/:id` | Met à jour une ferme (nom, région, surface, localisation) |
-| `DELETE` | `/api/v1/farms/:id` | Supprime une ferme. **Bloqué si la ferme a des parcelles** (HTTP 409) |
-
-### Parcels
-
-| Méthode | Route | Comportement |
-|---------|-------|-------------|
-| `POST` | `/api/v1/parcels` | Crée une parcelle. Vérifie l'appartenance de la ferme + cohérence des surfaces. Corps : `{ farmId, name, areaHa, cropType, soilType, irrigationMethod, ... }` |
-| `GET` | `/api/v1/parcels/farm/:farmId` | Liste les parcelles d'une ferme |
-| `GET` | `/api/v1/parcels/:id` | Détail d'une parcelle |
-| `PATCH` | `/api/v1/parcels/:id` | Met à jour une parcelle (vérifie cohérence des surfaces si `areaHa` change) |
-| `DELETE` | `/api/v1/parcels/:id` | Supprime une parcelle |
-
-### Sensors
-
-| Méthode | Route | Comportement |
-|---------|-------|-------------|
-| `POST` | `/api/v1/sensors/associate` | Associe un capteur physique à une parcelle. Corps : `{ deviceId, parcelId }`. Idempotent (si déjà associé à la même parcelle, pas d'écriture DB). Vérifie l'appartenance de l'ancienne parcelle (anti-vol). |
-
-### Health
-
-| Méthode | Route | Comportement |
-|---------|-------|-------------|
-| `GET` | `/api/v1/health/live` | Liveness probe — retourne `{ status: "ok", service: "farm-service", timestamp }` |
-| `GET` | `/api/v1/health/ready` | Readiness probe — vérifie la connexion PostgreSQL via `SELECT 1`. Retourne `{ status: "ok", database: "connected" }` ou `{ status: "error", database: "disconnected" }` |
-
-### Validation des entrées
-
-Tous les DTOs utilisent `class-validator` avec une `ValidationPipe` globale configurée avec `whitelist: true`, `forbidNonWhitelisted: true`, `transform: true`, `enableImplicitConversion: true`.
-
-#### `CreateFarmDto`
-
-```typescript
-class CreateFarmDto {
-  @IsString() @MaxLength(150)          name: string;
-  @IsNumber() @Min(0.01)               totalAreaHa: number;
-  @IsOptional() @IsString() @MaxLength(100) region?: string;
-  @IsOptional() @ValidateNested()      location?: GeoJsonPointDto;
-}
-```
-
-#### `CreateParcelDto`
-
-```typescript
-class CreateParcelDto {
-  @IsUUID()                            farmId: string;
-  @IsString() @MaxLength(150)          name: string;
-  @IsNumber() @Min(0.01)               areaHa: number;
-  @IsEnum([...])                       cropType: string;
-  @IsEnum([...])                       soilType: string;
-  @IsEnum([...])                       irrigationMethod: string;
-  @IsOptional() @IsString()            cropVariety?: string;
-  @IsOptional() @IsNumber() @Min(0)    flowRateM3h?: number;
-  @IsOptional() @IsNumber() @Min(0)    treeAgeYears?: number;
-  @IsOptional() @IsNumber() @Min(0)    treeDensityPerHa?: number;
-  @IsOptional() @ValidateNested()      centroid?: GeoJsonPointDto;
-  @IsOptional() @ValidateNested()      polygon?: GeoJsonPolygonDto;
-}
-```
-
-#### `AssociateSensorDto`
-
-```typescript
-class AssociateSensorDto {
-  @IsString()    deviceId: string;   // Identifiant physique du capteur (ex: "SENSOR-OL-001")
-  @IsUUID()      parcelId: string;
-}
-```
+| `GET` | `/api/v1/health/live` | Retourne `{ status: 'ok', service: 'farm-service', timestamp }` |
+| `GET` | `/api/v1/health/ready` | Exécute `SELECT 1` sur la DB. Retourne `database: 'connected'` ou `'disconnected'`. |
 
 ---
 
-## 6. Fonctionnement interne par fichier
+## 7. Fonctionnement interne par fichier
 
-### Structure complète du projet
-
-```
-apps/farm-service/
-├── Dockerfile               # Build multi-stage
-├── package.json             # Dépendances et scripts NestJS
-├── nest-cli.json            # Configuration NestJS CLI
-├── tsconfig.json            # Configuration TypeScript
-│
-├── src/
-│   ├── main.ts              # Point d'entrée NestJS
-│   ├── app.module.ts        # Module racine
-│   │
-│   ├── config/
-│   │   └── configuration.ts # Configuration centralisée
-│   │
-│   ├── auth/                # Module client d'authentification
-│   │   ├── auth-client.module.ts
-│   │   └── auth-client.service.ts  # HTTP client vers auth-service
-│   │
-│   ├── common/              # Éléments partagés
-│   │   ├── decorators/
-│   │   │   ├── current-user.decorator.ts  # @CurrentUser() param decorator
-│   │   │   └── index.ts
-│   │   ├── filters/
-│   │   │   ├── all-exceptions.filter.ts   # Filtre d'erreur global
-│   │   │   └── index.ts
-│   │   ├── guards/
-│   │   │   └── jwt-auth.guard.ts          # Guard JWT NestJS
-│   │   ├── strategies/
-│   │   │   └── jwt.strategy.ts            # Stratégie Passport JWT
-│   │   └── types/
-│   │       └── geojson.ts                 # Types GeoJSON (Point, Polygon)
-│   │
-│   ├── database/
-│   │   ├── database.module.ts             # Module TypeORM (PostgreSQL + PostGIS)
-│   │   └── entities/
-│   │       ├── farm.entity.ts             # Entité Farm
-│   │       ├── parcel.entity.ts           # Entité Parcel
-│   │       └── sensor.entity.ts           # Entité Sensor
-│   │
-│   └── modules/
-│       ├── farms/
-│       │   ├── farms.module.ts
-│       │   ├── farms.controller.ts        # CRUD /api/v1/farms
-│       │   ├── farms.service.ts           # Logique métier farms
-│       │   └── dto/
-│       │       ├── create-farm.dto.ts
-│       │       └── update-farm.dto.ts
-│       ├── parcels/
-│       │   ├── parcels.module.ts
-│       │   ├── parcels.controller.ts      # CRUD /api/v1/parcels
-│       │   ├── parcels.service.ts         # Logique métier parcels
-│       │   └── dto/
-│       │       ├── create-parcel.dto.ts
-│       │       └── update-parcel.dto.ts
-│       ├── sensors/
-│       │   ├── sensors.module.ts
-│       │   ├── sensors.controller.ts      # POST /api/v1/sensors/associate
-│       │   ├── sensors.service.ts         # Logique métier sensors
-│       │   └── dto/
-│       │       └── associate-sensor.dto.ts
-│       └── health/
-│           └── health.controller.ts       # Liveness + Readiness probes
-│
-└── test/
-    ├── farms.controller.spec.ts    # Tests du FarmsController
-    ├── parcels.service.spec.ts     # Tests du ParcelsService
-    └── sensors.service.spec.ts     # Tests du SensorsService
-```
-
-### Détail par fichier
+### Détail par fichier source
 
 | Fichier | Rôle réel |
 |---------|-----------|
-| `src/main.ts` | Point d'entrée NestJS. Active CORS (origines configurables), `ValidationPipe` global (whitelist, forbidNonWhitelisted, transform), `AllExceptionsFilter` global, shutdown hooks. Démarre sur le port configuré (défaut 3003). |
-| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global, avec `configuration.ts`), `DatabaseModule`, `AuthClientModule`, `FarmsModule`, `ParcelsModule`, `SensorsModule`. Déclare `HealthController`. Fournit `APP_FILTER` global. |
-| `src/config/configuration.ts` | Fonction de configuration NestJS. Centralise toutes les variables d'environnement avec valeurs par défaut. Supporte `DATABASE_URL` complète ou champs individuels (`POSTGRES_HOST`, `FARM_DB_USER`, etc.). |
-| `src/auth/auth-client.module.ts` | Module client auth. Importe `ConfigModule`, `PassportModule` (defaultStrategy: 'jwt'), `HttpModule` (timeout 5s). Déclare `AuthClientService` et `JwtStrategy`. Exporte `AuthClientService` et `PassportModule`. |
-| `src/auth/auth-client.service.ts` | **Client HTTP vers auth-service**. `verifyUserExists(userId)` : appelle `GET /internal/user/:userId` sur auth-service. Retourne `true` si l'utilisateur existe (pas de 404), `false` si 404, lève `503` si le service est indisponible. `getUserInfo(userId)` : retourne les infos utilisateur ou `null` si 404, lève `503` pour les autres erreurs. |
-| `src/common/decorators/current-user.decorator.ts` | Décorateur de paramètre `@CurrentUser()`. Extrait `request.user` du contexte HTTP. Supporte l'extraction d'une propriété spécifique : `@CurrentUser('userId')` retourne l'ID, `@CurrentUser()` retourne tout l'objet. |
-| `src/common/filters/all-exceptions.filter.ts` | Filtre d'exception global (`@Catch()`). Capture toutes les exceptions (HttpException et non gérées). Formate une réponse JSON standardisée : `{ statusCode, errorCode, message, details?, timestamp, path, method }`. Log les erreurs avec le Logger NestJS. |
-| `src/common/guards/jwt-auth.guard.ts` | Guard NestJS. `extends AuthGuard('jwt')`. Log les tentatives d'accès (méthode, URL, IP). `handleRequest()` : si pas d'utilisateur → `UnauthorizedException` avec message explicite. |
-| `src/common/strategies/jwt.strategy.ts` | Stratégie Passport JWT. Extrait du header `Authorization: Bearer`. Vérifie avec `app.jwtSecret`. `validate()` retourne `{ userId: payload.sub, phone: payload.phone }`. |
-| `src/common/types/geojson.ts` | Types TypeScript pour GeoJSON : `GeoJsonPosition`, `GeoJsonPoint`, `GeoJsonPolygon`. |
-| `src/database/database.module.ts` | Module TypeORM asynchrone. Configure la connexion PostgreSQL avec PostGIS. Utilise `synchronize: false` (le schéma est géré par les scripts SQL). Entités : `Farm`, `Parcel`, `Sensor`. |
-| `src/database/entities/farm.entity.ts` | Entité TypeORM `Farm` mappée à la table `farms`. Champs : `id` (UUID), `ownerId` (UUID, indexé), `name` (VARCHAR 150), `totalAreaHa` (DECIMAL 10,2), `region` (VARCHAR 100, nullable), `location` (GEOMETRY POINT 4326, nullable), `createdAt`, `updatedAt`. Relation `@OneToMany` vers `Parcel`. |
-| `src/database/entities/parcel.entity.ts` | Entité TypeORM `Parcel` mappée à la table `parcels`. Champs : `id` (UUID), `farmId` (UUID, FK → farms), `name` (VARCHAR 150), `areaHa` (DECIMAL 10,2), `cropType` (ENUM), `soilType` (ENUM), `irrigationMethod` (ENUM), `cropVariety` (nullable), `flowRateM3h` (nullable), `treeAgeYears` (nullable), `treeDensityPerHa` (nullable), `polygon` (GEOMETRY POLYGON 4326, nullable), `centroid` (GEOMETRY POINT 4326, nullable), `isActive` (BOOLEAN). Index unique composite `(farmId, name)`. Relation `@ManyToOne` vers `Farm` avec `@JoinColumn({ name: 'farm_id' })`. |
-| `src/database/entities/sensor.entity.ts` | Entité TypeORM `Sensor` mappée à la table `sensors`. Champs : `id` (UUID), `parcelId` (UUID, FK → parcels), `deviceId` (VARCHAR 100, UNIQUE), `deviceType` (VARCHAR 50, défaut 'esp32-wroom-32'), `isActive` (BOOLEAN), `lastSeenAt` (TIMESTAMP, nullable), `batteryPct` (INT, nullable), `firmwareVersion` (VARCHAR 20, nullable). Relation `@ManyToOne` vers `Parcel` avec `@JoinColumn({ name: 'parcel_id' })` et `onDelete: 'CASCADE'`. |
+| `src/main.ts` | Point d'entrée NestJS. Active CORS (origines depuis `CORS_ORIGINS`, méthodes GET/POST/PUT/PATCH/DELETE/OPTIONS, credentials). Active `ValidationPipe` global (`whitelist`, `transform`, `forbidNonWhitelisted`, `enableImplicitConversion`). Active `AllExceptionsFilter` global. Active les shutdown hooks. Démarre sur le port `process.env.PORT` ou 3003. |
+| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global, `load: [appConfig]`), `DatabaseModule`, `AuthClientModule`, `FarmsModule`, `ParcelsModule`, `SensorsModule`. Déclare `HealthController`. Fournit `AllExceptionsFilter` comme `APP_FILTER` global. |
+| `src/config/configuration.ts` | Configuration centralisée via `registerAs('app')`. Parse `DATABASE_URL` avec `new URL()` si présente. Expose `port`, `nodeEnv`, `database` (host, port, username, password, name), `authServiceUrl`, `jwtSecret`, `corsOrigins`. |
+| `src/database/database.module.ts` | Module TypeORM. Configure `TypeOrmModule.forRootAsync` avec `type: 'postgres'`, host/port/user/password/database depuis la config. Entités : `[Farm, Parcel, Sensor]`. `synchronize: false`. Logging SQL si `nodeEnv !== 'production'`. Exporte `TypeOrmModule`. |
+| `src/database/entities/farm.entity.ts` | Entité `Farm` mappée à la table `farms`. Voir [modèle de données](#9-modèle-de-données-postgresql). |
+| `src/database/entities/parcel.entity.ts` | Entité `Parcel` mappée à la table `parcels`. Contrainte unique sur `(farmId, name)`. Voir [modèle de données](#9-modèle-de-données-postgresql). |
+| `src/database/entities/sensor.entity.ts` | Entité `Sensor` mappée à la table `sensors`. `deviceId` unique. Voir [modèle de données](#9-modèle-de-données-postgresql). |
+| `src/auth/auth-client.module.ts` | Module client auth. Importe `ConfigModule`, `PassportModule` (stratégie `jwt`), `HttpModule` (timeout 5000ms). Déclare `AuthClientService` et `JwtStrategy`. Exporte `AuthClientService` et `PassportModule`. |
+| `src/auth/auth-client.service.ts` | Service d'appel HTTP vers `auth-service`. `verifyUserExists(userId)` : GET `/internal/user/:userId` → `true` si 200, `false` si 404, throw 503 sinon. `getUserInfo(userId)` : retourne `AuthUserInfo` ou `null`. Interface `AuthUserInfo` : `{ id, phone, name, preferredLanguage }`. |
+| `src/common/strategies/jwt.strategy.ts` | Stratégie Passport JWT. Extrait le token du header `Authorization: Bearer`. `ignoreExpiration: false`. Secret depuis `app.jwtSecret`. `validate()` vérifie `payload.sub` (sinon 401) et retourne `{ userId: payload.sub, phone: payload.phone }`. Interfaces : `JwtPayload` (`sub`, `phone?`, `iat?`, `exp?`), `AuthenticatedUser` (`userId`, `phone?`). |
+| `src/common/guards/jwt-auth.guard.ts` | Guard JWT. `extends AuthGuard('jwt')`. Log la tentative d'accès (méthode, URL, IP). `handleRequest()` : throw si erreur, throw 401 si pas d'utilisateur, retourne l'utilisateur sinon. |
+| `src/common/decorators/current-user.decorator.ts` | Décorateur `@CurrentUser()`. `createParamDecorator` qui extrait `request.user`. Si `data` est fourni (ex: `'userId'`), retourne la propriété correspondante. Interface `CurrentUserPayload` : `{ userId, phone? }`. |
+| `src/common/filters/all-exceptions.filter.ts` | Filtre d'erreurs global. Capture toutes les exceptions. Pour `HttpException` : extrait status, message, errorCode, details. Pour `Error` : 500, `INTERNAL_ERROR`. Format de réponse : `{ statusCode, errorCode, message, details?, timestamp, path, method }`. Map status → errorCode (400→BAD_REQUEST, 401→UNAUTHORIZED, etc.). |
+| `src/common/types/geojson.ts` | Types TypeScript pour GeoJSON. `GeoJsonPosition` : `[number, number]` ou `[number, number, number]`. `GeoJsonPoint` : `{ type: 'Point', coordinates: GeoJsonPosition }`. `GeoJsonPolygon` : `{ type: 'Polygon', coordinates: GeoJsonPosition[][] }`. |
 | `src/modules/farms/farms.module.ts` | Module farms. Importe `TypeOrmModule.forFeature([Farm, Parcel])` et `AuthClientModule`. Déclare `FarmsController` et `FarmsService`. Exporte `FarmsService`. |
-| `src/modules/farms/farms.controller.ts` | Controller farms. Préfixe `api/v1/farms`. Protégé par `JwtAuthGuard`. 5 endpoints : `POST /` (create), `GET /` (findAll), `GET /:id` (findOne), `PATCH /:id` (update), `DELETE /:id` (remove). |
-| `src/modules/farms/farms.service.ts` | **Cœur métier des fermes**. `create()` : vérifie l'existence de l'utilisateur via `AuthClientService`, crée la ferme. `findOne()` : vérifie que l'utilisateur est le propriétaire. `remove()` : vérifie que la ferme n'a pas de parcelles avant suppression (HTTP 409 si parcelles existent). |
+| `src/modules/farms/farms.controller.ts` | Controller `/api/v1/farms`. `@UseGuards(JwtAuthGuard)`. 5 endpoints : POST (create), GET (findAll), GET/:id (findOne), PATCH/:id (update), DELETE/:id (remove). Utilise `@CurrentUser()` pour obtenir `userId`. |
+| `src/modules/farms/farms.service.ts` | Service farms. `create()` : vérifie l'utilisateur via `authClient.verifyUserExists()`, crée la ferme avec `ownerId = userId`. `findAllByOwner()` : `find({ where: { ownerId }, relations: ['parcels'] })`. `findOne()` : 404 si introuvable, 403 si pas propriétaire. `update()` : via `findOne` + `Object.assign` + `save`. `remove()` : compte les parcelles, 409 si > 0, sinon `remove`. |
+| `src/modules/farms/dto/create-farm.dto.ts` | DTO création ferme. Valide `name` (string, max 150), `totalAreaHa` (number, min 0.01), `region` (optionnel, string, max 100), `location` (optionnel, `GeoJsonPointDto` validé). |
+| `src/modules/farms/dto/update-farm.dto.ts` | DTO modification ferme. Tous les champs sont optionnels : `name?`, `totalAreaHa?`, `region?`, `location?`. |
 | `src/modules/parcels/parcels.module.ts` | Module parcels. Importe `TypeOrmModule.forFeature([Parcel, Farm])`. Déclare `ParcelsController` et `ParcelsService`. Exporte `ParcelsService`. |
-| `src/modules/parcels/parcels.controller.ts` | Controller parcels. Préfixe `api/v1/parcels`. Protégé par `JwtAuthGuard`. 5 endpoints : `POST /` (create), `GET /farm/:farmId` (findByFarm), `GET /:id` (findOne), `PATCH /:id` (update), `DELETE /:id` (remove). |
-| `src/modules/parcels/parcels.service.ts` | **Cœur métier des parcelles**. `create()` : vérifie l'appartenance de la ferme, valide la cohérence des surfaces (somme ≤ `farm.totalAreaHa`), crée la parcelle avec mapping explicite. `update()` : si `areaHa` change, revalide la cohérence des surfaces. |
+| `src/modules/parcels/parcels.controller.ts` | Controller `/api/v1/parcels`. `@UseGuards(JwtAuthGuard)`. 5 endpoints : POST (create), GET/farm/:farmId (findByFarm), GET/:id (findOne), PATCH/:id (update), DELETE/:id (remove). |
+| `src/modules/parcels/parcels.service.ts` | Service parcels. `create()` : vérifie propriété ferme, vérifie cohérence des surfaces (somme + nouvelle ≤ totalAreaHa), crée avec mapping explicite. `findAllByFarm()` : vérifie propriété ferme, retourne les parcelles. `findOne()` : 404 si introuvable, 403 si pas propriétaire via `parcel.farm.ownerId`. `update()` : si `areaHa` change, re-vérifie cohérence. `remove()` : supprime après vérification. |
+| `src/modules/parcels/dto/create-parcel.dto.ts` | DTO création parcelle. Valide `farmId` (UUID), `name` (string, max 150), `areaHa` (number, min 0.01), `cropType` (enum), `soilType` (enum), `irrigationMethod` (enum), + champs optionnels. |
+| `src/modules/parcels/dto/update-parcel.dto.ts` | DTO modification parcelle. Tous les champs optionnels (pas de `farmId` — la parcelle ne change pas de ferme). |
 | `src/modules/sensors/sensors.module.ts` | Module sensors. Importe `TypeOrmModule.forFeature([Sensor, Parcel])`. Déclare `SensorsController` et `SensorsService`. Exporte `SensorsService`. |
-| `src/modules/sensors/sensors.controller.ts` | Controller sensors. Préfixe `api/v1/sensors`. Protégé par `JwtAuthGuard`. 1 endpoint : `POST /associate`. |
-| `src/modules/sensors/sensors.service.ts` | **Cœur métier des capteurs**. `associate()` : vérifie l'appartenance de la parcelle, cherche le capteur par `deviceId`. Si le capteur existe déjà sur une autre parcelle, vérifie que l'ancienne parcelle appartient aussi à l'utilisateur (anti-vol). Si déjà sur la même parcelle, ne fait rien (idempotent). |
-| `src/modules/health/health.controller.ts` | Controller health. `GET /api/v1/health/live` : réponse statique. `GET /api/v1/health/ready` : exécute `SELECT 1` sur PostgreSQL pour vérifier la connexion. |
+| `src/modules/sensors/sensors.controller.ts` | Controller `/api/v1/sensors`. `@UseGuards(JwtAuthGuard)`. 1 endpoint : POST `/associate`. |
+| `src/modules/sensors/sensors.service.ts` | Service sensors. `associate()` : vérifie propriété parcelle, cherche capteur par `deviceId`, gère création/réassociation/idempotence. Voir [logique détaillée](#logique-dassociation-sensorsserviceassociate). |
+| `src/modules/sensors/dto/associate-sensor.dto.ts` | DTO association capteur. Valide `deviceId` (string) et `parcelId` (UUID). |
+| `src/modules/health/health.controller.ts` | Controller health. `GET /api/v1/health/live` : statique. `GET /api/v1/health/ready` : exécute `SELECT 1` via `DataSource.query()`. |
 
 ---
 
-## 7. Sécurité : authentification JWT
-
-### Fonctionnement
-
-1. Le client envoie un token JWT dans le header `Authorization: Bearer <token>`.
-2. `JwtAuthGuard` (via `JwtStrategy`) intercepte la requête.
-3. `JwtStrategy` :
-   - Extrait le token du header.
-   - Vérifie la signature HMAC avec `JWT_SECRET` (algorithme HS256).
-   - Vérifie que le token n'est pas expiré (`ignoreExpiration: false`).
-   - Appelle `validate(payload)` qui retourne `{ userId: payload.sub, phone: payload.phone }`.
-4. L'objet retourné est injecté dans `req.user` par Passport.
-5. Les contrôleurs utilisent `@CurrentUser('userId')` pour récupérer l'ID de l'utilisateur connecté.
-
-### Contrat du token JWT
-
-Le token doit contenir au minimum :
-
-```json
-{
-  "sub": "uuid-de-l-utilisateur",
-  "phone": "+212612345678",
-  "iat": 1234567890,
-  "exp": 1234571490
-}
-```
-
-> ⚠️ `JWT_SECRET` doit être **strictement identique** entre `farm-service` et `auth-service`, car c'est `auth-service` qui signe les tokens et `farm-service` qui les valide.
-
-### Vérification d'appartenance
-
-Toutes les opérations CRUD vérifient que l'utilisateur connecté est bien le propriétaire de la ressource :
-
-- **Fermes** : `farm.ownerId === userId`
-- **Parcelles** : `parcel.farm.ownerId === userId` (via la relation ManyToOne)
-- **Capteurs** : `parcel.farm.ownerId === userId` (via la relation Parcel → Farm)
-
----
-
-## 8. Communication inter-service : AuthClientService
+## 8. Authentification et sécurité
 
 ### Principe
 
-`farm-service` communique avec `auth-service` via HTTP pour vérifier l'existence des utilisateurs. Cette vérification est faite à la création d'une ferme.
+L'authentification repose sur **JWT** validé localement (le secret est partagé avec `auth-service`).
 
-### Endpoint appelé
+```
+Client → Authorization: Bearer <JWT> → JwtStrategy.validate() → { userId, phone } → request.user
+```
+
+### JwtStrategy
+
+- **Extraction** : `ExtractJwt.fromAuthHeaderAsBearerToken()` (header `Authorization: Bearer <token>`)
+- **Expiration** : `ignoreExpiration: false` (les tokens expirés sont rejetés)
+- **Secret** : `configService.get<string>('app.jwtSecret')`
+- **Validation** : vérifie que `payload.sub` existe (sinon `UnauthorizedException`), retourne `{ userId: payload.sub, phone: payload.phone }`
+
+### JwtAuthGuard
+
+- Appliqué sur **tous** les controllers métier (`FarmsController`, `ParcelsController`, `SensorsController`)
+- **Non appliqué** sur `HealthController`
+- Log la tentative d'accès (méthode, URL, IP)
+- Rejette avec 401 si token absent, expiré ou invalide
+
+### Isolation par propriétaire
+
+Chaque ferme a un `ownerId`. Toutes les opérations vérifient que l'utilisateur JWT est propriétaire :
+
+| Opération | Vérification |
+|-----------|-------------|
+| `GET /farms` | `WHERE ownerId = userId` |
+| `GET /farms/:id` | `farm.ownerId === userId` (sinon 403) |
+| `PATCH /farms/:id` | via `findOne` (403 si pas propriétaire) |
+| `DELETE /farms/:id` | via `findOne` (403 si pas propriétaire) |
+| `POST /parcels` | `farm.ownerId === userId` (sinon 404) |
+| `GET /parcels/farm/:farmId` | `farm.ownerId === userId` (sinon 404) |
+| `GET /parcels/:id` | `parcel.farm.ownerId === userId` (sinon 403) |
+| `POST /sensors/associate` | `parcel.farm.ownerId === userId` (sinon 403) |
+
+### Communication inter-services
+
+`AuthClientService` appelle `auth-service` via HTTP :
 
 ```
 GET http://auth-service:3001/internal/user/:userId
 ```
 
-### Réponse attendue
-
-```json
-// Succès (200)
-{
-  "id": "uuid-v4",
-  "phone": "+212612345678",
-  "name": "Ahmed",
-  "preferredLanguage": "darija",
-  "createdAt": "2026-06-28T11:18:00.000Z"
-}
-
-// Utilisateur introuvable (404)
-{
-  "statusCode": 404,
-  "message": "Utilisateur introuvable"
-}
-```
-
-### Gestion des erreurs
-
-| Cas | Comportement |
-|-----|-------------|
-| `auth-service` répond 200 | `verifyUserExists()` retourne `true` |
-| `auth-service` répond 404 | `verifyUserExists()` retourne `false` → création de ferme bloquée (HTTP 404) |
-| `auth-service` indisponible (timeout, 500, réseau) | `verifyUserExists()` lève une exception HTTP 503 → création de ferme impossible |
+- **Utilisé uniquement à la création d'une ferme** (`FarmsService.create`)
+- 200 → utilisateur existe, création autorisée
+- 404 → utilisateur introuvable, création bloquée (404)
+- Autre erreur → 503 SERVICE_UNAVAILABLE
 
 ---
 
-## 9. Modèle de données (PostgreSQL + PostGIS)
-
-### Base de données : `farm_db`
-
-Le schéma est défini dans `infra/postgres/schemas/farm-db.sql`.  
-L'utilisateur PostgreSQL est `farm_user`.
-
-### Extensions
-
-- `uuid-ossp` : Génération d'UUID v4
-- `postgis` : Types géométriques (POINT, POLYGON) avec SRID 4326 (WGS84)
-
-### ENUMs
-
-```sql
-CREATE TYPE crop_type_enum AS ENUM ('olive', 'citrus', 'cereal', 'vegetable', 'other');
-CREATE TYPE soil_type_enum AS ENUM ('clay', 'silt', 'sandy', 'calcareous', 'mixed');
-CREATE TYPE irrigation_method_enum AS ENUM ('drip', 'sprinkler', 'gravity');
-```
+## 9. Modèle de données (PostgreSQL)
 
 ### Table `farms`
 
 ```sql
 CREATE TABLE farms (
-    id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    owner_id       UUID NOT NULL,
-    name           VARCHAR(150) NOT NULL,
-    region         VARCHAR(100),
-    location       GEOMETRY(POINT, 4326),
-    total_area_ha  DECIMAL(10,2),
-    created_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CHECK (total_area_ha > 0)
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id        UUID NOT NULL,           -- indexé
+  name            VARCHAR(150) NOT NULL,
+  total_area_ha   DECIMAL(10,2) NOT NULL,
+  region          VARCHAR(100) NULL,
+  location        geometry(Point, 4326) NULL,  -- GeoJSON Point
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
-
-| Colonne | Type | Contrainte | Description |
-|---------|------|-----------|-------------|
-| `id` | UUID | PK, auto-généré | Identifiant unique de la ferme |
-| `owner_id` | UUID | NOT NULL, indexé | Propriétaire de la ferme (dans auth_db, pas de FK) |
-| `name` | VARCHAR(150) | NOT NULL | Nom de la ferme |
-| `region` | VARCHAR(100) | nullable | Région géographique |
-| `location` | GEOMETRY(POINT, 4326) | nullable, index GIST | Coordonnées GPS |
-| `total_area_ha` | DECIMAL(10,2) | > 0 | Surface totale en hectares |
-| `created_at` | TIMESTAMPTZ | NOT NULL, auto | Date de création |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, auto | Date de modification |
-
-**Index** : `idx_farms_owner_id` (B-tree), `idx_farms_location` (GIST)
 
 ### Table `parcels`
 
 ```sql
 CREATE TABLE parcels (
-    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    farm_id             UUID NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
-    name                VARCHAR(150) NOT NULL,
-    area_ha             DECIMAL(10,2) NOT NULL,
-    crop_type           crop_type_enum NOT NULL DEFAULT 'olive',
-    crop_variety        VARCHAR(100),
-    soil_type           soil_type_enum NOT NULL DEFAULT 'mixed',
-    irrigation_method   irrigation_method_enum NOT NULL DEFAULT 'drip',
-    flow_rate_m3h       DECIMAL(8,2),
-    tree_age_years      INT,
-    tree_density_per_ha INT,
-    polygon             GEOMETRY(POLYGON, 4326),
-    centroid            GEOMETRY(POINT, 4326),
-    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CHECK (area_ha > 0),
-    CHECK (flow_rate_m3h >= 0),
-    CHECK (tree_age_years >= 0),
-    CHECK (tree_density_per_ha >= 0),
-    CHECK (polygon IS NULL OR ST_IsValid(polygon)),
-    UNIQUE(farm_id, name)
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  farm_id             UUID NOT NULL,       -- indexé, FK → farms(id) ON DELETE CASCADE
+  name                VARCHAR(150) NOT NULL,
+  area_ha             DECIMAL(10,2) NOT NULL,
+  crop_type           VARCHAR NOT NULL,    -- enum: olive, citrus, cereal, vegetable, other
+  soil_type           VARCHAR NOT NULL,    -- enum: clay, silt, sandy, calcareous, mixed
+  irrigation_method   VARCHAR NOT NULL,    -- enum: drip, sprinkler, gravity
+  crop_variety        VARCHAR(100) NULL,
+  flow_rate_m3h       DECIMAL(8,2) NULL,
+  tree_age_years      INT NULL,
+  tree_density_per_ha INT NULL,
+  polygon             geometry(Polygon, 4326) NULL,  -- GeoJSON Polygon
+  centroid            geometry(Point, 4326) NULL,    -- GeoJSON Point
+  is_active           BOOLEAN DEFAULT true,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(farm_id, name)  -- contrainte d'unicité
 );
 ```
-
-| Colonne | Type | Contrainte | Description |
-|---------|------|-----------|-------------|
-| `id` | UUID | PK | Identifiant unique |
-| `farm_id` | UUID | FK → farms(id) CASCADE | Ferme parente |
-| `name` | VARCHAR(150) | NOT NULL, UNIQUE(farm_id) | Nom de la parcelle |
-| `area_ha` | DECIMAL(10,2) | > 0 | Surface en hectares |
-| `crop_type` | ENUM | défaut 'olive' | Type de culture |
-| `crop_variety` | VARCHAR(100) | nullable | Variété de la culture |
-| `soil_type` | ENUM | défaut 'mixed' | Type de sol |
-| `irrigation_method` | ENUM | défaut 'drip' | Méthode d'irrigation |
-| `flow_rate_m3h` | DECIMAL(8,2) | >= 0 | Débit d'irrigation (m³/h) |
-| `tree_age_years` | INT | >= 0 | Âge des arbres |
-| `tree_density_per_ha` | INT | >= 0 | Densité d'arbres/ha |
-| `polygon` | GEOMETRY(POLYGON, 4326) | ST_IsValid | Polygone de la parcelle |
-| `centroid` | GEOMETRY(POINT, 4326) | nullable | Centre de la parcelle |
-| `is_active` | BOOLEAN | défaut TRUE | Parcelle active |
-| `created_at` | TIMESTAMPTZ | auto | Date de création |
-| `updated_at` | TIMESTAMPTZ | auto | Date de modification |
-
-**Index** : `idx_parcels_farm_id` (B-tree), `idx_parcels_centroid` (GIST), `idx_parcels_active` (partiel, WHERE is_active = TRUE)
 
 ### Table `sensors`
 
 ```sql
 CREATE TABLE sensors (
-    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    parcel_id        UUID NOT NULL REFERENCES parcels(id) ON DELETE CASCADE,
-    device_id        VARCHAR(100) UNIQUE NOT NULL,
-    device_type      VARCHAR(50) NOT NULL DEFAULT 'esp32-wroom-32',
-    is_active        BOOLEAN NOT NULL DEFAULT TRUE,
-    last_seen_at     TIMESTAMP WITH TIME ZONE,
-    battery_pct      INT,
-    firmware_version VARCHAR(20),
-    created_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CHECK (battery_pct BETWEEN 0 AND 100)
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parcel_id         UUID NOT NULL,         -- indexé, FK → parcels(id) ON DELETE CASCADE
+  device_id         VARCHAR(100) NOT NULL UNIQUE,  -- identifiant physique unique
+  device_type       VARCHAR(50) DEFAULT 'esp32-wroom-32',
+  is_active         BOOLEAN DEFAULT true,
+  last_seen_at      TIMESTAMPTZ NULL,
+  battery_pct       INT NULL,
+  firmware_version  VARCHAR(20) NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Colonne | Type | Contrainte | Description |
-|---------|------|-----------|-------------|
-| `id` | UUID | PK | Identifiant unique |
-| `parcel_id` | UUID | FK → parcels(id) CASCADE | Parcelle associée |
-| `device_id` | VARCHAR(100) | UNIQUE, NOT NULL | Identifiant matériel du capteur |
-| `device_type` | VARCHAR(50) | défaut 'esp32-wroom-32' | Type de capteur |
-| `is_active` | BOOLEAN | défaut TRUE | Capteur actif |
-| `last_seen_at` | TIMESTAMPTZ | nullable | Dernière communication |
-| `battery_pct` | INT | 0-100 | Niveau de batterie |
-| `firmware_version` | VARCHAR(20) | nullable | Version du firmware |
-| `created_at` | TIMESTAMPTZ | auto | Date de création |
-| `updated_at` | TIMESTAMPTZ | auto | Date de modification |
+### Relations entre entités
 
-**Index** : `idx_sensors_parcel_id` (B-tree), `idx_sensors_device_id` (B-tree), `idx_sensors_active` (B-tree)
+```
+Farm (1) ──OneToMany──▶ (N) Parcel
+  │                         │
+  │ onDelete: CASCADE       │ onDelete: CASCADE
+  │                         │
+  └── owner_id (UUID)       └── parcel_id (UUID)
+                              │
+                              ▼
+                         Sensor (N) ◀──ManyToOne── (1) Parcel
+```
 
----
-
-## 10. Validation des entrées
-
-### Validation globale
-
-Une `ValidationPipe` globale est configurée dans `main.ts` :
+### Types GeoJSON
 
 ```typescript
-app.useGlobalPipes(
-  new ValidationPipe({
-    whitelist: true,                // Supprime les champs non déclarés dans le DTO
-    transform: true,                // Transforme les types (ex: string → number)
-    forbidNonWhitelisted: true,     // Rejette les champs inconnus (HTTP 400)
-    transformOptions: {
-      enableImplicitConversion: true, // Conversion implicite des types
-    },
-  }),
-);
+// src/common/types/geojson.ts
+type GeoJsonPosition = [number, number] | [number, number, number];
+
+interface GeoJsonPoint {
+  type: 'Point';
+  coordinates: GeoJsonPosition;
+}
+
+interface GeoJsonPolygon {
+  type: 'Polygon';
+  coordinates: GeoJsonPosition[][];
+}
 ```
 
-### Validations spécifiques
-
-| Champ | Validation | Message d'erreur |
-|-------|-----------|------------------|
-| `name` (farm/parcel) | `@MaxLength(150)` | Longueur max 150 caractères |
-| `totalAreaHa` / `areaHa` | `@Min(0.01)` | Doit être > 0 |
-| `cropType` | `@IsEnum([...])` | Doit être une valeur de l'enum |
-| `soilType` | `@IsEnum([...])` | Doit être une valeur de l'enum |
-| `irrigationMethod` | `@IsEnum([...])` | Doit être une valeur de l'enum |
-| `flowRateM3h` | `@Min(0)` | Doit être ≥ 0 |
-| `treeAgeYears` | `@Min(0)` | Doit être ≥ 0 |
-| `treeDensityPerHa` | `@Min(0)` | Doit être ≥ 0 |
-| `coordinates` (GeoJSON Point) | `@ArrayMinSize(2)` + `@ArrayMaxSize(2)` | Exactement 2 coordonnées [lng, lat] |
-| `farmId` (parcel) | `@IsUUID()` | Doit être un UUID valide |
-| `parcelId` (sensor) | `@IsUUID()` | Doit être un UUID valide |
+> ⚠️ `synchronize: false` dans `database.module.ts` → TypeORM ne crée ni ne modifie le schéma. Les tables doivent exister préalablement (migrations ou script SQL externe).
 
 ---
 
-## 11. Health checks
+## 10. Logique métier implémentée
 
-### `GET /api/v1/health/live` (Liveness)
+### Cohérence des surfaces (parcels)
+
+À la **création** d'une parcelle (`ParcelsService.create`) :
+
+```
+somme_surfaces_existantes + nouvelle_surface ≤ farm.totalAreaHa
+```
+
+Si dépassement → `422 UNPROCESSABLE_ENTITY`
+
+À la **modification** d'une parcelle (`ParcelsService.update`) :
+
+```
+somme_autres_parcelles + nouvelle_surface ≤ farm.totalAreaHa
+```
+
+Si dépassement → `422 UNPROCESSABLE_ENTITY`
+
+### Intégrité référentielle (farms)
+
+La suppression d'une ferme est **bloquée** si elle possède des parcelles :
+
+```
+parcelCount = COUNT(parcels WHERE farmId = farm.id)
+if (parcelCount > 0) → 409 CONFLICT
+```
+
+### Logique d'association (`SensorsService.associate`)
+
+```
+1. Vérifier que la parcelle cible existe et appartient à l'utilisateur
+   → parcel = findOne(parcelId, relations: ['farm'])
+   → 404 si introuvable
+   → 403 si parcel.farm.ownerId !== userId
+
+2. Chercher le capteur par deviceId
+   → sensor = findOne({ deviceId })
+
+3. Si le capteur existe :
+   a. Si sensor.parcelId === parcelId :
+      → Retourner le capteur sans écriture DB (idempotence)
+   b. Si sensor.parcelId !== parcelId :
+      → Vérifier que l'ancienne parcelle appartient aussi à l'utilisateur
+      → 403 si oldParcel.farm.ownerId !== userId (anti-vol de capteur)
+      → Réassocier : sensor.parcelId = parcelId, sensor.isActive = true
+      → Save
+
+4. Si le capteur n'existe pas :
+   → Créer avec deviceType = 'esp32-wroom-32', isActive = true
+   → Save
+```
+
+### Unicité
+
+| Contrainte | Table | Colonnes |
+|------------|-------|----------|
+| Unique | `sensors` | `device_id` |
+| Unique | `parcels` | `(farm_id, name)` |
+
+---
+
+## 11. Validation des entrées (DTOs)
+
+### Configuration globale
+
+`ValidationPipe` configuré dans `main.ts` :
+
+```typescript
+new ValidationPipe({
+  whitelist: true,           // supprime les propriétés non décorées
+  transform: true,           // transforme les types
+  forbidNonWhitelisted: true, // rejette les propriétés non décorées
+  transformOptions: {
+    enableImplicitConversion: true,
+  },
+})
+```
+
+### `CreateFarmDto`
+
+| Champ | Type | Validation |
+|-------|------|------------|
+| `name` | string | `@IsString()`, `@MaxLength(150)` |
+| `totalAreaHa` | number | `@IsNumber()`, `@Min(0.01)` |
+| `region` | string? | `@IsOptional()`, `@IsString()`, `@MaxLength(100)` |
+| `location` | GeoJsonPointDto? | `@IsOptional()`, `@ValidateNested()`, `@Type(() => GeoJsonPointDto)` |
+
+### `UpdateFarmDto`
+
+Identique à `CreateFarmDto` mais tous les champs sont optionnels.
+
+### `CreateParcelDto`
+
+| Champ | Type | Validation |
+|-------|------|------------|
+| `farmId` | UUID | `@IsUUID()` |
+| `name` | string | `@IsString()`, `@MaxLength(150)` |
+| `areaHa` | number | `@IsNumber()`, `@Min(0.01)` |
+| `cropType` | enum | `@IsEnum(['olive', 'citrus', 'cereal', 'vegetable', 'other'])` |
+| `soilType` | enum | `@IsEnum(['clay', 'silt', 'sandy', 'calcareous', 'mixed'])` |
+| `irrigationMethod` | enum | `@IsEnum(['drip', 'sprinkler', 'gravity'])` |
+| `cropVariety` | string? | `@IsOptional()`, `@IsString()`, `@MaxLength(100)` |
+| `flowRateM3h` | number? | `@IsOptional()`, `@IsNumber()`, `@Min(0)` |
+| `treeAgeYears` | number? | `@IsOptional()`, `@IsNumber()`, `@Min(0)` |
+| `treeDensityPerHa` | number? | `@IsOptional()`, `@IsNumber()`, `@Min(0)` |
+| `centroid` | GeoJsonPointDto? | `@IsOptional()`, `@ValidateNested()` |
+| `polygon` | GeoJsonPolygonDto? | `@IsOptional()`, `@ValidateNested()` |
+
+### `UpdateParcelDto`
+
+Identique à `CreateParcelDto` mais :
+- Tous les champs sont optionnels
+- **Pas de `farmId`** (une parcelle ne peut pas changer de ferme)
+
+### `AssociateSensorDto`
+
+| Champ | Type | Validation |
+|-------|------|------------|
+| `deviceId` | string | `@IsString()` |
+| `parcelId` | UUID | `@IsUUID()` |
+
+### DTOs GeoJSON imbriqués
+
+```typescript
+class GeoJsonPointDto {
+  @IsString()
+  type: 'Point';
+
+  @IsNumber({}, { each: true })
+  @ArrayMinSize(2)
+  @ArrayMaxSize(2)
+  coordinates: [number, number];
+}
+
+class GeoJsonPolygonDto {
+  @IsString()
+  type: 'Polygon';
+
+  @ValidateNested({ each: true })
+  @Type(() => Object)
+  coordinates: number[][][];
+}
+```
+
+---
+
+## 12. Gestion des erreurs
+
+### Filtre global (`AllExceptionsFilter`)
+
+Toutes les exceptions sont capturées et formatées en JSON :
+
+```json
+{
+  "statusCode": 404,
+  "errorCode": "NOT_FOUND",
+  "message": "Ferme introuvable dans la base de données.",
+  "timestamp": "2026-07-30T12:00:00.000Z",
+  "path": "/api/v1/farms/123",
+  "method": "GET"
+}
+```
+
+### Map status → errorCode
+
+| Status HTTP | errorCode |
+|-------------|-----------|
+| 400 | `BAD_REQUEST` |
+| 401 | `UNAUTHORIZED` |
+| 403 | `FORBIDDEN` |
+| 404 | `NOT_FOUND` |
+| 409 | `CONFLICT` |
+| 422 | `UNPROCESSABLE_ENTITY` |
+| 429 | `TOO_MANY_REQUESTS` |
+| 500 | `INTERNAL_ERROR` |
+| 502 | `BAD_GATEWAY` |
+| 503 | `SERVICE_UNAVAILABLE` |
+| (autre) | `UNKNOWN_ERROR` |
+
+### Messages d'erreur métier (français)
+
+| Code | Message | Contexte |
+|------|---------|----------|
+| 404 | `Aucun utilisateur trouvé pour cet ID. Création de ferme bloquée.` | Création ferme, utilisateur non trouvé dans auth-service |
+| 404 | `Ferme introuvable dans la base de données.` | Ferme non trouvée |
+| 403 | `Accès refusé : cette ferme n'appartient pas à l'utilisateur connecté.` | Ferme d'un autre utilisateur |
+| 409 | `Suppression impossible : la ferme possède N parcelle(s). Veuillez d'abord les supprimer.` | Suppression ferme avec parcelles |
+| 404 | `Ferme parente introuvable ou accès non autorisé à cette ferme.` | Création parcelle, ferme inexistante ou d'un autre user |
+| 422 | `La surface totale des parcelles (X ha) dépasse la surface de la ferme (Y ha).` | Dépassement de surface |
+| 404 | `Ferme introuvable ou accès refusé.` | Liste parcelles, ferme d'un autre user |
+| 404 | `Parcelle introuvable.` | Parcelle non trouvée |
+| 403 | `Accès refusé à cette parcelle.` | Parcelle d'un autre utilisateur |
+| 404 | `Parcelle introuvable pour association capteur.` | Association capteur, parcelle inexistante |
+| 403 | `Action interdite : la parcelle ne vous appartient pas.` | Association capteur, parcelle d'un autre user |
+| 403 | `Action interdite : le capteur appartient à une parcelle d'un autre utilisateur.` | Anti-vol de capteur |
+| 503 | `Service d'authentification temporairement indisponible. Veuillez réessayer.` | auth-service injoignable |
+| 401 | `Non autorise - Le token JWT est absent, expire ou invalide.` | Token JWT invalide |
+
+---
+
+## 13. Health checks
+
+### `GET /api/v1/health/live` (liveness)
 
 ```json
 {
   "status": "ok",
   "service": "farm-service",
-  "timestamp": "2026-07-29T12:00:00.000Z"
+  "timestamp": "2026-07-30T12:00:00.000Z"
 }
 ```
 
-- Ne dépend d'aucun service externe.
-- Indique simplement que le processus Node.js est en vie.
+- Ne dépend d'aucun service externe
+- Indique que le processus Node.js tourne
 
-### `GET /api/v1/health/ready` (Readiness)
+### `GET /api/v1/health/ready` (readiness)
 
 ```json
-// Si PostgreSQL répond :
+// Succès
 {
   "status": "ok",
   "service": "farm-service",
   "database": "connected",
-  "timestamp": "2026-07-29T12:00:00.000Z"
+  "timestamp": "2026-07-30T12:00:00.000Z"
 }
 
-// Si PostgreSQL ne répond pas :
+// Échec DB
 {
   "status": "error",
   "service": "farm-service",
   "database": "disconnected",
-  "timestamp": "2026-07-29T12:00:00.000Z"
+  "timestamp": "2026-07-30T12:00:00.000Z"
 }
 ```
 
-- Exécute `SELECT 1` sur PostgreSQL via TypeORM.
-- Si la requête réussit → `database: "connected"`.
-- Si la requête échoue → `database: "disconnected"` (HTTP 200 quand même, car c'est une probe).
+- Exécute `SELECT 1` via `DataSource.query()`
+- Teste la connexion réelle à PostgreSQL
+
+### Healthcheck Docker
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:3003/api/v1/health/ready || exit 1
+```
 
 ---
 
-## 12. Tests
+## 14. Tests
+
+### Configuration Jest (`jest.config.js`)
+
+```javascript
+module.exports = {
+  moduleFileExtensions: ['js', 'json', 'ts'],
+  testRegex: '.*\\.spec\\.ts$',
+  transform: { '^.+\\.(t|j)s$': 'ts-jest' },
+  collectCoverageFrom: [
+    'src/**/*.(t|j)s',
+    '!src/**/*.module.ts',    // exclus modules
+    '!src/**/*.entity.ts',    // exclus entités
+    '!src/main.ts',           // exclus point d'entrée
+    '!src/config/**',         // exclus config
+  ],
+  coverageDirectory: './coverage',
+  coverageReporters: ['text', 'lcov', 'html'],
+  testEnvironment: 'node',
+  roots: ['<rootDir>/src/', '<rootDir>/test/'],
+  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
+  testTimeout: 10000,
+  verbose: true,
+};
+```
 
 ### Tests unitaires
+
+| Fichier de test | Ce qu'il teste | Nombre de cas |
+|-----------------|----------------|---------------|
+| `test/farms.controller.spec.ts` | `FarmsController` — create, findAll, findOne, remove. Mock `FarmsService` et `AuthClientService`. Override `JwtAuthGuard`. | 7 cas |
+| `test/parcels.service.spec.ts` | `ParcelsService` — create (succès, ferme inexistante, autre user, dépassement surface, doublon nom), findOne (succès, 404). Mock repositories. | 6 cas |
+| `test/sensors.service.spec.ts` | `SensorsService` — associate (nouveau capteur, réassociation, idempotence, 403 autre user, 404 parcelle, anti-vol capteur, doublon deviceId). Mock repositories. | 7 cas |
+
+### Commandes
 
 ```bash
 npm run test          # Lance tous les tests Jest
 npm run test:watch    # Mode watch
-npm run test:cov      # Avec couverture
+npm run test:cov      # Avec couverture (exclut modules, entités, main, config)
+npm run test:debug    # Mode debug
 ```
 
-| Fichier de test | Ce qu'il teste |
-|-----------------|----------------|
-| `test/farms.controller.spec.ts` | `FarmsController` : création, liste, détail, mise à jour, suppression. Vérifie la délégation à `FarmsService` et la propagation des erreurs (404, 403, 409). |
-| `test/parcels.service.spec.ts` | `ParcelsService` : création avec validation de surface, échec si ferme inexistante, échec si surface dépasse, contrainte unique `(farmId, name)`. |
-| `test/sensors.service.spec.ts` | `SensorsService` : association nouveau capteur, réassociation, idempotence (déjà sur la même parcelle), refus de vol (ancienne parcelle d'un autre utilisateur), contrainte unique `deviceId`. |
+### Caractéristiques des tests
+
+- **Tests unitaires uniquement** : tous les tests utilisent des mocks (`jest.fn()`, `useValue`)
+- **Pas de test d'intégration** : aucun test contre une vraie base PostgreSQL
+- **Pas de test E2E** : aucun test HTTP de bout en bout
+- Le `JwtAuthGuard` est overridé dans les tests controller (`{ canActivate: () => true }`)
 
 ---
 
-## 13. Docker
+## 15. Docker
 
-### Dockerfile (multi-stage)
+### Dockerfile (multi-stage, 3 stages)
 
 ```dockerfile
-# Stage 1 : Builder — compile le TypeScript
-FROM node:20-alpine AS builder
-WORKDIR /app
+# Stage 1 : deps — Installer les dépendances
+FROM node:20-alpine AS deps
+RUN apk add --no-cache python3 make g++
+WORKDIR /workspace
 COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
+COPY tsconfig.json ./
+COPY apps/farm-service/package*.json ./apps/farm-service/
+COPY apps/farm-service/tsconfig.json ./apps/farm-service/
+RUN npm ci --workspace @alkatra/farm-service
 
-# Stage 2 : Development — hot reload local
-FROM node:20-alpine AS development
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
+# Stage 2 : builder — Compile le TypeScript
+FROM deps AS builder
+WORKDIR /workspace
+COPY apps/farm-service ./apps/farm-service
+RUN npm run build --workspace @alkatra/farm-service \
+    && npm prune --omit=dev --workspace @alkatra/farm-service
+
+# Stage 3 : runner — Exécute le code compilé
+FROM node:20-alpine AS runner
+RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001
+WORKDIR /workspace
+ENV NODE_ENV=production
+COPY --from=builder /workspace/node_modules ./node_modules
+COPY --from=builder /workspace/apps/farm-service/dist ./apps/farm-service/dist
+COPY --from=builder /workspace/apps/farm-service/package*.json ./apps/farm-service/
+COPY --from=builder /workspace/apps/farm-service/node_modules ./apps/farm-service/node_modules
+RUN chown -R nestjs:nodejs /workspace
+USER nestjs
+WORKDIR /workspace/apps/farm-service
 EXPOSE 3003
-CMD ["npm", "run", "start:dev"]
-
-# Stage 3 : Production — image finale légère
-FROM node:20-alpine AS production
-WORKDIR /app
-RUN addgroup -S nodegroup && adduser -S nodeuser -G nodegroup
-COPY package*.json ./
-RUN npm install --omit=dev
-COPY --from=builder /app/dist ./dist
-USER nodeuser
-EXPOSE 3003
-CMD ["node", "dist/main"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:3003/api/v1/health/ready || exit 1
+CMD ["node", "dist/main.js"]
 ```
 
-**Explication des stages :**
+### Points clés du Dockerfile
 
-| Stage | Utilisation | Rôle |
-|-------|-------------|------|
-| `builder` | Intermédiaire | Installe toutes les dépendances et compile le TypeScript |
-| `development` | `docker compose` (cible par défaut) | Installe les dépendances, copie le code source, lance `nest start --watch` (hot reload) |
-| `production` | Déploiement réel | Installe uniquement les dépendances de production, copie le `dist/` compilé, exécute avec un utilisateur non-root |
-
-### Service dans docker-compose.yml
-
-```yaml
-farm-service:
-  build:
-    context: ./../../apps/farm-service
-    dockerfile: Dockerfile
-    target: development
-  container_name: alkatra-farm
-  restart: unless-stopped
-  profiles: ["phase1"]
-  ports:
-    - "3003:3003"
-  environment:
-    NODE_ENV: development
-    PORT: 3003
-    POSTGRES_HOST: postgres
-    POSTGRES_PORT: 5432
-    FARM_DB_USER: farm_user
-    FARM_DB_PASSWORD: ${FARM_DB_PASSWORD:-farm_dev_pass}
-    FARM_DB_NAME: farm_db
-    AUTH_SERVICE_URL: http://auth-service:3001
-    JWT_SECRET: ${JWT_SECRET:-alkatra_jwt_dev_secret}
-    CORS_ORIGINS: http://localhost:3000
-  depends_on:
-    postgres:
-      condition: service_healthy
-    auth-service:
-      condition: service_healthy
-  volumes:
-    - ./../../apps/farm-service/src:/app/src
-  healthcheck:
-    test: ["CMD", "wget", "--spider", "-q", "http://localhost:3003/api/v1/health/live"]
-    interval: 15s
-    timeout: 10s
-    retries: 5
-    start_period: 40s
-  networks:
-    - alkatra-net
-```
+| Élément | Valeur |
+|---------|--------|
+| Image de base | `node:20-alpine` |
+| Contexte de build | Racine du monorepo (copie `package.json` racine + `apps/farm-service/`) |
+| Installation | `npm ci --workspace @alkatra/farm-service` |
+| Build | `npm run build --workspace @alkatra/farm-service` |
+| Utilisateur | `nestjs` (non-root, UID 1001) |
+| Port exposé | 3003 |
+| Healthcheck | `wget --spider http://localhost:3003/api/v1/health/ready` |
+| Commande | `node dist/main.js` |
 
 ---
 
-## 14. Dépendances et ordre de démarrage
+## 16. Configuration TypeScript et Jest
 
-### Chaîne de dépendances complète
+### `tsconfig.json`
 
+```json
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}
 ```
-postgres ──▶ keycloak ──▶ auth-service ──▶ farm-service
-   │                        │
-   └──▶ redis ──────────────┘
-```
 
-### Détail
+### `package.json`
 
-| Service | Dépend de | Condition |
-|---------|-----------|-----------|
-| `farm-service` | `postgres` | `service_healthy` (PostgreSQL doit accepter les connexions) |
-| `farm-service` | `auth-service` | `service_healthy` (auth-service doit répondre au healthcheck) |
+| Élément | Valeur |
+|---------|--------|
+| Nom | `@alkatra/farm-service` |
+| Version | `0.1.0` |
+| Description | `Farm & Parcels CRUD microservice — Sprint 2` |
+| Type | `commonjs` |
+| Framework | NestJS 11 |
+| ORM | TypeORM 0.3.20 |
+| DB driver | `pg` 8.13.1 |
+| Validation | `class-validator` 0.14.1 + `class-transformer` 0.5.1 |
+| Auth | `@nestjs/passport` 11 + `passport-jwt` 4.0.1 + `@nestjs/jwt` 11 |
+| HTTP client | `@nestjs/axios` 4 + `axios` 1.18.1 |
+| Tests | Jest 29.7 + ts-jest 29.2 |
 
-### Réseau
+### Dépendances complètes
 
-Tous les services sont sur le réseau Docker `alkatra-net` (bridge).  
-La résolution DNS interne permet à `farm-service` d'accéder à `auth-service` via le hostname `auth-service`.
+**Production :**
+- `@nestjs/axios`, `@nestjs/config`, `@nestjs/core`, `@nestjs/jwt`, `@nestjs/passport`, `@nestjs/platform-express`, `@nestjs/typeorm`
+- `axios`, `class-transformer`, `class-validator`
+- `passport`, `passport-jwt`
+- `pg` (driver PostgreSQL)
+- `reflect-metadata`
+- `typeorm`
+
+**Développement :**
+- `@nestjs/cli`, `@nestjs/schematics`, `@nestjs/testing`
+- `@types/express`, `@types/jest`, `@types/node`, `@types/passport-jwt`
+- `jest`, `prettier`, `source-map-support`, `ts-jest`, `ts-loader`, `ts-node`, `tsconfig-paths`, `typescript`
 
 ---
 
-## 15. Limites constatées
+## 17. Ce que le service NE fait PAS
 
-### Limitations fonctionnelles
+### Endpoints manquants pour les sensors
 
-1. **Pas de pagination** : Les endpoints `GET /api/v1/farms` et `GET /api/v1/parcels/farm/:farmId` retournent toutes les entrées sans pagination. Pour un grand nombre de fermes/parcelles, cela peut poser des problèmes de performance.
+- ❌ Aucun endpoint `GET` pour lister les capteurs (d'une parcelle, d'une ferme, ou globaux)
+- ❌ Aucun endpoint `GET /:id` pour récupérer un capteur par ID
+- ❌ Aucun endpoint `PATCH /:id` pour mettre à jour un capteur (firmware, batterie, lastSeenAt)
+- ❌ Aucun endpoint `DELETE /:id` pour supprimer/désactiver un capteur
 
-2. **Pas de soft delete** : La suppression d'une ferme ou d'une parcelle est définitive (DELETE physique). Aucun mécanisme de soft delete (champ `deleted_at`) n'est implémenté.
+### Ingestion de données
 
-3. **Pas de recherche/filtrage** : Aucun paramètre de recherche (par nom, région, type de culture) n'est disponible sur les endpoints de liste.
+- ❌ Aucune ingestion de mesures capteurs (température, humidité, etc.) — c'est le rôle de `iot-service`
+- ❌ Aucune connexion à Kafka ou MQTT
+- ❌ Aucun endpoint pour recevoir des payloads capteurs
 
-4. **Pas de rate limiting** : Aucune protection contre les appels abusifs aux endpoints.
+### Fonctionnalités API
 
-5. **Pas de cache** : Chaque appel à `verifyUserExists()` déclenche un appel HTTP à `auth-service`.
+- ❌ Aucune pagination sur les listes (`findAll` retourne tout)
+- ❌ Aucun filtrage avancé (par cropType, soilType, region, etc.)
+- ❌ Aucun tri configurable
+- ❌ Aucun endpoint de recherche
 
-6. **Validation GeoJSON polygon insuffisante** : La validation du polygone se limite à `@ValidateNested()` sans vérification que la structure est un tableau valide d'anneaux linéaires. Une validation personnalisée avec `@ValidatorConstraint()` serait plus robuste.
+### Observabilité
 
-7. **Pas de validation `ST_IsValid` côté application** : Le CHECK SQL `ST_IsValid(polygon)` existe en base, mais aucune validation équivalente n'est faite côté application avant l'envoi à PostgreSQL.
+- ❌ Aucune métrique Prometheus (pas de module metrics)
+- ❌ Aucun endpoint `/metrics`
+- ❌ Aucun structured logging (les logs utilisent `Logger` NestJS standard)
+
+### Tests
+
+- ❌ Aucun test d'intégration (contre une vraie DB)
+- ❌ Aucun test E2E (HTTP de bout en bout)
+- ❌ Aucun test du `HealthController`
+- ❌ Aucun test du `AllExceptionsFilter`
+- ❌ Aucun test du `JwtStrategy` / `JwtAuthGuard`
+
+### Infrastructure
+
+- ❌ `synchronize: false` — le schéma DB n'est pas créé automatiquement
+- ❌ Aucune migration TypeORM dans le service
+- ❌ Aucun fichier de configuration Docker Compose dans le service (géré au niveau `infra/docker/`)
 
 ---
 
-## 16. Résumé opérationnel
+## 18. Limites constatées
+
+### Problèmes potentiels
+
+1. **`deviceType` hardcodé** : Dans `SensorsService.associate`, le `deviceType` est forcé à `'esp32-wroom-32'` à la création. Aucun moyen de spécifier un autre type de capteur via l'API.
+
+2. **Pas de gestion explicite des erreurs de contrainte unique** : Les erreurs PostgreSQL de type `duplicate key value violates unique constraint` (sur `device_id` ou `(farm_id, name)`) ne sont pas interceptées et remontent comme erreurs 500 génériques via le filtre global.
+
+3. **`verifyUserExists` uniquement à la création de ferme** : La vérification de l'utilisateur auprès de `auth-service` n'est faite que dans `FarmsService.create`. Les autres opérations (parcels, sensors) ne vérifient pas l'existence de l'utilisateur.
+
+4. **Pas de rate limiting** : Aucune protection contre les appels abusifs.
+
+5. **`synchronize: false`** : Le schéma DB doit être créé manuellement avant de démarrer le service.
+
+6. **Dossier `validators/` vide** : Le dossier `src/common/validators/` existe mais ne contient aucun fichier.
+
+7. **Fichiers compilés dans `src/`** : Les fichiers `.js`, `.d.ts` et `.js.map` sont présents dans `src/` (artefacts de compilation). Ils devraient idéalement être dans `dist/` uniquement ou exclus du contrôle de version.
+
+8. **`getUserInfo` non utilisé** : La méthode `getUserInfo` de `AuthClientService` est implémentée mais n'est appelée nulle part dans le code.
+
+9. **Log de réassociation potentiellement incorrect** : Dans `SensorsService.associate`, le log de réassociation affiche `sensor.parcelId` après modification (`sensor.parcelId = parcelId`), donc l'ancienne parcelle n'est plus visible dans le log.
+
+---
+
+## 19. Résumé opérationnel
 
 | Caractéristique | Valeur |
 |----------------|--------|
-| **Type** | Microservice de gestion agricole (farms, parcels, sensors) |
+| **Type** | Microservice de gestion fermes/parcelles/capteurs (CRUD) |
 | **Framework** | NestJS 11 |
 | **Port** | 3003 |
-| **Base de données** | PostgreSQL + PostGIS (TypeORM, base `farm_db`) |
-| **Authentification** | JWT (HS256) via Passport |
-| **Communication inter-service** | HTTP (axios) vers auth-service:3001 |
-| **Health checks** | Liveness (`/live`) et Readiness (`/ready` avec dépendance PostgreSQL) |
-| **Profil Docker** | `phase1` (démarrage explicite requis) |
-| **Dépendances** | PostgreSQL (healthy), auth-service (healthy) |
-| **Tests** | Jest (unitaires : controller farms, service parcels, service sensors) |
-| **Langage** | TypeScript |
+| **Base de données** | PostgreSQL `farm_db` (TypeORM, tables `farms`, `parcels`, `sensors`) |
+| **ORM** | TypeORM 0.3.20 (`synchronize: false`) |
+| **Authentification** | JWT (HS256, secret partagé avec auth-service) |
+| **Communication inter-service** | HTTP GET vers `auth-service` `/internal/user/:userId` |
+| **Validation** | class-validator + class-transformer (ValidationPipe global) |
+| **Health checks** | `/api/v1/health/live` + `/api/v1/health/ready` (SELECT 1) |
+| **Métriques** | Aucune |
+| **Tests** | Jest (20 cas unitaires, mocks uniquement) |
+| **Langage** | TypeScript 5.7 |
 | **Node.js** | 20 (Alpine) |
+| **Docker** | Multi-stage, utilisateur non-root, healthcheck sur `/ready` |
+| **Sprint** | Sprint 2 |
 
 ### Commandes essentielles
 
 ```bash
-# Démarrer avec Docker (profil phase1)
-docker compose --profile phase1 -f infra/docker/docker-compose.yml up -d
-
-# Tester le healthcheck
-curl http://localhost:3003/api/v1/health/live
-
-# Créer une ferme (avec un token JWT valide)
-curl -X POST http://localhost:3003/api/v1/farms \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Ferme Test", "totalAreaHa": 15.5, "region": "Marrakech-Safi"}'
-
-# Lister les fermes
-curl -H "Authorization: Bearer <token>" \
-  http://localhost:3003/api/v1/farms
-
-# Créer une parcelle
-curl -X POST http://localhost:3003/api/v1/parcels \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"farmId": "<farm-uuid>", "name": "Parcelle Nord", "areaHa": 5.5, "cropType": "olive", "soilType": "clay", "irrigationMethod": "drip"}'
-
-# Associer un capteur
-curl -X POST http://localhost:3003/api/v1/sensors/associate \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"deviceId": "SENSOR-OL-001", "parcelId": "<parcel-uuid>"}'
+# Démarrer en développement
+cd apps/farm-service && npm run start:dev
 
 # Lancer les tests
 cd apps/farm-service && npm test
 
-# Voir les logs Docker
-docker compose -f infra/docker/docker-compose.yml logs -f farm-service
+# Vérifier la santé
+curl http://localhost:3003/api/v1/health/live
+curl http://localhost:3003/api/v1/health/ready
+
+# Créer une ferme (nécessite un JWT valide)
+curl -X POST http://localhost:3003/api/v1/farms \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Ferme Al Haouz", "totalAreaHa": 15.5, "region": "Marrakech-Safi"}'
+
+# Lister ses fermes
+curl -H "Authorization: Bearer <JWT>" \
+  http://localhost:3003/api/v1/farms
+
+# Créer une parcelle
+curl -X POST http://localhost:3003/api/v1/parcels \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"farmId": "<farm-uuid>", "name": "Parcelle Nord", "areaHa": 2.5, "cropType": "olive", "soilType": "clay", "irrigationMethod": "drip"}'
+
+# Associer un capteur
+curl -X POST http://localhost:3003/api/v1/sensors/associate \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId": "SENSOR-OL-001", "parcelId": "<parcel-uuid>"}'
