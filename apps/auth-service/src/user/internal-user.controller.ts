@@ -18,7 +18,7 @@ export class InternalUserController {
   @Patch(':userId')
   async updateProfile(
     @Param('userId') userId: string,
-    @Body() data: { name?: string | null; preferredLanguage?: 'fr' | 'ar' | 'darija' },
+    @Body() data: { name?: string | null; preferredLanguage?: 'french' | 'arabic' | 'darija' },
   ) {
     return this.internalUserService.updateProfile(userId, data);
   }

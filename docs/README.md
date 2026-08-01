@@ -12,10 +12,11 @@ Cette documentation décrit l'état actuel du projet Al Katra Bel Qatra. Elle es
 6. [Pipeline IoT vers IA](./architecture/iot-ai-pipeline.md)
 7. [Contrat payload capteur](./reference/iot-sensor-payload.md)
 8. [Documentation du service user-service](./guides/user-service.md)
-9. [Tests et qualité](./guides/testing-and-quality.md)
-10. [CI/CD — Pipelines GitHub Actions](./guides/ci-cd.md)
-11. [Observabilité](./guides/observability.md)
-12. [Dépannage](./runbooks/troubleshooting.md)
+9. [Documentation du service farm-service](./guides/farm-service.md)
+10. [Tests et qualité](./guides/testing-and-quality.md)
+11. [CI/CD — Pipelines GitHub Actions](./guides/ci-cd.md)
+12. [Observabilité](./guides/observability.md)
+13. [Dépannage](./runbooks/troubleshooting.md)
 
 ## État actuel résumé
 

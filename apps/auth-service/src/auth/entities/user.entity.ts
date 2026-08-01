@@ -20,10 +20,10 @@ export class UserEntity {
   @Column({
     type: 'varchar',
     length: 10,
-    default: 'fr',
+    default: 'darija',
     name: 'preferred_language',
   })
-  preferredLanguage: 'fr' | 'ar' | 'darija';
+  preferredLanguage: 'darija' | 'arabic' | 'french';
 
   @Column({ type: 'int', default: 0, name: 'otp_attempts' })
   otpAttempts: number;

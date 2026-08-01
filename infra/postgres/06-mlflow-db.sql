@@ -1,0 +1,2 @@
+-- Permissions for mlflow_user are handled in 00-create-databases.sh
+-- to ensure correct database context (mlflow_db).

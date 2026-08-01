@@ -35,11 +35,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_postgres_pass}
       POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_dev_pass}
+      FARM_DB_PASSWORD: ${FARM_DB_PASSWORD:-farm_dev_pass}
+      RECOMMENDATION_DB_PASSWORD: ${RECOMMENDATION_DB_PASSWORD:-recommendation_dev_pass}
+      NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:-notify_dev_pass}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_pass}
+      MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_dev_pass}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ../postgres/00-create-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh
+      - ../postgres/schemas:/scripts/schemas
 
 
     healthcheck:
@@ -231,9 +238,9 @@ services:
     volumes:
       - mlflow_data:/mlruns
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-alkatra}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123}
-      POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
+      POSTGRES_USER: mlflow_user
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_dev_pass}
+      POSTGRES_DB: mlflow_db
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
@@ -258,16 +265,16 @@ services:
     command: start-dev
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-alkatra_db}
-      KC_DB_USERNAME: ${POSTGRES_USER:-alkatra}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-123}
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_pass}
       KC_DB_SCHEMA: keycloak
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-123}
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
     ports:
-      - "8080:8080"
+      - "8081:8080"                   # Port host changé à 8081 pour éviter conflit avec la gateway (8080)
     depends_on:
       postgres:
         condition: service_healthy
@@ -349,7 +356,7 @@ services:
       MQTT_USERNAME: ${MQTT_USER:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       KAFKA_BROKERS: kafka:9092
-      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/alkatra_iot?authSource=admin
+      MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
       ML_INFERENCE_URL: http://ml-inference-service:8000
     ports:
       - "3005:3005"
@@ -394,7 +401,7 @@ services:
       - alkatra-net
   
   # ==========================================
-  # ML INFERENCE SERVICE — FastAPI + XGBoost ✅ S4
+  # ML INFERENCE SERVICE — FastAPI + XGBoost
   # ==========================================
   ml-inference-service:
     build:
@@ -419,7 +426,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_INPUT_TOPIC: processed-sensor-data
       KAFKA_GROUP_ID: ml-inference-group
-      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/alkatra_iot?authSource=admin
+      MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
       MONGO_DB: alkatra_iot
       MONGO_RECO_COLLECTION: irrigation_recommendations
       CLASSIFICATION_THRESHOLD: "0.35"
@@ -440,6 +447,42 @@ services:
       retries: 3
       start_period: 40s
 
+  # ==========================================
+  # NGINX API GATEWAY — Point d'entrée unique
+  # ==========================================
+  gateway:
+    build:
+      context: ./../../infra/nginx
+      dockerfile: Dockerfile
+    image: alkatra-gateway:latest
+    container_name: alkatra-gateway
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST:-auth-service}
+      AUTH_SERVICE_PORT: ${AUTH_SERVICE_PORT:-3001}
+      USER_SERVICE_HOST: ${USER_SERVICE_HOST:-user-service}
+      USER_SERVICE_PORT: ${USER_SERVICE_PORT:-3002}
+      FARM_SERVICE_HOST: ${FARM_SERVICE_HOST:-farm-service}
+      FARM_SERVICE_PORT: ${FARM_SERVICE_PORT:-3003}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      farm-service:
+        condition: service_healthy
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   user-service:
     build:
       context: ../..
@@ -456,14 +499,14 @@ services:
       AUTH_SERVICE_HOST: auth-service
       AUTH_SERVICE_PORT: 3001
       # --- JWT (doit matcher auth-service) ---
-      JWT_SECRET: ${JWT_SECRET:-alkatra_jwt_dev_secret}
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
     depends_on:
       auth-service:
         condition: service_healthy
     networks:
       - alkatra-net
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/health/ready"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/api/v1/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -488,7 +531,7 @@ services:
     environment:
       NODE_ENV: development
       AUTH_SERVICE_PORT: 3001
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-alkatra_db}
+      DATABASE_URL: postgresql://auth_user:${AUTH_DB_PASSWORD:-auth_dev_pass}@postgres:5432/auth_db
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
@@ -496,9 +539,9 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-CHANGE_ME_REFRESH_SECRET_32_CHARS}
       JWT_ACCESS_EXPIRATION: 3600
       JWT_REFRESH_EXPIRATION: 2592000
-      OTP_TTL_SECONDS: 3600
+      OTP_TTL_SECONDS: 300
       OTP_MAX_ATTEMPTS: 3
-      OTP_BLOCK_DURATION_SECONDS: 3600
+      OTP_BLOCK_DURATION_SECONDS: 1800
       INFOBIP_API_KEY: ${INFOBIP_API_KEY:-}
       INFOBIP_BASE_URL: ${INFOBIP_BASE_URL:-https://api.infobip.com}
       INFOBIP_SENDER: ${INFOBIP_SENDER:-AlKatra}
@@ -521,62 +564,34 @@ services:
     profiles:
       - phase1
 
-
-    # ==========================================
-  # FARM SERVICE — Gestion des exploitations
-  # Phase 1
   # ==========================================
-
+  # FARM SERVICE — Farm, Parcels & Sensors CRUD
+  # ==========================================
   farm-service:
     build:
-      context: ./../../apps/farm-service
-      dockerfile: Dockerfile
-      target: development
-
+      context: ../..
+      dockerfile: ./apps/farm-service/Dockerfile
     container_name: alkatra-farm
-
     restart: unless-stopped
-
-    profiles:
-      - phase1
-
+    profiles: ["phase1"]
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgresql://farm_user:${FARM_DB_PASSWORD:-farm_dev_pass}@postgres:5432/farm_db
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
         condition: service_healthy
-
-    environment:
-      NODE_ENV: development
-
-      PORT: 3003
-
-      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-alkatra_postgres_pass}@postgres:5432/${POSTGRES_DB:-alkatra_db}
-
-      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
-
-
-    ports:
-      - "3003:3003"
-
-
-    volumes:
-      - ./../../apps/farm-service/src:/app/src
-
-
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--spider",
-          "-q",
-          "http://localhost:3003/health"
-        ]
-
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-
-
+      auth-service:
+        condition: service_healthy
     networks:
       - alkatra-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3003/api/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
