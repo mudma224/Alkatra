@@ -63,6 +63,18 @@ Déclenché uniquement si des fichiers dans `apps/ml-inference-service/**` ou `a
 
 ---
 
+
+## ci-auth.yml — Tests du service Auth
+
+Déclenché uniquement si des fichiers dans apps/auth-service/** ou packages/shared-types/** ont changé.
+
+Ce qu'il vérifie :
+
+lint TypeScript du service auth (npm run lint --workspace=apps/auth-service)
+tests Jest — auth.service.spec.ts (register/verify-otp/login/refresh, guards JWT) et otp.service.spec.ts (génération OTP, TTL, blocage après 3 échecs)
+build du service (npm run build --workspace=apps/auth-service)
+upload du rapport de couverture vers Codecov (optionnel, même pattern que ci-iot.yml)
+
 ## Lancer les vérifications en local avant de pousser
 
 ```bash
