@@ -603,45 +603,45 @@ services:
   # ==========================================
 # RECOMMENDATION SERVICE — API REST + Kafka Sync
 # ==========================================
-recommendation-service:
-  build:
-    context: ../..
-    dockerfile: ./apps/recommendation-service/Dockerfile
-    target: development
-  container_name: alkatra-recommendation
-  restart: unless-stopped
-  profiles: ["phase1"]
-  ports:
-    - "3004:3004"
-  environment:
-    NODE_ENV: development
-    PORT: 3004
-    DATABASE_URL: postgresql://recommendation_user:${RECOMMENDATION_DB_PASSWORD:-recommendation_dev_pass}@postgres:5432/recommendation_db
-    JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
-    KAFKA_BROKERS: kafka:9092
-    KAFKA_CLIENT_ID: recommendation-service
-    KAFKA_GROUP_ID: recommendation-sync-group
-    KAFKA_RECOMMENDATIONS_TOPIC: recommendations-generated
-    KAFKA_TOPIC_DLQ: recommendations-generated-dlq
-    KAFKA_CONSUMER_ENABLED: "true"
-    FARM_SERVICE_URL: http://farm-service:3003
-    FARM_SERVICE_TIMEOUT_MS: "5000"
-    CORS_ORIGINS: "*"
-  depends_on:
-    postgres:
-      condition: service_healthy
-    kafka:
-      condition: service_healthy
-    farm-service:
-      condition: service_healthy
-  volumes:
-    - ./../../apps/recommendation-service/src:/workspace/apps/recommendation-service/src
-  healthcheck:
-    test: ["CMD-SHELL", "wget --spider -q http://localhost:3004/health/ready || exit 1"]
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 40s
-  networks:
-    - alkatra-net
+  recommendation-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/recommendation-service/Dockerfile
+      target: development
+    container_name: alkatra-recommendation
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      DATABASE_URL: postgresql://recommendation_user:${RECOMMENDATION_DB_PASSWORD:-recommendation_dev_pass}@postgres:5432/recommendation_db
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: recommendation-service
+      KAFKA_GROUP_ID: recommendation-sync-group
+      KAFKA_RECOMMENDATIONS_TOPIC: recommendations-generated
+      KAFKA_TOPIC_DLQ: recommendations-generated-dlq
+      KAFKA_CONSUMER_ENABLED: "true"
+      FARM_SERVICE_URL: http://farm-service:3003
+      FARM_SERVICE_TIMEOUT_MS: "5000"
+      CORS_ORIGINS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      farm-service:
+        condition: service_healthy
+    volumes:
+      - ./../../apps/recommendation-service/src:/workspace/apps/recommendation-service/src
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3004/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - alkatra-net
 
