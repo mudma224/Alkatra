@@ -350,8 +350,7 @@ def main() -> None:
     print(f"   → {REGRESSOR_MODEL_NAME} : Production ✅")
     print(f"   → champ_bias_dict : artifact ✅")
     print()
-    print("Prochaine étape S4 : démarrer ml-inference-service")
-    print("  npm run docker:up")
+
 
 
 if __name__ == "__main__":
