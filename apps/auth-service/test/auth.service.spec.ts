@@ -20,7 +20,7 @@ describe('AuthService', () => {
     id: 'uuid-1',
     phone: '+212612345678',
     name: null,
-    preferredLanguage: 'fr',
+    preferredLanguage: 'french',
     otpAttempts: 0,
     otpBlockedUntil: null,
     lastLoginAt: null,
