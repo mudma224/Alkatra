@@ -31,7 +31,7 @@ COPY --from=builder /workspace/apps/user-service/dist ./apps/user-service/dist
 COPY --from=builder /workspace/apps/user-service/package*.json ./apps/user-service/
 COPY --from=builder /workspace/apps/user-service/node_modules ./apps/user-service/node_modules
 COPY --from=builder /workspace/packages/shared-types ./packages/shared-types
-COPY --from=builder /workspace/packages/shared-types/node_modules ./packages/shared-types/node_modules
+#COPY --from=builder /workspace/packages/shared-types/node_modules ./packages/shared-types/node_modules
 
 WORKDIR /workspace/apps/user-service
 EXPOSE 3002
