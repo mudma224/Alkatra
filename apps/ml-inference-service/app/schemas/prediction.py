@@ -1,5 +1,6 @@
 """Schémas Pydantic — Option 1 : /predict reçoit les 22 features."""
-from typing import List
+from datetime import datetime, timezone
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 # Ordre EXACT attendu par le modèle (identique à l'entraînement)
@@ -73,3 +74,15 @@ class PredictionResponse(BaseModel):
     top_factors: List[ShapFactor]
     demo_mode: bool
     model_version: str
+    # --- Champs alimentant le projection PostgreSQL (recommendation-service) ---
+    # Durée d'irrigation en minutes. Non calculable ici (dépend du débit et de la
+    # surface de la parcelle, absents du PredictionRequest) → laissé à None et
+    # potentiellement dérivé côté recommendation-service.
+    duration_minutes: Optional[int] = None
+    # Humidité du sol au moment de la génération (feature d'entrée).
+    soil_humidity_pct: Optional[float] = None
+    # Évapotranspiration de référence au moment de la génération (feature d'entrée).
+    eto: Optional[float] = None
+    # Horodatage de génération (ISO 8601 UTC). Sert de clé d'idempotence côté
+    # recommendation-service (parcel_id, generated_at).
+    generated_at: Optional[str] = None
