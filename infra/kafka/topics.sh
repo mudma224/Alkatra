@@ -34,6 +34,7 @@ create_topic "raw-sensor-data" 6 604800000
 create_topic "processed-sensor-data" 6 604800000
 create_topic "ml-inference-requests" 3 3600000
 create_topic "recommendations-generated" 3 86400000
+create_topic "recommendations-generated-dlq" 3 604800000
 create_topic "alerts-outbound" 3 86400000
 create_topic "sensor-anomalies" 2 604800000
 
