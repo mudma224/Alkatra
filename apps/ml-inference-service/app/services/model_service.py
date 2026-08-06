@@ -15,6 +15,7 @@ import logging
 import os
 import tempfile
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 import joblib
@@ -177,6 +178,12 @@ class ModelService:
             top_factors=top_factors,
             demo_mode=self.demo_mode,
             model_version="1.0.0",
+            # Champs projetés vers PostgreSQL par le recommendation-service.
+            # duration_minutes non calculable ici (débit/surface indisponibles).
+            duration_minutes=None,
+            soil_humidity_pct=req.humidite_sol_avant_pct,
+            eto=req.ET0_mm,
+            generated_at=datetime.now(timezone.utc).isoformat(),
         )
 
     def _build_feature_frame(self, req: PredictionRequest) -> pd.DataFrame:
