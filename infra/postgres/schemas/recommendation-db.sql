@@ -25,7 +25,12 @@ CREATE TABLE recommendations (
     status                   recommendation_status_enum DEFAULT 'pending',
     user_feedback            recommendation_feedback_enum,
     feedback_at              TIMESTAMP WITH TIME ZONE,
+    demo_mode                BOOLEAN NOT NULL DEFAULT FALSE,
     created_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    -- Idempotence : un replay Kafka ne doit pas créer de doublon pour une même
+    -- parcelle et un même instant de génération. Renforce la garde applicative
+    -- du DoubleWriteService (P15/P24).
+    UNIQUE (parcel_id, generated_at),
     CHECK (confidence_score BETWEEN 0 AND 1),
     CHECK (quantity_mm >= 0),
     CHECK (duration_minutes >= 0)
@@ -34,6 +39,9 @@ CREATE TABLE recommendations (
 CREATE INDEX idx_recommendations_parcel_id ON recommendations(parcel_id);
 CREATE INDEX idx_recommendations_generated_at ON recommendations(generated_at DESC);
 CREATE INDEX idx_recommendations_irrigate ON recommendations(irrigate);
+-- Index composite pour la requête findTodayByParcel (filtrage parcelle + journée).
+CREATE INDEX idx_recommendations_parcel_generated
+    ON recommendations(parcel_id, generated_at DESC);
 
 -- Set default privileges for future objects created by recommendation_user
 ALTER DEFAULT PRIVILEGES IN SCHEMA public 
