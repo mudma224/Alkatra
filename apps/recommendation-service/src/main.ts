@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { MetricsService } from './metrics/metrics.service';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -19,7 +20,11 @@ async function bootstrap(): Promise<void> {
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
-  app.useGlobalInterceptors(new LoggingInterceptor());
+  // Le LoggingInterceptor reçoit le MetricsService (singleton) pour alimenter
+  // les compteurs Prometheus.
+  app.useGlobalInterceptors(
+    new LoggingInterceptor(app.get(MetricsService)),
+  );
 
   app.enableCors({
     origin: config.get<string[]>('app.corsOrigins'),
