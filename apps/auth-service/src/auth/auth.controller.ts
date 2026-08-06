@@ -25,12 +25,6 @@ export class AuthController {
     return this.authService.verifyOtpAndAuthenticate(dto.phone, dto.otp);
   }
 
-  @Post('login')
-  @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    return this.authService.refreshSession(dto.phone, dto.refreshToken);
-  }
-
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(@Body() dto: LoginDto) {

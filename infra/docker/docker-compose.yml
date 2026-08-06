@@ -602,7 +602,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # ==========================================
+# ==========================================
 # RECOMMENDATION SERVICE — API REST + Kafka Sync
 # ==========================================
   recommendation-service:

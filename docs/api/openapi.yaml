@@ -1,0 +1,689 @@
+openapi: 3.0.3
+info:
+  title: Al Katra Bel Qatra API
+  version: "1.0.0"
+  description: API produit — Sprint 1 (Auth) + Sprint 2 (Farm & Parcels)
+
+servers:
+  - url: https://localhost/api/v1
+    description: >-
+      Cible production/Sprint 5 — via reverse proxy nginx (pas encore actif
+      avant Sprint 5, ne pas utiliser en Sprint 2)
+  - url: http://localhost:3003/api/v1
+    description: >-
+      farm-service en accès direct — utilisé en Sprint 2/dev local tant
+      que nginx n'est pas déployé
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Farms
+    description: Gestion des fermes et de leur ownership
+  - name: Parcels
+    description: Gestion des parcelles et surfaces agricoles
+  - name: Sensors
+    description: Association et suivi des capteurs
+
+paths:
+  /farms:
+    post:
+      operationId: createFarm
+      tags: [Farms]
+      summary: Créer une ferme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFarmRequest'
+      responses:
+        '201':
+          description: Ferme créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Farm'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listFarms
+      tags: [Farms]
+      summary: Lister les fermes de l'utilisateur connecté
+      responses:
+        '200':
+          description: Liste des fermes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FarmSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /farms/{id}:
+    get:
+      operationId: getFarm
+      tags: [Farms]
+      summary: Détail d'une ferme
+      parameters:
+        - $ref: '#/components/parameters/FarmId'
+      responses:
+        '200':
+          description: Détail ferme
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Farm'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateFarm
+      tags: [Farms]
+      summary: Mettre à jour une ferme
+      parameters:
+        - $ref: '#/components/parameters/FarmId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFarmRequest'
+      responses:
+        '200':
+          description: Ferme mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Farm'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteFarm
+      tags: [Farms]
+      summary: Supprimer une ferme
+      parameters:
+        - $ref: '#/components/parameters/FarmId'
+      responses:
+        '204':
+          description: Ferme supprimée
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /parcels:
+    post:
+      operationId: createParcel
+      tags: [Parcels]
+      summary: Créer une parcelle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateParcelRequest'
+      responses:
+        '201':
+          description: Parcelle créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parcel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /parcels/farm/{farmId}:
+    get:
+      operationId: listParcelsByFarm
+      tags: [Parcels]
+      summary: Lister les parcelles d'une ferme
+      parameters:
+        - name: farmId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Liste des parcelles de la ferme
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Parcel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /parcels/{id}:
+    get:
+      operationId: getParcel
+      tags: [Parcels]
+      summary: Détail d'une parcelle
+      parameters:
+        - $ref: '#/components/parameters/ParcelId'
+      responses:
+        '200':
+          description: Détail parcelle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parcel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateParcel
+      tags: [Parcels]
+      summary: Mettre à jour une parcelle
+      parameters:
+        - $ref: '#/components/parameters/ParcelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateParcelRequest'
+      responses:
+        '200':
+          description: Parcelle mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parcel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: deleteParcel
+      tags: [Parcels]
+      summary: Supprimer une parcelle
+      parameters:
+        - $ref: '#/components/parameters/ParcelId'
+      responses:
+        '204':
+          description: Parcelle supprimée
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sensors/associate:
+    post:
+      operationId: associateSensor
+      tags: [Sensors]
+      summary: Associer un capteur existant à une parcelle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssociateSensorRequest'
+      responses:
+        '200':
+          description: Association confirmée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorAssociation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Capteur non trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    FarmId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ParcelId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Non authentifié
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Accès refusé (ownership)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ressource non trouvée
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: >-
+        Règle métier violée — ex. la superficie totale des parcelles
+        d'une ferme dépasse la superficie déclarée de la ferme
+        (parcels.service.ts)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 422
+            message: "La superficie totale des parcelles dépasse la superficie de la ferme"
+            error: "Unprocessable Entity"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 404
+        message:
+          type: string
+          example: "Ferme non trouvée"
+        error:
+          type: string
+          example: "Not Found"
+
+    TypeCulture:
+      type: string
+      enum: [olive, citrus, cereal, vegetable, other]
+
+    TypeSol:
+      type: string
+      enum: [clay, silt, sandy, calcareous, mixed]
+
+    MethodeIrrigation:
+      type: string
+      enum: [drip, sprinkler, gravity]
+
+    GeoJsonPoint:
+      type: object
+      description: Point GeoJSON — coordonnées au format [longitude, latitude] (WGS84)
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Point]
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+          example: [-6.3498, 32.3373]
+
+    GeoJsonPolygon:
+      type: object
+      description: >-
+        Polygone GeoJSON — coordinates est une liste d'anneaux (linear rings),
+        chaque anneau une liste de positions [longitude, latitude], le premier
+        anneau étant le contour extérieur.
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Polygon]
+        coordinates:
+          type: array
+          items:
+            type: array
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items:
+                type: number
+
+    CreateFarmRequest:
+      type: object
+      required: [name, totalAreaHa]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+        location:
+          $ref: '#/components/schemas/GeoJsonPoint'
+
+    UpdateFarmRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+        location:
+          $ref: '#/components/schemas/GeoJsonPoint'
+
+    Farm:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+        location:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FarmSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+
+    CreateParcelRequest:
+      type: object
+      required: [name, areaHa, farmId, cropType, soilType, irrigationMethod]
+      properties:
+        farmId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Parcelle 1"
+        areaHa:
+          type: number
+          minimum: 0.01
+          example: 5.2
+        cropType:
+          $ref: '#/components/schemas/TypeCulture'
+        soilType:
+          $ref: '#/components/schemas/TypeSol'
+        irrigationMethod:
+          $ref: '#/components/schemas/MethodeIrrigation'
+        cropVariety:
+          type: string
+          maxLength: 100
+          nullable: true
+          example: "Arbequina"
+        flowRateM3h:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 2.5
+        treeAgeYears:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 10
+        treeDensityPerHa:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 400
+        centroid:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        polygon:
+          $ref: '#/components/schemas/GeoJsonPolygon'
+
+    UpdateParcelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 150
+          example: "Parcelle 1"
+        areaHa:
+          type: number
+          minimum: 0.01
+          example: 2.5
+        cropType:
+          $ref: '#/components/schemas/TypeCulture'
+        soilType:
+          $ref: '#/components/schemas/TypeSol'
+        irrigationMethod:
+          $ref: '#/components/schemas/MethodeIrrigation'
+        cropVariety:
+          type: string
+          maxLength: 100
+          example: "Picholine"
+        flowRateM3h:
+          type: number
+          minimum: 0
+          example: 15.5
+        treeAgeYears:
+          type: number
+          minimum: 0
+          example: 8
+        treeDensityPerHa:
+          type: number
+          minimum: 0
+          example: 300
+        centroid:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        polygon:
+          $ref: '#/components/schemas/GeoJsonPolygon'
+
+    Parcel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        farmId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Parcelle 1"
+        areaHa:
+          type: number
+          minimum: 0.01
+          example: 5.2
+        cropType:
+          $ref: '#/components/schemas/TypeCulture'
+        soilType:
+          $ref: '#/components/schemas/TypeSol'
+        irrigationMethod:
+          $ref: '#/components/schemas/MethodeIrrigation'
+        cropVariety:
+          type: string
+          maxLength: 100
+          nullable: true
+          example: "Arbequina"
+        flowRateM3h:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 2.5
+        treeAgeYears:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 10
+        treeDensityPerHa:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 400
+        centroid:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        polygon:
+          $ref: '#/components/schemas/GeoJsonPolygon'
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AssociateSensorRequest:
+      type: object
+      required: [deviceId, parcelId]
+      properties:
+        deviceId:
+          type: string
+          description: >-
+            Identifiant physique du capteur (device_id ESP32, ex.
+            "esp32-sim-001") — correspond à la colonne deviceId de
+            sensor.entity.ts, pas à l'UUID technique interne de la table sensors.
+          example: "esp32-sim-001"
+        parcelId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+
+    SensorAssociation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        deviceId:
+          type: string
+          example: "esp32-sim-001"
+        parcelId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        deviceType:
+          type: string
+          example: "esp32-wroom-32"
+        isActive:
+          type: boolean
+          example: true
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        batteryPct:
+          type: integer
+          nullable: true
+          example: 87
+        firmwareVersion:
+          type: string
+          nullable: true
+          example: "1.0.4"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
