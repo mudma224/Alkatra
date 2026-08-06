@@ -20,7 +20,7 @@ export class SensorsService {
     const { deviceId, parcelId } = associateDto;
 
     // 1. Vérifier que la parcelle appartient bien au user (via la relation Farm)
-    const parcel = await this.parcelsRepository.findOne({ where: { id: parcelId }, relations: ['farm'] });
+    const parcel = await this.parcelsRepository.findOne({ where: { id: parcelId }, relations: { farm: true } });
     if (!parcel) throw new HttpException('Parcelle introuvable pour association capteur.', HttpStatus.NOT_FOUND);
     if (parcel.farm.ownerId !== userId) throw new HttpException('Action interdite : la parcelle ne vous appartient pas.', HttpStatus.FORBIDDEN);
 
@@ -30,7 +30,7 @@ export class SensorsService {
     if (sensor) {
       // 3. Si le capteur existe déjà sur une autre parcelle, vérifier que l'ancienne parcelle appartient aussi à l'utilisateur
       if (sensor.parcelId !== parcelId) {
-        const oldParcel = await this.parcelsRepository.findOne({ where: { id: sensor.parcelId }, relations: ['farm'] });
+        const oldParcel = await this.parcelsRepository.findOne({ where: { id: sensor.parcelId }, relations: { farm: true } });
         if (oldParcel && oldParcel.farm.ownerId !== userId) {
           throw new HttpException(
             'Action interdite : le capteur appartient à une parcelle d\'un autre utilisateur.',
