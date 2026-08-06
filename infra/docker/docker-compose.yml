@@ -595,3 +595,54 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # ==========================================
+  # RECOMMENDATION SERVICE — Recommendations
+  # ==========================================
+    
+  recommendation-service:
+    build:
+      context: ./../../apps/recommendation-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: alkatra-recommendation
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      farm-service:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      # --- PostgreSQL dédié (architecture multi-bases) ---
+      DATABASE_URL: postgresql://recommendation_user:${RECOMMENDATION_DB_PASSWORD:-recommendation_dev_pass}@postgres:5432/recommendation_db
+      # --- MongoDB (source historique ML, lecture seule côté sync) ---
+      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-alkatra_dev_pass}@mongodb:27017/alkatra_iot?authSource=admin
+      # --- Kafka (bus de synchronisation double-write) ---
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_GROUP_ID: recommendation-sync-consumer
+      KAFKA_INPUT_TOPIC: recommendations-generated
+      KAFKA_SYNC_RETRY_INTERVAL_MS: 300000
+      # --- Ownership check cross-service (pas de FK possible, cf. ADR-003) ---
+      FARM_SERVICE_URL: http://farm-service:3003
+      # --- JWT (même secret que auth-service / farm-service) ---
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+    ports:
+      - "3004:3004"
+    volumes:
+      - ./../../apps/recommendation-service/src:/app/src
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/api/v1/health/ready"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - alkatra-net
+    profiles:
+      - phase1
