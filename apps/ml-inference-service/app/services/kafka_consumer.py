@@ -1,5 +1,5 @@
 """
-Consumer Kafka : processed-sensor-data (22 features Spark) → predict → MongoDB.
+Consumer Kafka : processed-sensor-data (22 features Spark) → predict → MongoDB + Kafka publish.
 Validation stricte : features manquantes = message rejeté (PAS de devinette).
 """
 import json
@@ -76,6 +76,16 @@ class MLKafkaConsumer:
             logger.exception("Erreur incrémentation métrique PREDICTIONS_TOTAL")
         if mongo_writer:
             mongo_writer.save(response, source="kafka")
+        
+        # Publier la prédiction sur Kafka
+        if settings.ENABLE_KAFKA_PRODUCER:
+            try:
+                from app.services.kafka_producer import kafka_producer
+                if kafka_producer:
+                    kafka_producer.publish(response)
+            except Exception as exc:
+                logger.error("Erreur publication Kafka pour parcel=%s: %s", parcel_id, exc)
+        
         KAFKA_MESSAGES_TOTAL.labels(status="ok").inc()
 
     def stop(self):
