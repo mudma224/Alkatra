@@ -1,4 +1,4 @@
-import { IsString, IsNumber, Min, IsOptional, IsEnum, MaxLength, ValidateNested, ArrayMinSize, ArrayMaxSize } from 'class-validator';
+import { IsString, IsNumber, Min, IsOptional, IsEnum, MaxLength, ValidateNested, ArrayMinSize, ArrayMaxSize, IsArray } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class GeoJsonPointDto {
@@ -14,9 +14,7 @@ class GeoJsonPointDto {
 class GeoJsonPolygonDto {
   @IsString()
   type: 'Polygon';
-
-  @ValidateNested({ each: true })
-  @Type(() => Object)
+  @IsArray()
   coordinates: number[][][];
 }
 
