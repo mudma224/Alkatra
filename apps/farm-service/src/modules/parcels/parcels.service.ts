@@ -63,7 +63,7 @@ export class ParcelsService {
   }
 
   async findOne(id: string, userId: string): Promise<Parcel> {
-    const parcel = await this.parcelsRepository.findOne({ where: { id }, relations: ['farm'] });
+    const parcel = await this.parcelsRepository.findOne({ where: { id }, relations: { farm: true } });
     if (!parcel) throw new HttpException('Parcelle introuvable.', HttpStatus.NOT_FOUND);
     if (parcel.farm.ownerId !== userId) throw new HttpException('Accès refusé à cette parcelle.', HttpStatus.FORBIDDEN);
     return parcel;
