@@ -11,6 +11,9 @@ Trois workflows GitHub Actions automatisent la vérification du code à chaque p
 | Common | `.github/workflows/ci-common.yml` | Push ou PR sur `main` / `develop` |
 | IoT | `.github/workflows/ci-iot.yml` | Modifications dans `apps/iot-service/` ou `packages/shared-types/` |
 | ML | `.github/workflows/ci-ml.yml` | Modifications dans `apps/ml-inference-service/` ou `apps/spark-jobs/` |
+| Farm | `.github/workflows/ci-farm.yml` | Modifications dans `apps/farm-service/`, `packages/shared-types/` ou `packages/shared-utils/` |
+| Recommendation | `.github/workflows/ci-recommendation.yml` | Modifications dans `apps/recommendation-service/` ou `packages/shared-types/` |
+| Spark | `.github/workflows/ci-spark.yml` | Modifications dans `apps/spark-jobs/` |
 
 ---
 
@@ -70,10 +73,46 @@ Déclenché uniquement si des fichiers dans apps/auth-service/** ou packages/sha
 
 Ce qu'il vérifie :
 
-lint TypeScript du service auth (npm run lint --workspace=apps/auth-service)
-tests Jest — auth.service.spec.ts (register/verify-otp/login/refresh, guards JWT) et otp.service.spec.ts (génération OTP, TTL, blocage après 3 échecs)
-build du service (npm run build --workspace=apps/auth-service)
-upload du rapport de couverture vers Codecov (optionnel, même pattern que ci-iot.yml)
+- lint TypeScript du service auth (npm run lint --workspace=apps/auth-service)
+- tests Jest — auth.service.spec.ts (register/verify-otp/login/refresh, guards JWT) et otp.service.spec.ts (génération OTP, TTL, blocage après 3 échecs)
+- build du service (npm run build --workspace=apps/auth-service)
+- upload du rapport de couverture vers Codecov (optionnel, même pattern que ci-iot.yml)
+
+## ci-farm.yml — Tests du service Farm
+
+Déclenché uniquement si des fichiers dans apps/farm-service/**, packages/shared-types/** ou packages/shared-utils/** ont changé.
+
+Ce qu'il vérifie :
+
+- build du package shared-types
+- lint TypeScript du service Farm
+- build du service
+- initialisation d'une base PostgreSQL/PostGIS de test
+- exécution des tests unitaires Jest
+- validation du build Docker du service
+
+## ci-recommendation.yml — Tests du service Recommendation
+
+Déclenché uniquement si des fichiers dans apps/recommendation-service/** ou packages/shared-types/** ont changé.
+
+Ce qu'il vérifie :
+
+- lint TypeScript
+- tests unitaires avec génération de la couverture de code
+- build du service
+- archivage du rapport de couverture (coverage) comme artifact GitHub pendant 7 jours
+- validation du build Docker (sans publication de l'image)
+
+## ci-spark.yml — Tests Spark (Feature Engineering)
+
+Déclenché uniquement si des fichiers dans apps/spark-jobs/** ont changé.
+
+Ce qu'il vérifie :
+
+- tests unitaires des fonctions de feature engineering sans cluster Spark (pytest -k "not spark and not kafka")
+- lint Python via ruff
+- validation du build Docker de l'image Spark
+- vérification que le conteneur peut démarrer
 
 ## Lancer les vérifications en local avant de pousser
 
