@@ -14,17 +14,19 @@ class Settings:
     # Kafka
     KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "kafka:9092")
     KAFKA_INPUT_TOPIC = os.getenv("KAFKA_INPUT_TOPIC", "processed-sensor-data")
+    KAFKA_OUTPUT_TOPIC = os.getenv("KAFKA_OUTPUT_TOPIC", "recommendations-generated")
     KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "ml-inference-group")
     KAFKA_AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET", "latest")
+    ENABLE_KAFKA_CONSUMER = os.getenv("ENABLE_KAFKA_CONSUMER", "true").lower() == "true"
+    ENABLE_KAFKA_PRODUCER = os.getenv("ENABLE_KAFKA_PRODUCER", "true").lower() == "true"
 
     # MongoDB
-    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://alkatra:alkatra_dev_pass@mongodb:27017/alkatra_iot?authSource=admin")
+    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://alkatra:[REDACTED]@mongodb:27017/alkatra_iot?authSource=admin")
     MONGO_DB = os.getenv("MONGO_DB", "alkatra_iot")
     MONGO_COLLECTION = os.getenv("MONGO_RECO_COLLECTION", "irrigation_recommendations")
 
     # Logique métier
     CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.35"))
-    ENABLE_KAFKA_CONSUMER = os.getenv("ENABLE_KAFKA_CONSUMER", "true").lower() == "true"
 
     # Model loading retry policy (seconds)
     MODEL_LOAD_RETRIES = int(os.getenv("MODEL_LOAD_RETRIES", "6"))
