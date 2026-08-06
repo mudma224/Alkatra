@@ -9,6 +9,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Consumer, Kafka, Producer } from 'kafkajs';
 import { PredictionEventDto } from '../dto/prediction-event.dto';
+import { MetricsService } from '../metrics/metrics.service';
 import { DoubleWriteService } from './double-write.service';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly doubleWrite: DoubleWriteService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -46,6 +48,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       await this.consumer.connect();
       await this.consumer.subscribe({ topic, fromBeginning: false });
       this.connected = true;
+      this.metrics.setKafkaConsumerConnected(true);
       this.logger.log(
         `Consumer Kafka connecté — topic="${topic}" group="${groupId}"`,
       );
@@ -70,6 +73,8 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       });
     } catch (err) {
       // Le service REST doit rester disponible même si Kafka est down
+      this.connected = false;
+      this.metrics.setKafkaConsumerConnected(false);
       this.logger.error(
         `Kafka indisponible au démarrage : ${(err as Error).message}. Le service continue en lecture seule.`,
       );
@@ -82,6 +87,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       parsed = JSON.parse(raw);
     } catch {
       this.logger.warn(`Message Kafka non-JSON ignoré : ${raw.slice(0, 120)}`);
+      this.metrics.recordKafkaMessage('invalid');
       await this.sendToDlq(dlqTopic, raw, 'JSON parse error');
       return;
     }
@@ -92,16 +98,20 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Message Kafka invalide ignoré : ${errors.map((e) => e.property).join(', ')}`,
       );
+      this.metrics.recordKafkaMessage('invalid');
       await this.sendToDlq(dlqTopic, raw, `Validation failed: ${errors.map((e) => e.property).join(', ')}`);
       return;
     }
 
     try {
       await this.doubleWrite.persist(dto);
+      this.metrics.recordKafkaMessage('ok');
     } catch (err) {
       this.logger.error(
         `Échec persistance recommandation parcel=${dto.parcel_id} : ${(err as Error).message}`,
       );
+      this.metrics.recordKafkaMessage('error');
+      this.metrics.recordPersistenceError();
       await this.sendToDlq(dlqTopic, raw, `Persistence error: ${(err as Error).message}`);
     }
   }
@@ -138,6 +148,8 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     }
     if (this.connected) {
       await this.consumer.disconnect();
+      this.connected = false;
+      this.metrics.setKafkaConsumerConnected(false);
       this.logger.log('Consumer Kafka déconnecté');
     }
   }
