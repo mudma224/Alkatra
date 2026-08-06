@@ -1,15 +1,14 @@
+import { JwtPayload } from '@alkatra/shared-types';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
-export interface JwtPayload {
-  sub: string;
-  phone?: string;
-  iat?: number;
-  exp?: number;
-}
-
+/**
+ * Utilisateur authentifié tel que rempli dans `req.user` après validation du JWT.
+ * `authorization` (header brut) est injecté a posteriori par le décorateur
+ * `@CurrentUser` afin de pouvoir être forwardé au farm-service.
+ */
 export interface AuthenticatedUser {
   userId: string;
   phone?: string;
