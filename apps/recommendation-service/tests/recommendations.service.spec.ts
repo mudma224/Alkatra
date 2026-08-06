@@ -124,6 +124,22 @@ describe('RecommendationsService', () => {
       expect(result.status).toBe('expired');
     });
 
+    it('autorise le changement d\'avis accepted → rejected', async () => {
+      repo.findOne.mockResolvedValue({ ...baseReco, status: 'accepted' });
+
+      const result = await service.submitFeedback(baseReco.id, { feedback: 'rejected' });
+
+      expect(result.status).toBe('rejected');
+    });
+
+    it('rejette un feedback non autorisé depuis un statut donné (accepted → accepted)', async () => {
+      repo.findOne.mockResolvedValue({ ...baseReco, status: 'accepted' });
+
+      await expect(
+        service.submitFeedback(baseReco.id, { feedback: 'accepted' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('rejette le feedback si le statut est executed (verrouillé)', async () => {
       repo.findOne.mockResolvedValue({ ...baseReco, status: 'executed' });
 
