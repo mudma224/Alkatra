@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     model_service.load()
     import app.services.mongo_writer as mw
+    
+    # Initialiser Kafka Producer
+    if settings.ENABLE_KAFKA_PRODUCER:
+        try:
+            import app.services.kafka_producer as kp
+            kp.kafka_producer = kp.KafkaRecommendationProducer()
+            logger.info("Kafka Producer démarré")
+        except Exception as exc:
+            logger.error("Erreur initialisation Kafka Producer: %s", exc)
+    
     if settings.ENABLE_KAFKA_CONSUMER and not model_service.demo_mode:
         try:
             mw.mongo_writer = mw.MongoWriter()
@@ -32,6 +42,11 @@ async def lifespan(app: FastAPI):
         ml_kafka_consumer.stop()
         if mw.mongo_writer:
             mw.mongo_writer.close()
+        # Fermer Kafka Producer
+        if settings.ENABLE_KAFKA_PRODUCER:
+            import app.services.kafka_producer as kp
+            if kp.kafka_producer:
+                kp.kafka_producer.close()
     except Exception:
         pass
 
@@ -59,6 +74,14 @@ def predict(req: PredictionRequest):
             source="http",
             result="irrigate" if response.should_irrigate else "no_irrigate",
         ).inc()
+        # Publier sur Kafka
+        if settings.ENABLE_KAFKA_PRODUCER:
+            try:
+                from app.services.kafka_producer import kafka_producer
+                if kafka_producer:
+                    kafka_producer.publish(response)
+            except Exception as exc:
+                logger.error("Erreur publication Kafka: %s", exc)
         return response
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=f"Feature manquante: {exc}")
