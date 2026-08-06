@@ -35,11 +35,11 @@ export class FarmsService {
   }
 
   async findAllByOwner(ownerId: string): Promise<Farm[]> {
-    return this.farmsRepository.find({ where: { ownerId }, relations: ['parcels'] });
+    return this.farmsRepository.find({ where: { ownerId }, relations: { parcels: true } });
   }
 
   async findOne(id: string, ownerId: string): Promise<Farm> {
-    const farm = await this.farmsRepository.findOne({ where: { id }, relations: ['parcels'] });
+    const farm = await this.farmsRepository.findOne({ where: { id }, relations: { parcels: true } });
     if (!farm) {
       throw new HttpException('Ferme introuvable dans la base de données.', HttpStatus.NOT_FOUND);
     }
