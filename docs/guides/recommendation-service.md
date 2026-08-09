@@ -1,6 +1,6 @@
 # `apps/recommendation-service` — Documentation factuelle
 
-> **Mise à jour : août 2026** — Cette documentation reflète l'état réel du code source, de la configuration et des tests. Elle est basée uniquement sur le code implémenté, pas sur les commentaires.
+> Cette documentation reflète l'état du code source, de la configuration et des tests. Elle est basée uniquement sur le code implémenté, pas sur les commentaires.
 
 ---
 
@@ -23,7 +23,7 @@
 15. [Tests](#15-tests)
 16. [Docker](#16-docker)
 17. [Ce que le service NE fait PAS](#17-ce-que-le-service-ne-fait-pas)
-18. [Limites constatées](#18-limites-constatées)
+18. [Comportements notables](#18-comportements-notables)
 19. [Résumé opérationnel](#19-résumé-opérationnel)
 
 ---
@@ -52,7 +52,7 @@
 
 - ❌ Il ne génère pas de recommandations (rôle du `ml-inference-service`)
 - ❌ Il ne persiste pas dans MongoDB (rôle du `ml-inference-service`)
-- ❌ Il ne calcule pas `duration_minutes` (laisse `null` — le débit/surface ne transitent pas dans le payload Kafka)
+- ❌ Il ne calcule pas `duration_minutes` : ce champ est alimenté depuis le payload Kafka (`event.duration_minutes ?? null`), donc laissé à `null` lorsque le producteur ne le fournit pas. Le `ml-inference-service` actuel laisse `duration_minutes` à `None` car il ne dispose pas du débit et de la surface dans la requête, mais le contrat Kafka le permet.
 - ❌ Il ne crée pas le schéma DB automatiquement (`synchronize: false`)
 
 ---
@@ -167,7 +167,7 @@ apps/recommendation-service/
 │   │
 │   ├── sync/
 │   │   ├── sync-consumer.service.ts      # Consumer Kafka + DLQ + métriques
-│   │   ├── double-write.service.ts       # Projection Kafka → PostgreSQL (idempotence)
+│   │   ├── double-write.service.ts       # Projection Kafka → PostgreSQL (idempotence). Le nom DoubleWriteService est hérité de l'architecture initiale ; le service actuel est une projection simple du topic Kafka `recommendations-generated` vers PostgreSQL (`recommendation_db`). MongoDB (`irrigation_recommendations`) est écrit par le `ml-inference-service`, pas par le recommendation-service.
 │   │   └── sync.module.ts               # Module sync (TypeORM + Explanation + Metrics)
 │   │
 │   ├── explanation/
@@ -375,9 +375,9 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | `src/recommendations/farm-client.service.ts` | Client HTTP farm-service + **circuit breaker** (`CLOSED`/`OPEN`/`HALF_OPEN`). Seuil : 5 échecs. Reset : 30 s. 403/404 = erreur métier (ne compte pas). Voir [sécurité](#8-authentification-et-sécurité). |
 | `src/sync/sync.module.ts` | Module sync. Importe `TypeOrmModule.forFeature([Recommendation])`, `ExplanationModule`, `MetricsModule`. Déclare `DoubleWriteService` + `SyncConsumerService`. |
 | `src/sync/sync-consumer.service.ts` | Consumer Kafka. `onModuleInit` : connecte consumer + producer DLQ (non bloquant). `handleMessage` : parse JSON → valide DTO → persiste. En cas d'échec → DLQ + métriques. Expose `isConnected()`. Voir [pipeline](#11-consumer-kafka-et-pipeline-de-persistance). |
-| `src/sync/double-write.service.ts` | Projection Kafka → PostgreSQL. **Idempotence** : vérifie `(parcelId, generatedAt)` avant insert. Génère les explications via `ExplanationService`. Mappe les champs (`duration_minutes`, `soil_humidity_pct`, `eto`, `demo_mode`). |
+| `src/sync/double-write.service.ts` | Projection Kafka → PostgreSQL. **Idempotence** : vérifie `(parcelId, generatedAt)` avant insert. Génère les explications via `ExplanationService`. Mappe les champs (`duration_minutes`, `soil_humidity_pct`, `eto`, `demo_mode`). Le nom `DoubleWriteService` est hérité de l'architecture initiale : le service actuel effectue une projection simple du topic Kafka `recommendations-generated` vers PostgreSQL (`recommendation_db`). L'écriture dans MongoDB (`irrigation_recommendations`) est effectuée par le `ml-inference-service`, pas par le recommendation-service. |
 | `src/explanation/explanation.service.ts` | Génère les textes d'explication FR/Darija + `reasonCode` à partir de `{ irrigate, quantityMm, confidenceScore, topFactors }`. |
-| `src/explanation/explanation.templates.ts` | Templates de raisons (`LOW_SOIL_MOISTURE`, `HIGH_ET0`, `NO_IRRIGATION_NEEDED`, etc.). |
+| `src/explanation/explanation.templates.ts` | Templates de raisons (`LOW_SOIL_MOISTURE`, `HIGH_WATER_DEFICIT`, `HIGH_EVAPOTRANSPIRATION`, `HIGH_TEMPERATURE`, `STRONG_WIND`, `RECENT_RAIN`, `SUFFICIENT_MOISTURE`, `MILD_WEATHER`, `GENERIC`). |
 | `src/metrics/metrics.module.ts` | Module Prometheus. Déclare `MetricsController` + `MetricsService`. Exporte `MetricsService`. |
 | `src/metrics/metrics.controller.ts` | Endpoint `/metrics`. `@Header('Content-Type', 'text/plain; version=0.0.4')`. Retourne `metricsService.format()`. |
 | `src/metrics/metrics.service.ts` | Registre en mémoire. Compteurs HTTP (par méthode/route/status), latence moyenne, Kafka (ok/error/invalid), gauge consumer, erreurs persistance. Sérialise au format Prometheus texte. Voir [observabilité](#12-observabilité-métriques-prometheus). |
@@ -574,6 +574,8 @@ SyncConsumerService.handleMessage(raw)
 ### Idempotence
 
 Avant chaque insert, `DoubleWriteService` vérifie si une ligne avec `(parcelId, generatedAt)` existe déjà. Si oui → log "doublon ignoré" + skip. Cette garde applicative est **renforcée par une contrainte `UNIQUE(parcel_id, generated_at)`** au niveau base de données — un replay Kafka ne peut pas créer de doublon même si la garde applicative est contournée.
+
+> **Note sur le nom `DoubleWriteService`** : ce nom est hérité de l'architecture initiale. Le service actuel effectue une projection simple du topic Kafka `recommendations-generated` vers PostgreSQL (`recommendation_db`). L'écriture dans MongoDB (`irrigation_recommendations`) est assurée par le `ml-inference-service`, pas par le recommendation-service.
 
 ### Dead Letter Queue (DLQ)
 
@@ -820,7 +822,7 @@ CMD ["node", "dist/src/main.js"]
 
 - ❌ Il ne génère pas de recommandations (rôle du `ml-inference-service`)
 - ❌ Il ne persiste pas dans MongoDB (rôle du `ml-inference-service`)
-- ❌ Il ne calcule pas `duration_minutes` (le débit/surface de la parcelle ne transitent pas dans le payload Kafka — laissé à `null`)
+- ❌ Il ne calcule pas `duration_minutes` : ce champ est alimenté depuis le payload Kafka (`event.duration_minutes ?? null`), donc laissé à `null` lorsque le producteur ne le fournit pas. Le `ml-inference-service` actuel laisse `duration_minutes` à `None` (débit et surface non disponibles dans la requête), mais le contrat Kafka autorise une valeur non nulle.
 - ❌ Il ne stocke pas `water_amount_raw_mm` et `bias_applied_mm` (déjà dans MongoDB)
 - ❌ Il n'expose pas de CRUD complet sur les recommandations (lecture + feedback + execute uniquement)
 - ❌ Il n'a pas de rate limiting
@@ -828,17 +830,14 @@ CMD ["node", "dist/src/main.js"]
 
 ---
 
-## 18. Limites constatées
+## 18. Comportements notables
 
-1. **`duration_minutes` toujours NULL** : Le débit d'irrigation et la surface de la parcelle ne sont pas disponibles dans le `PredictionRequest` du ml-inference-service. Ce champ reste `null` en base et dans l'API. Pour l'alimenter, il faudrait soit enrichir le payload Kafka, soit récupérer ces données depuis le farm-service.
+1. **Sémantique at-most-once du consumer Kafka** : Le consumer Kafka utilise `subscribe({ fromBeginning: false })` avec auto-commit, ce qui produit une sémantique at-most-once (un message peut être perdu en cas de crash après consommation mais avant persistance). L'idempotence applicative (`UNIQUE(parcel_id, generated_at)`) garantit néanmoins l'absence de doublons en base.
 
-2. **`demo_mode` non exposé dans le calcul de la recommandation du jour** : Le flag `demoMode` est persisté et retourné dans l'API, mais aucune logique ne filtre ou n'avertit spécifiquement les recommandations générées en mode démo côté frontend (à gérer côté client).
+2. **Incohérence de port pour `FARM_SERVICE_URL`** : La valeur par défaut `FARM_SERVICE_URL` dans `configuration.ts` est `http://localhost:3002` alors que le `docker-compose` met `http://farm-service:3003` (le port 3002 ne correspond pas au farm-service réel).
 
-3. **Pas de rate limiting** : Aucune protection contre les appels abusifs.
+3. **`autoLoadEntities: false` avec entités explicites** : Le module TypeORM utilise `autoLoadEntities: false` alors que `entities: [Recommendation]` est fourni explicitement.
 
-4. **Auto-commit Kafka** : Le consumer utilise l'auto-commit par défaut de kafkajs. En cas de crash après consommation mais avant persistance, un message peut être perdu (at-most-once). L'idempotence évite les doublons, mais pas les pertes.
-
-5. **DLQ producer non bloquant** : Si le producer DLQ échoue au démarrage, les messages invalides sont seulement loggés (perte potentielle de messages invalides non tracés dans Kafka).
 
 ---
 

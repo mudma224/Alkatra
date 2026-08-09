@@ -33,16 +33,22 @@ Le script `infra/mlflow/start.sh` est force en LF via `.gitattributes`:
 *.sh text eol=lf
 ```
 
-Le healthcheck utilise Python:
+Le healthcheck utilise Python sur l'endpoint racine de MLflow (le serveur ne expose pas de route `/health` dédiée) :
 
 ```yaml
-python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"
+python -c "import urllib.request; urllib.request.urlopen('http://localhost:5001/', timeout=5)"
 ```
 
-MLflow utilise Postgres comme backend store:
+MLflow utilise une base PostgreSQL dédiée comme backend store :
 
 ```text
-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+postgresql://mlflow_user:${MLFLOW_DB_PASSWORD}@postgres:5432/mlflow_db
+```
+
+Les artifacts sont stockés sur MinIO (compatible S3) :
+
+```text
+s3://mlflow-artifacts
 ```
 
 ## Consequences
@@ -51,7 +57,8 @@ Avantages:
 
 - MLflow reste stable sur Windows + Docker Desktop;
 - pas besoin d'installer `curl`;
-- variables Postgres partagees avec la stack via `.env`.
+- isolation de la base MLflow (`mlflow_db` / `mlflow_user`) du reste de la stack;
+- artifacts stockés sur un backend objet (MinIO), compatible avec un déploiement cloud ultérieur.
 
 Point d'attention:
 

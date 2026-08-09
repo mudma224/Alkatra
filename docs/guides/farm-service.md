@@ -1,6 +1,6 @@
 # `apps/farm-service` — Documentation factuelle
 
-> **Mise à jour : juillet 2026** — Cette documentation reflète l'état réel du code source, de la configuration et des tests. Elle est basée uniquement sur le code implémenté, pas sur les commentaires.
+> Cette documentation décrit le code source, la configuration et les tests de `farm-service`. Elle s'appuie uniquement sur le code implémenté, pas sur les commentaires.
 
 ---
 
@@ -23,7 +23,7 @@
 15. [Docker](#15-docker)
 16. [Configuration TypeScript et Jest](#16-configuration-typescript-et-jest)
 17. [Ce que le service NE fait PAS](#17-ce-que-le-service-ne-fait-pas)
-18. [Limites constatées](#18-limites-constatées)
+18. [Comportements notables](#18-comportements-notables)
 19. [Résumé opérationnel](#19-résumé-opérationnel)
 
 ---
@@ -122,156 +122,63 @@ apps/farm-service/
 │
 ├── src/
 │   ├── main.ts                           # Point d'entrée NestJS (CORS, ValidationPipe, filtre global)
-│   ├── main.d.ts                         # Déclaration compilée
-│   ├── main.js                           # JavaScript compilé
-│   ├── main.js.map                       # Source map
 │   ├── app.module.ts                     # Module racine (imports tous les modules)
-│   ├── app.module.d.ts                   # Déclaration compilée
-│   ├── app.module.js                     # JavaScript compilé
-│   ├── app.module.js.map                 # Source map
 │   │
 │   ├── config/
-│   │   ├── configuration.ts              # Configuration centralisée (registerAs 'app')
-│   │   ├── configuration.d.ts            # Déclaration compilée
-│   │   ├── configuration.js              # JavaScript compilé
-│   │   └── configuration.js.map          # Source map
+│   │   └── configuration.ts              # Configuration centralisée (registerAs 'app')
 │   │
 │   ├── database/
 │   │   ├── database.module.ts            # Module TypeORM (connexion PostgreSQL)
-│   │   ├── database.module.d.ts          # Déclaration compilée
-│   │   ├── database.module.js            # JavaScript compilé
-│   │   ├── database.module.js.map        # Source map
 │   │   └── entities/
 │   │       ├── farm.entity.ts            # Entité Farm (table farms)
-│   │       ├── farm.entity.d.ts          # Déclaration compilée
-│   │       ├── farm.entity.js            # JavaScript compilé
-│   │       ├── farm.entity.js.map        # Source map
 │   │       ├── parcel.entity.ts          # Entité Parcel (table parcels)
-│   │       ├── parcel.entity.d.ts        # Déclaration compilée
-│   │       ├── parcel.entity.js          # JavaScript compilé
-│   │       ├── parcel.entity.js.map      # Source map
-│   │       ├── sensor.entity.ts          # Entité Sensor (table sensors)
-│   │       ├── sensor.entity.d.ts        # Déclaration compilée
-│   │       ├── sensor.entity.js          # JavaScript compilé
-│   │       └── sensor.entity.js.map      # Source map
+│   │       └── sensor.entity.ts          # Entité Sensor (table sensors)
 │   │
 │   ├── auth/
 │   │   ├── auth-client.module.ts         # Module client auth (HttpModule + Passport)
-│   │   ├── auth-client.module.d.ts       # Déclaration compilée
-│   │   ├── auth-client.module.js         # JavaScript compilé
-│   │   ├── auth-client.module.js.map     # Source map
-│   │   ├── auth-client.service.ts        # Service d'appel HTTP vers auth-service
-│   │   ├── auth-client.service.d.ts      # Déclaration compilée
-│   │   ├── auth-client.service.js        # JavaScript compilé
-│   │   └── auth-client.service.js.map    # Source map
+│   │   └── auth-client.service.ts        # Service d'appel HTTP vers auth-service
 │   │
 │   ├── common/
 │   │   ├── decorators/
 │   │   │   ├── current-user.decorator.ts # Décorateur @CurrentUser()
-│   │   │   ├── current-user.decorator.d.ts
-│   │   │   ├── current-user.decorator.js
-│   │   │   ├── current-user.decorator.js.map
-│   │   │   ├── index.ts                  # Barrel export
-│   │   │   ├── index.d.ts
-│   │   │   ├── index.js
-│   │   │   └── index.js.map
+│   │   │   └── index.ts                  # Barrel export
 │   │   ├── filters/
 │   │   │   ├── all-exceptions.filter.ts  # Filtre d'erreurs global (format JSON français)
-│   │   │   ├── all-exceptions.filter.d.ts
-│   │   │   ├── all-exceptions.filter.js
-│   │   │   ├── all-exceptions.filter.js.map
-│   │   │   ├── index.ts                  # Barrel export
-│   │   │   ├── index.d.ts
-│   │   │   ├── index.js
-│   │   │   └── index.js.map
+│   │   │   └── index.ts                  # Barrel export
 │   │   ├── guards/
-│   │   │   ├── jwt-auth.guard.ts         # Guard JWT (extends AuthGuard('jwt'))
-│   │   │   ├── jwt-auth.guard.d.ts
-│   │   │   ├── jwt-auth.guard.js
-│   │   │   └── jwt-auth.guard.js.map
+│   │   │   └── jwt-auth.guard.ts         # Guard JWT (extends AuthGuard('jwt'))
 │   │   ├── strategies/
-│   │   │   ├── jwt.strategy.ts           # Stratégie Passport JWT (extraction Bearer)
-│   │   │   ├── jwt.strategy.d.ts
-│   │   │   ├── jwt.strategy.js
-│   │   │   └── jwt.strategy.js.map
+│   │   │   └── jwt.strategy.ts           # Stratégie Passport JWT (extraction Bearer)
 │   │   ├── types/
-│   │   │   ├── geojson.ts                # Types GeoJsonPoint, GeoJsonPolygon, GeoJsonPosition
-│   │   │   ├── geojson.d.ts
-│   │   │   ├── geojson.js
-│   │   │   └── geojson.js.map
+│   │   │   └── geojson.ts                # Types GeoJsonPoint, GeoJsonPolygon, GeoJsonPosition
 │   │   └── validators/                   # (vide — aucun fichier)
 │   │
 │   └── modules/
 │       ├── farms/
 │       │   ├── farms.controller.ts       # Controller /api/v1/farms (CRUD)
-│       │   ├── farms.controller.d.ts
-│       │   ├── farms.controller.js
-│       │   ├── farms.controller.js.map
 │       │   ├── farms.module.ts           # Module farms
-│       │   ├── farms.module.d.ts
-│       │   ├── farms.module.js
-│       │   ├── farms.module.js.map
 │       │   ├── farms.service.ts          # Service farms (logique métier + vérif auth)
-│       │   ├── farms.service.d.ts
-│       │   ├── farms.service.js
-│       │   ├── farms.service.js.map
 │       │   └── dto/
 │       │       ├── create-farm.dto.ts    # DTO création ferme
-│       │       ├── create-farm.dto.d.ts
-│       │       ├── create-farm.dto.js
-│       │       ├── create-farm.dto.js.map
-│       │       ├── update-farm.dto.ts    # DTO modification ferme
-│       │       ├── update-farm.dto.d.ts
-│       │       ├── update-farm.dto.js
-│       │       └── update-farm.dto.js.map
+│       │       └── update-farm.dto.ts    # DTO modification ferme
 │       │
 │       ├── parcels/
 │       │   ├── parcels.controller.ts     # Controller /api/v1/parcels (CRUD)
-│       │   ├── parcels.controller.d.ts
-│       │   ├── parcels.controller.js
-│       │   ├── parcels.controller.js.map
 │       │   ├── parcels.module.ts         # Module parcels
-│       │   ├── parcels.module.d.ts
-│       │   ├── parcels.module.js
-│       │   ├── parcels.module.js.map
 │       │   ├── parcels.service.ts        # Service parcels (logique + cohérence surfaces)
-│       │   ├── parcels.service.d.ts
-│       │   ├── parcels.service.js
-│       │   ├── parcels.service.js.map
 │       │   └── dto/
 │       │       ├── create-parcel.dto.ts  # DTO création parcelle
-│       │       ├── create-parcel.dto.d.ts
-│       │       ├── create-parcel.dto.js
-│       │       ├── create-parcel.dto.js.map
-│       │       ├── update-parcel.dto.ts  # DTO modification parcelle
-│       │       ├── update-parcel.dto.d.ts
-│       │       ├── update-parcel.dto.js
-│       │       └── update-parcel.dto.js.map
+│       │       └── update-parcel.dto.ts  # DTO modification parcelle
 │       │
 │       ├── sensors/
 │       │   ├── sensors.controller.ts     # Controller /api/v1/sensors (POST /associate)
-│       │   ├── sensors.controller.d.ts
-│       │   ├── sensors.controller.js
-│       │   ├── sensors.controller.js.map
 │       │   ├── sensors.module.ts         # Module sensors
-│       │   ├── sensors.module.d.ts
-│       │   ├── sensors.module.js
-│       │   ├── sensors.module.js.map
 │       │   ├── sensors.service.ts        # Service sensors (association/réassociation)
-│       │   ├── sensors.service.d.ts
-│       │   ├── sensors.service.js
-│       │   ├── sensors.service.js.map
 │       │   └── dto/
-│       │       ├── associate-sensor.dto.ts  # DTO association capteur
-│       │       ├── associate-sensor.dto.d.ts
-│       │       ├── associate-sensor.dto.js
-│       │       └── associate-sensor.dto.js.map
+│       │       └── associate-sensor.dto.ts  # DTO association capteur
 │       │
 │       └── health/
-│           ├── health.controller.ts      # Controller health (live + ready)
-│           ├── health.controller.d.ts
-│           ├── health.controller.js
-│           └── health.controller.js.map
+│           └── health.controller.ts      # Controller health (live + ready)
 │
 └── test/
     ├── farms.controller.spec.ts          # Tests unitaires du FarmsController
@@ -279,7 +186,7 @@ apps/farm-service/
     └── sensors.service.spec.ts           # Tests unitaires du SensorsService
 ```
 
-> **Note :** Les fichiers `.d.ts`, `.js` et `.js.map` sont des artefacts de compilation TypeScript. Les fichiers source de vérité sont les fichiers `.ts`.
+> **Note :** Le dossier `src/` ne contient que les fichiers source `.ts`. Les artefacts de compilation TypeScript (`.js`, `.d.ts`, `.js.map`) sont générés dans `dist/` par `nest build`.
 
 ---
 
@@ -425,7 +332,7 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 
 ### Détail par fichier source
 
-| Fichier | Rôle réel |
+| Fichier | Rôle |
 |---------|-----------|
 | `src/main.ts` | Point d'entrée NestJS. Active CORS (origines depuis `CORS_ORIGINS`, méthodes GET/POST/PUT/PATCH/DELETE/OPTIONS, credentials). Active `ValidationPipe` global (`whitelist`, `transform`, `forbidNonWhitelisted`, `enableImplicitConversion`). Active `AllExceptionsFilter` global. Active les shutdown hooks. Démarre sur le port `process.env.PORT` ou 3003. |
 | `src/app.module.ts` | Module racine. Importe `ConfigModule` (global, `load: [appConfig]`), `DatabaseModule`, `AuthClientModule`, `FarmsModule`, `ParcelsModule`, `SensorsModule`. Déclare `HealthController`. Fournit `AllExceptionsFilter` comme `APP_FILTER` global. |
@@ -443,7 +350,7 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | `src/common/types/geojson.ts` | Types TypeScript pour GeoJSON. `GeoJsonPosition` : `[number, number]` ou `[number, number, number]`. `GeoJsonPoint` : `{ type: 'Point', coordinates: GeoJsonPosition }`. `GeoJsonPolygon` : `{ type: 'Polygon', coordinates: GeoJsonPosition[][] }`. |
 | `src/modules/farms/farms.module.ts` | Module farms. Importe `TypeOrmModule.forFeature([Farm, Parcel])` et `AuthClientModule`. Déclare `FarmsController` et `FarmsService`. Exporte `FarmsService`. |
 | `src/modules/farms/farms.controller.ts` | Controller `/api/v1/farms`. `@UseGuards(JwtAuthGuard)`. 5 endpoints : POST (create), GET (findAll), GET/:id (findOne), PATCH/:id (update), DELETE/:id (remove). Utilise `@CurrentUser()` pour obtenir `userId`. |
-| `src/modules/farms/farms.service.ts` | Service farms. `create()` : vérifie l'utilisateur via `authClient.verifyUserExists()`, crée la ferme avec `ownerId = userId`. `findAllByOwner()` : `find({ where: { ownerId }, relations: ['parcels'] })`. `findOne()` : 404 si introuvable, 403 si pas propriétaire. `update()` : via `findOne` + `Object.assign` + `save`. `remove()` : compte les parcelles, 409 si > 0, sinon `remove`. |
+| `src/modules/farms/farms.service.ts` | Service farms. `create()` : vérifie l'utilisateur via `authClient.verifyUserExists()`, crée la ferme avec `ownerId = userId`. `findAllByOwner()` : `find({ where: { ownerId }, relations: { parcels: true } })`. `findOne()` : 404 si introuvable, 403 si pas propriétaire. `update()` : via `findOne` + `Object.assign` + `save`. `remove()` : compte les parcelles, 409 si > 0, sinon `remove`. |
 | `src/modules/farms/dto/create-farm.dto.ts` | DTO création ferme. Valide `name` (string, max 150), `totalAreaHa` (number, min 0.01), `region` (optionnel, string, max 100), `location` (optionnel, `GeoJsonPointDto` validé). |
 | `src/modules/farms/dto/update-farm.dto.ts` | DTO modification ferme. Tous les champs sont optionnels : `name?`, `totalAreaHa?`, `region?`, `location?`. |
 | `src/modules/parcels/parcels.module.ts` | Module parcels. Importe `TypeOrmModule.forFeature([Parcel, Farm])`. Déclare `ParcelsController` et `ParcelsService`. Exporte `ParcelsService`. |
@@ -638,7 +545,7 @@ if (parcelCount > 0) → 409 CONFLICT
 
 ```
 1. Vérifier que la parcelle cible existe et appartient à l'utilisateur
-   → parcel = findOne(parcelId, relations: ['farm'])
+   → parcel = findOne(parcelId, relations: { farm: true })
    → 404 si introuvable
    → 403 si parcel.farm.ownerId !== userId
 
@@ -884,7 +791,7 @@ module.exports = {
 
 | Fichier de test | Ce qu'il teste | Nombre de cas |
 |-----------------|----------------|---------------|
-| `test/farms.controller.spec.ts` | `FarmsController` — create, findAll, findOne, remove. Mock `FarmsService` et `AuthClientService`. Override `JwtAuthGuard`. | 7 cas |
+| `test/farms.controller.spec.ts` | `FarmsController` — create, findAll, findOne, remove. Mock `FarmsService` et `AuthClientService`. Override `JwtAuthGuard`. | 8 cas |
 | `test/parcels.service.spec.ts` | `ParcelsService` — create (succès, ferme inexistante, autre user, dépassement surface, doublon nom), findOne (succès, 404). Mock repositories. | 6 cas |
 | `test/sensors.service.spec.ts` | `SensorsService` — associate (nouveau capteur, réassociation, idempotence, 403 autre user, 404 parcelle, anti-vol capteur, doublon deviceId). Mock repositories. | 7 cas |
 
@@ -1061,27 +968,19 @@ CMD ["node", "dist/main.js"]
 
 ---
 
-## 18. Limites constatées
+## 18. Comportements notables
 
-### Problèmes potentiels
+### Observations
 
-1. **`deviceType` hardcodé** : Dans `SensorsService.associate`, le `deviceType` est forcé à `'esp32-wroom-32'` à la création. Aucun moyen de spécifier un autre type de capteur via l'API.
+1. **Double enregistrement du filtre global** : `AllExceptionsFilter` est enregistré à la fois via le provider `APP_FILTER` (dans `app.module.ts`) et via `app.useGlobalFilters()` (dans `main.ts`). Les deux mécanismes sont actifs simultanément.
 
-2. **Pas de gestion explicite des erreurs de contrainte unique** : Les erreurs PostgreSQL de type `duplicate key value violates unique constraint` (sur `device_id` ou `(farm_id, name)`) ne sont pas interceptées et remontent comme erreurs 500 génériques via le filtre global.
+2. **`deviceType` figé à la création du capteur** : Dans `SensorsService.associate`, le `deviceType` est forcé à `'esp32-wroom-32'` lors de la création d'un capteur. Le type d'appareil n'est pas configurable via l'API.
 
-3. **`verifyUserExists` uniquement à la création de ferme** : La vérification de l'utilisateur auprès de `auth-service` n'est faite que dans `FarmsService.create`. Les autres opérations (parcels, sensors) ne vérifient pas l'existence de l'utilisateur.
+3. **Utilisation de `.toPromise()`** : `auth-client.service.ts` emploie `.toPromise()` pour consommer les observables `HttpService`. Cette méthode est une API RxJS dépréciée.
 
-4. **Pas de rate limiting** : Aucune protection contre les appels abusifs.
+4. **`@nestjs/jwt` déclaré mais non utilisé** : La dépendance `@nestjs/jwt` est listée dans `package.json` mais le module `JwtModule` n'est pas importé. L'authentification JWT s'appuie directement sur `passport-jwt` via `PassportModule`.
 
-5. **`synchronize: false`** : Le schéma DB doit être créé manuellement avant de démarrer le service.
-
-6. **Dossier `validators/` vide** : Le dossier `src/common/validators/` existe mais ne contient aucun fichier.
-
-7. **Fichiers compilés dans `src/`** : Les fichiers `.js`, `.d.ts` et `.js.map` sont présents dans `src/` (artefacts de compilation). Ils devraient idéalement être dans `dist/` uniquement ou exclus du contrôle de version.
-
-8. **`getUserInfo` non utilisé** : La méthode `getUserInfo` de `AuthClientService` est implémentée mais n'est appelée nulle part dans le code.
-
-9. **Log de réassociation potentiellement incorrect** : Dans `SensorsService.associate`, le log de réassociation affiche `sensor.parcelId` après modification (`sensor.parcelId = parcelId`), donc l'ancienne parcelle n'est plus visible dans le log.
+5. **Log de réassociation** : Dans `SensorsService.associate`, le log de réassociation imprime la nouvelle parcelle (`sensor.parcelId` après réaffectation) au lieu de l'ancienne parcelle.
 
 ---
 
@@ -1099,11 +998,10 @@ CMD ["node", "dist/main.js"]
 | **Validation** | class-validator + class-transformer (ValidationPipe global) |
 | **Health checks** | `/api/v1/health/live` + `/api/v1/health/ready` (SELECT 1) |
 | **Métriques** | Aucune |
-| **Tests** | Jest (20 cas unitaires, mocks uniquement) |
+| **Tests** | Jest (21 cas unitaires, mocks uniquement) |
 | **Langage** | TypeScript 5.7 |
 | **Node.js** | 20 (Alpine) |
 | **Docker** | Multi-stage, utilisateur non-root, healthcheck sur `/ready` |
-| **Sprint** | Sprint 2 |
 
 ### Commandes essentielles
 

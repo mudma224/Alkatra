@@ -1,6 +1,6 @@
 # `apps/auth-service` — Documentation factuelle
 
-> **Mise à jour : juillet 2026** — Cette documentation reflète l'état réel du code source, de la configuration Docker et de l'intégration dans le docker-compose.
+> Cette documentation décrit le code source, la configuration Docker et l'intégration dans le docker-compose du service `auth-service`.
 
 ---
 
@@ -15,7 +15,7 @@
 7. [Sécurité : authentification OTP + JWT](#7-sécurité--authentification-otp--jwt)
 8. [Gestion des OTP (Redis)](#8-gestion-des-otp-redis)
 9. [Envoi SMS (Infobip)](#9-envoi-sms-infobip)
-10. [Module Keycloak (Phase 2)](#10-module-keycloak-phase-2)
+10. [Module Keycloak](#10-module-keycloak)
 11. [Profil utilisateur (interne et public)](#11-profil-utilisateur-interne-et-public)
 12. [Health checks](#12-health-checks)
 13. [Métriques Prometheus](#13-métriques-prometheus)
@@ -23,7 +23,7 @@
 15. [Tests](#15-tests)
 16. [Docker](#16-docker)
 17. [Dépendances et ordre de démarrage](#17-dépendances-et-ordre-de-démarrage)
-18. [Limites constatées](#18-limites-constatées)
+18. [Comportements notables](#18-comportements-notables)
 19. [Résumé opérationnel](#19-résumé-opérationnel)
 
 ---
@@ -40,12 +40,12 @@
 - Il envoie les SMS via l'API Infobip (ou log en développement)
 - Il expose un endpoint **interne** (`/internal/user`) utilisé par `user-service` pour lire/mettre à jour les profils
 - Il expose un endpoint **public** (`/api/v1/user/profile`) pour le profil de l'utilisateur connecté
-- Il prépare la migration future vers Keycloak (OIDC) en Phase 2
+- Il fournit un module Keycloak limité au diagnostic de configuration (realm et client)
 
 **Ce qu'il ne fait PAS :**
-- ❌ Il ne gère pas l'authentification via Keycloak (phase 2 uniquement, non activée)
-- ❌ Il n'a pas d'interface utilisateur (c'est une API REST pure)
-- ❌ Il ne stocke pas de mots de passe (authentification sans mot de passe via OTP SMS)
+- Il ne gère pas l'authentification via Keycloak (le module est en diagnostic uniquement)
+- Il n'a pas d'interface utilisateur (c'est une API REST pure)
+- Il ne stocke pas de mots de passe (authentification sans mot de passe via OTP SMS)
 
 ---
 
@@ -109,7 +109,7 @@ auth-service
 ├── Infobip (API SMS externe, via @nestjs/axios)
 │   └── POST /sms/2/text/advanced → envoi du code OTP
 │
-├── Keycloak (diagnostic uniquement, Phase 2)
+├── Keycloak (diagnostic uniquement)
 │   └── GET /admin/realms/{realm} → vérification existence realm
 │   └── GET /admin/realms/{realm}/clients → vérification existence client
 │
@@ -229,7 +229,7 @@ export default () => ({
 environment:
   NODE_ENV: development
   AUTH_SERVICE_PORT: 3001
-  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-alkatra_db}
+  DATABASE_URL: postgresql://auth_user:${AUTH_DB_PASSWORD}@postgres:5432/auth_db
   REDIS_HOST: redis
   REDIS_PORT: 6379
   REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
@@ -237,9 +237,9 @@ environment:
   JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-CHANGE_ME_REFRESH_SECRET_32_CHARS}
   JWT_ACCESS_EXPIRATION: 3600
   JWT_REFRESH_EXPIRATION: 2592000
-  OTP_TTL_SECONDS: 3600
+  OTP_TTL_SECONDS: 300
   OTP_MAX_ATTEMPTS: 3
-  OTP_BLOCK_DURATION_SECONDS: 3600
+  OTP_BLOCK_DURATION_SECONDS: 1800
   INFOBIP_API_KEY: ${INFOBIP_API_KEY:-}
   INFOBIP_BASE_URL: ${INFOBIP_BASE_URL:-https://api.infobip.com}
   INFOBIP_SENDER: ${INFOBIP_SENDER:-AlKatra}
@@ -281,7 +281,7 @@ environment:
 
 | Méthode | Route | Comportement |
 |---------|-------|-------------|
-| `GET` | `/health` | Retourne `{ status: "ok", service: "auth-service", phase: "placeholder — Phase 1 not implemented", timestamp }` |
+| `GET` | `/health` | Retourne `{ status: "ok", service: "auth-service", timestamp }`. Réponse statique utilisée par le healthcheck Docker. |
 
 ### Métriques (publique)
 
@@ -373,7 +373,7 @@ apps/auth-service/
 │   │   └── dto/
 │   │       └── verify-otp.dto.ts    # Validation téléphone + code OTP
 │   │
-│   ├── keycloak/            # Module Keycloak (Phase 2)
+│   ├── keycloak/            # Module Keycloak (diagnostic)
 │   │   ├── keycloak.module.ts
 │   │   ├── keycloak.config.ts     # Configuration Keycloak
 │   │   └── keycloak.service.ts    # Vérification realm/client (diagnostic)
@@ -392,9 +392,9 @@ apps/auth-service/
 │
 └── test/
     ├── auth.service.spec.ts    # Tests du AuthService
-    ├── auth.service.spec.js    # Ancien test JS (probablement obsolète)
+    ├── auth.service.spec.js    # Fichier JS non exécuté par Jest
     ├── otp.service.spec.ts     # Tests du OtpService
-    └── otp.service.spec.js     # Ancien test JS (probablement obsolète)
+    └── otp.service.spec.js     # Fichier JS non exécuté par Jest
 ```
 
 ### Détail par fichier
@@ -403,7 +403,7 @@ apps/auth-service/
 |---------|-----------|
 | `src/main.ts` | Point d'entrée NestJS. Active `ValidationPipe` global (whitelist, forbidNonWhitelisted, transform). Active CORS (toutes origines, credentials). Démarre sur le port configuré (défaut 3001). |
 | `src/app.module.ts` | Module racine. Importe `ConfigModule` (global, avec `configuration.ts`), `TypeOrmModule` (PostgreSQL, `synchronize: false`), `AuthModule`, `MetricsModule`, `OtpModule`, `KeycloakModule`, `UserModule`. Déclare `AppController`. |
-| `src/app.controller.ts` | Contrôleur racine. Expose `GET /health` — retourne un statut simple "placeholder" pour Docker healthcheck. |
+| `src/app.controller.ts` | Contrôleur racine. Expose `GET /health` — retourne une réponse statique pour le healthcheck Docker. |
 | `src/config/configuration.ts` | Fonction de configuration NestJS. Centralise toutes les variables d'environnement avec valeurs par défaut. Utilise `dotenv` via `ConfigModule.forRoot()`. |
 | `src/auth/auth.module.ts` | Module auth. Importe `TypeOrmModule.forFeature([UserEntity])`, `OtpModule`, `PassportModule`, `JwtModule.registerAsync()` (configuré avec `jwt.secret` et `jwt.accessExpiration`). Déclare `AuthController`, `AuthService`, `JwtStrategy`. Exporte `AuthService`. |
 | `src/auth/auth.controller.ts` | Controller auth. Préfixe `api/v1/auth`. 4 endpoints POST : `register`, `verify-otp`, `login`, `refresh`. Tous retournent `200 OK` (`@HttpCode(HttpStatus.OK)`). |
@@ -411,7 +411,7 @@ apps/auth-service/
 | `src/auth/strategies/jwt.strategy.ts` | Stratégie Passport JWT. Extrait du header `Authorization: Bearer`. Vérifie avec `jwt.secret`. Algorithme imposé : `HS256`. `validate()` retourne `{ userId: payload.sub, phone: payload.phone }`. |
 | `src/auth/strategies/jwt-auth.guard.ts` | Guard NestJS. `extends AuthGuard('jwt')`. |
 | `src/auth/decorators/current-user.decorator.ts` | Décorateur de paramètre `@CurrentUser()`. Extrait `request.user` du contexte HTTP. Utilisé dans `UserController` pour récupérer l'utilisateur authentifié. |
-| `src/auth/entities/user.entity.ts` | Entité TypeORM `UserEntity` mappée à la table `users`. Champs : `id` (UUID), `phone` (unique), `name` (nullable), `preferredLanguage` ('fr'/'ar'/'darija' par défaut 'fr'), `otpAttempts` (int, défaut 0), `otpBlockedUntil` (nullable), `lastLoginAt` (nullable), `keycloakId` (nullable), `createdAt`, `updatedAt`. |
+| `src/auth/entities/user.entity.ts` | Entité TypeORM `UserEntity` mappée à la table `users`. Champs : `id` (UUID), `phone` (unique), `name` (nullable), `preferredLanguage` ('french'/'arabic'/'darija' par défaut 'darija'), `otpAttempts` (int, défaut 0), `otpBlockedUntil` (nullable), `lastLoginAt` (nullable), `keycloakId` (nullable), `createdAt`, `updatedAt`. |
 | `src/auth/dto/register.dto.ts` | DTO `RegisterDto`. Valide que `phone` est un string non vide correspondant au format `+2126XXXXXXXX` ou `+2127XXXXXXXX`. |
 | `src/auth/dto/login.dto.ts` | DTO `LoginDto`. Valide `phone` (même format que register) et `refreshToken` (string non vide). |
 | `src/otp/otp.module.ts` | Module OTP. Importe `HttpModule` (pour axios). Déclare `OtpService`, `redisProvider`, `SmsProviderService`. Exporte `OtpService` et `SmsProviderService`. |
@@ -421,7 +421,7 @@ apps/auth-service/
 | `src/otp/dto/verify-otp.dto.ts` | DTO `VerifyOtpDto`. Valide `phone` (format marocain) et `otp` (exactement 6 chiffres). |
 | `src/keycloak/keycloak.module.ts` | Module Keycloak. Importe `HttpModule`. Déclare `KeycloakConfig` et `KeycloakService`. Exporte `KeycloakService`. |
 | `src/keycloak/keycloak.config.ts` | Configuration Keycloak. Getters pour `baseUrl`, `realm`, `clientId`, `adminUsername`, `adminPassword`. |
-| `src/keycloak/keycloak.service.ts` | **Service de diagnostic uniquement** (Phase 2). `getAdminToken()` obtient un token admin Keycloak via OIDC. `realmExists(realmName)` vérifie si un realm existe. `clientExists(realmName, clientId)` vérifie si un client existe. Non utilisé pour l'authentification réelle en Phase 1. |
+| `src/keycloak/keycloak.service.ts` | **Service de diagnostic uniquement**. `getAdminToken()` obtient un token admin Keycloak via OIDC. `realmExists(realmName)` vérifie si un realm existe. `clientExists(realmName, clientId)` vérifie si un client existe. Non utilisé pour l'authentification des utilisateurs. |
 | `src/user/user.module.ts` | Module utilisateur. Importe `TypeOrmModule.forFeature([UserEntity])`. Déclare `UserController`, `UserService`, `InternalUserController`, `InternalUserService`. Exporte les services. |
 | `src/user/user.service.ts` | Service utilisateur public. `getProfile(userId)` : lit l'utilisateur en base, retourne `{ id, phone, name, preferredLanguage, createdAt }`. Lance `NotFoundException` si introuvable. |
 | `src/user/user.controller.ts` | Controller utilisateur public. Préfixe `api/v1/user`. `GET /profile` protégé par `JwtAuthGuard`. Utilise `@CurrentUser()` pour obtenir l'utilisateur connecté. |
@@ -561,33 +561,23 @@ Content-Type: application/json
 
 ---
 
-## 10. Module Keycloak (Phase 2)
+## 10. Module Keycloak
 
-### État actuel
+### Rôle
 
-Le module Keycloak est présent mais **n'est pas utilisé pour l'authentification réelle**. Comme indiqué dans le commentaire du service :
-
-```
-/**
- * Préparation Phase 2 : ce service NE gère PAS l'authentification produit en Phase 1
- * (celle-ci repose sur le JWT natif NestJS, cf. auth.service.ts / jwt.strategy.ts).
- * Il permet uniquement de vérifier que le realm/client Keycloak sont bien configurés,
- * en amont de la bascule OIDC prévue en Phase 2.
- */
-```
+Le module Keycloak est présent dans le code source mais n'est pas utilisé pour l'authentification des utilisateurs, qui repose sur le JWT natif NestJS (cf. `auth.service.ts` / `jwt.strategy.ts`). Il sert uniquement à vérifier que le realm et le client Keycloak sont correctement configurés.
 
 ### Fonctions disponibles
 
-| Fonction | Description | Utilisation actuelle |
-|----------|-------------|---------------------|
-| `getAdminToken()` | Obtient un token admin Keycloak via OIDC (grant_type=password) | Diagnostic uniquement |
-| `realmExists(realmName)` | Vérifie si un realm existe dans Keycloak | Diagnostic uniquement |
-| `clientExists(realmName, clientId)` | Vérifie si un client OIDC existe | Diagnostic uniquement |
+| Fonction | Description | Utilisation |
+|----------|-------------|-------------|
+| `getAdminToken()` | Obtient un token admin Keycloak via OIDC (grant_type=password) | Diagnostic |
+| `realmExists(realmName)` | Vérifie si un realm existe dans Keycloak | Diagnostic |
+| `clientExists(realmName, clientId)` | Vérifie si un client OIDC existe | Diagnostic |
 
-### Stratégie
+### Stratégie d'authentification
 
-- **Phase 1** (actuelle) : authentification via JWT natif NestJS + OTP SMS
-- **Phase 2** (future) : migration vers Keycloak (OIDC) avec SSO
+L'authentification des utilisateurs s'appuie sur le JWT natif NestJS associé à l'OTP SMS. Le module Keycloak est conservé à des fins de diagnostic de configuration et n'intervient pas dans le flux d'authentification.
 
 ---
 
@@ -619,7 +609,7 @@ Le module Keycloak est présent mais **n'est pas utilisé pour l'authentificatio
   "id": "uuid-v4",
   "phone": "+212612345678",
   "name": "Ahmed",
-  "preferredLanguage": "fr",
+  "preferredLanguage": "darija",
   "createdAt": "2026-06-28T11:18:00.000Z"
 }
 ```
@@ -634,7 +624,6 @@ Le module Keycloak est présent mais **n'est pas utilisé pour l'authentificatio
 {
   "status": "ok",
   "service": "auth-service",
-  "phase": "placeholder — Phase 1 not implemented",
   "timestamp": "2026-07-13T10:00:00.000Z"
 }
 ```
@@ -669,7 +658,7 @@ Le module `metrics` expose des métriques Prometheus via `prom-client`.
 | `auth_otp_failed_total` | Counter | Nombre total d'échecs de vérification OTP |
 | `auth_login_total` | Counter | Nombre total de connexions (via refresh token) |
 | `auth_request_duration_seconds` | Histogram | Durée des requêtes HTTP (labels : method, route, status_code) |
-| `auth_users_total` | Gauge | Nombre total d'utilisateurs en base (non implémenté, toujours 0) |
+| `auth_users_total` | Gauge | Nombre total d'utilisateurs en base |
 
 ### Endpoint
 
@@ -678,7 +667,7 @@ GET /metrics
 Content-Type: text/plain; version=0.0.4; charset=utf-8
 ```
 
-> ⚠️ Les compteurs sont déclarés mais **ne sont pas incrémentés** dans le code actuel (pas d'appel à `.inc()` dans `auth.service.ts`). Les métriques resteront à 0 tant que ce n'est pas implémenté.
+> ⚠️ Les métriques sont déclarées mais ne sont pas incrémentées par la logique métier (pas d'appel à `.inc()` dans `auth.service.ts`). Les valeurs exposées restent à 0.
 
 ---
 
@@ -691,7 +680,7 @@ CREATE TABLE users (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone             VARCHAR(255) UNIQUE NOT NULL,
   name              VARCHAR(100) NULL,
-  preferred_language VARCHAR(10) DEFAULT 'fr',  -- 'fr', 'ar', 'darija'
+  preferred_language VARCHAR(10) DEFAULT 'darija',  -- 'darija', 'arabic', 'french'
   otp_attempts      INTEGER DEFAULT 0,
   otp_blocked_until TIMESTAMP NULL,
   last_login_at     TIMESTAMP NULL,
@@ -709,8 +698,8 @@ export class UserEntity {
   @PrimaryGeneratedColumn('uuid')  id: string;
   @Column({ unique: true })        phone: string;
   @Column({ type: 'varchar', length: 100, nullable: true }) name: string | null;
-  @Column({ type: 'varchar', length: 10, default: 'fr', name: 'preferred_language' })
-    preferredLanguage: 'fr' | 'ar' | 'darija';
+  @Column({ type: 'varchar', length: 10, default: 'darija', name: 'preferred_language' })
+    preferredLanguage: 'french' | 'arabic' | 'darija';
   @Column({ type: 'int', default: 0, name: 'otp_attempts' }) otpAttempts: number;
   @Column({ type: 'timestamp', nullable: true, name: 'otp_blocked_until' })
     otpBlockedUntil: Date | null;
@@ -741,8 +730,8 @@ npm run test:cov      # Avec couverture
 |-----------------|----------------|
 | `test/auth.service.spec.ts` | Tests du `AuthService` |
 | `test/otp.service.spec.ts` | Tests du `OtpService` |
-| `test/auth.service.spec.js` | Ancien test JS (probablement obsolète) |
-| `test/otp.service.spec.js` | Ancien test JS (probablement obsolète) |
+| `test/auth.service.spec.js` | Fichier JS non exécuté par la configuration Jest |
+| `test/otp.service.spec.js` | Fichier JS non exécuté par la configuration Jest |
 
 ---
 
@@ -814,7 +803,7 @@ auth-service:
   environment:
     NODE_ENV: development
     AUTH_SERVICE_PORT: 3001
-    DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-alkatra_db}
+    DATABASE_URL: postgresql://auth_user:${AUTH_DB_PASSWORD}@postgres:5432/auth_db
     REDIS_HOST: redis
     REDIS_PORT: 6379
     REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
@@ -822,9 +811,9 @@ auth-service:
     JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-CHANGE_ME_REFRESH_SECRET_32_CHARS}
     JWT_ACCESS_EXPIRATION: 3600
     JWT_REFRESH_EXPIRATION: 2592000
-    OTP_TTL_SECONDS: 3600
+    OTP_TTL_SECONDS: 300
     OTP_MAX_ATTEMPTS: 3
-    OTP_BLOCK_DURATION_SECONDS: 3600
+    OTP_BLOCK_DURATION_SECONDS: 1800
     INFOBIP_API_KEY: ${INFOBIP_API_KEY:-}
     INFOBIP_BASE_URL: ${INFOBIP_BASE_URL:-https://api.infobip.com}
     INFOBIP_SENDER: ${INFOBIP_SENDER:-AlKatra}
@@ -875,28 +864,39 @@ Tous les services sont sur le réseau Docker `alkatra-net` (bridge).
 
 ---
 
-## 18. Limites constatées
+## 17.bis. Ce que le service NE fait PAS
 
-### Bugs / Problèmes identifiés
+- Le service ne gère pas l'authentification OIDC via Keycloak (le module est en diagnostic uniquement).
+- Le service ne gère pas la suppression de comptes utilisateur.
+- Le service n'expose pas de route publique de mise à jour du profil (`PATCH /api/v1/user/profile` est délégué à user-service qui appelle l'endpoint interne).
+- Les métriques Prometheus sont déclarées mais non incrémentées par la logique métier.
 
-1. **Métriques Prometheus non incrémentées** : Les compteurs (`auth_otp_requests_total`, `auth_otp_verified_total`, `auth_otp_failed_total`, `auth_login_total`, `auth_users_total`) sont déclarés mais **jamais incrémentés** dans le code. Toutes les métriques resteront à 0.
+---
 
-2. **`auth_request_duration_seconds` non implémenté** : L'histogramme est déclaré mais aucun middleware/interceptor NestJS ne mesure la durée des requêtes. Aucune donnée ne sera collectée.
+## 18. Comportements notables
 
-3. **`auth_users_total` toujours à 0** : La gauge est déclarée mais aucune requête de comptage n'est faite vers PostgreSQL pour la mettre à jour.
+### Métriques Prometheus
 
-4. **Endpoint `/internal/user/:userId` sans authentification** : Comme indiqué dans le commentaire, cet endpoint est "accessible uniquement depuis le réseau Docker interne". En l'état, il n'a aucun guard — n'importe quel service sur le réseau Docker peut appeler cet endpoint.
+Les compteurs et histogrammes Prometheus (`auth_otp_requests_total`, `auth_otp_verified_total`, `auth_otp_failed_total`, `auth_login_total`, `auth_request_duration_seconds`, `auth_users_total`) sont déclarés dans `metrics.service.ts` mais ne sont pas incrémentés par la logique métier. Les valeurs exposées sur `/metrics` restent à 0.
 
-5. **OTP_TTL_SECONDS incohérent** : Dans `docker-compose.yml`, la valeur est `3600` (1h) alors que la valeur par défaut dans le code est `300` (5 min). Le docker-compose force donc un TTL d'1 heure, ce qui est long pour un code OTP.
+L'histogramme `auth_request_duration_seconds` n'est rattaché à aucun middleware ni interceptor mesurant la durée des requêtes. La gauge `auth_users_total` n'est rattachée à aucune requête de comptage vers PostgreSQL.
 
-6. **OTP_BLOCK_DURATION_SECONDS incohérent** : Dans `docker-compose.yml`, la valeur est `3600` (1h) alors que la valeur par défaut dans le code est `1800` (30 min).
+### Endpoint interne sans guard
 
-### Limitations fonctionnelles
+L'endpoint `/internal/user/:userId` (GET/PATCH) n'est protégé par aucun guard. Il est accessible à tout service présent sur le réseau Docker interne, ce qui est le mécanisme de confinement retenu (pas d'authentification applicative).
 
-7. **Pas de rate limiting** : Aucune protection contre les appels abusifs aux endpoints `/register` ou `/verify-otp`.
-8. **Pas de logout** : Aucun endpoint pour révoquer les tokens (le refresh token est utilisable jusqu'à expiration).
-9. **Keycloak non fonctionnel** : Le module Keycloak est présent mais n'est pas intégré à l'authentification réelle.
-10. **Tests JS obsolètes** : Les fichiers `test/auth.service.spec.js` et `test/otp.service.spec.js` sont probablement des vestiges d'une version précédente.
+### Sécurité applicative
+
+- Aucun mécanisme de rate limiting ne protège les endpoints `/register` et `/verify-otp`.
+- Aucun endpoint de logout n'est exposé : les refresh tokens restent valides jusqu'à leur expiration.
+
+### Module Keycloak
+
+Le module Keycloak est présent dans le code source mais n'est pas intégré au flux d'authentification. Ses fonctions (`getAdminToken`, `realmExists`, `clientExists`) servent uniquement à vérifier la configuration du realm et du client Keycloak.
+
+### Tests
+
+Les tests unitaires s'exécutent via Jest sur `auth.service.spec.ts` et `otp.service.spec.ts`. Les fichiers `.spec.js` présents dans le répertoire `test/` ne sont pas exécutés par la configuration Jest courante.
 
 ---
 
@@ -905,7 +905,7 @@ Tous les services sont sur le réseau Docker `alkatra-net` (bridge).
 | Caractéristique | Valeur |
 |----------------|--------|
 | **Type** | Microservice d'authentification (OTP SMS + JWT) |
-| **Framework** | NestJS 10 |
+| **Framework** | NestJS 11 |
 | **Port** | 3001 |
 | **Base de données** | PostgreSQL (TypeORM, table `users`) |
 | **Cache** | Redis (ioredis, OTP, tentatives, blocage) |

@@ -1,8 +1,8 @@
 # `apps/user-service` — Documentation factuelle
 
-> **Mise à jour : juillet 2026** — Cette documentation reflète l'état réel du code source et de la configuration Docker.  
-> Le service a été refondu : il ne contient plus TypeORM, ni d'entité `User`, ni de connexion directe à PostgreSQL.  
-> Il agit désormais comme un **proxy HTTP** vers `auth-service`.
+> Cette documentation décrit le code source et la configuration Docker de `user-service`.  
+> Le service ne contient pas TypeORM, ni d'entité `User`, ni de connexion directe à PostgreSQL.  
+> Il agit comme un **proxy HTTP** vers `auth-service`.
 
 ---
 
@@ -20,7 +20,7 @@
 10. [Tests](#10-tests)
 11. [Docker](#11-docker)
 12. [Dépendances et ordre de démarrage](#12-dépendances-et-ordre-de-démarrage)
-13. [Limites constatées](#13-limites-constatées)
+13. [Comportements notables](#13-comportements-notables)
 14. [Résumé opérationnel](#14-résumé-opérationnel)
 
 ---
@@ -40,6 +40,15 @@
 - ❌ Il **n'a pas d'entité `User`** — le profil est stocké et géré par `auth-service`.
 - ❌ Il **ne gère pas l'authentification** (login, OTP, inscription) — c'est le rôle de `auth-service`.
 - ❌ Il **n'envoie pas de SMS/email** — c'est le rôle de `auth-service`.
+
+### Chevauchement avec `auth-service`
+
+`user-service` agit comme un proxy / BFF public vers `auth-service`. Il ne possède aucune donnée : toutes les lectures et écritures transitent par les endpoints internes de `auth-service`.
+
+- `GET /api/v1/user/profile` est exposé à la fois par `auth-service` (qui détient la base de données) et par `user-service` (qui proxifie). `user-service` est l'entrée publique empruntée par les clients via la gateway ; `auth-service` expose l'endpoint interne `/internal/user/:userId` que `user-service` appelle.
+- `PATCH /api/v1/user/profile` n'est exposé publiquement **que** par `user-service`. Côté `auth-service`, l'opération n'est disponible que via l'endpoint interne, sans guard.
+
+La justification architecturale repose sur le principe « un service = une base de données ». `user-service` n'a pas de base de données et délègue l'intégralité de la persistance à `auth-service`.
 
 ---
 
@@ -202,7 +211,7 @@ Toutes les routes ci-dessous nécessitent un header `Authorization: Bearer <toke
 ```json
 {
   "name": "string (optionnel, max 100 caractères)",
-  "preferredLanguage": "string (optionnel, valeurs: 'fr' | 'ar' | 'darija')"
+  "preferredLanguage": "string (optionnel, valeurs: 'french' | 'arabic' | 'darija')"
 }
 ```
 
@@ -248,7 +257,7 @@ apps/user-service/
 │   │   └── jwt-auth.guard.ts # Guard NestJS pour protéger les routes
 │   │
 │   ├── farms/
-│   │   ├── farms.module.ts   # Module farms (placeholder)
+│   │   ├── farms.module.ts   # Module farms
 │   │   └── farms.controller.ts # Route GET /farms (NotImplemented)
 │   │
 │   ├── health/
@@ -275,7 +284,7 @@ apps/user-service/
 | `src/user/user.module.ts` | Module NestJS standard. Déclare `UserController` et `UserService`. |
 | `src/user/user.controller.ts` | Controller protégé par `JwtAuthGuard`. Expose `GET /user/profile` et `PATCH /user/profile`. Extrait `userId` de `req.user` (injecté par Passport après validation JWT). |
 | `src/user/user.service.ts` | **Cœur du proxy**. Construit l'URL `http://{AUTH_SERVICE_HOST}:{AUTH_SERVICE_PORT}/internal/user/{userId}`. Appelle `axios.get()` ou `axios.patch()`. Gère les erreurs : 404 → `NotFoundException`, autres → log + rethrow. |
-| `src/user/dto/update-profile.dto.ts` | DTO avec `class-validator`. Champs optionnels : `name` (string, max 100), `preferredLanguage` (enum: 'fr', 'ar', 'darija'). |
+| `src/user/dto/update-profile.dto.ts` | DTO avec `class-validator`. Champs optionnels : `name` (string, max 100), `preferredLanguage` (enum: 'french', 'arabic', 'darija'). |
 | `src/auth/auth.module.ts` | Importe `PassportModule` avec `defaultStrategy: 'jwt'`. Déclare `JwtStrategy`. Exporte `PassportModule`. |
 | `src/auth/jwt.strategy.ts` | Stratégie Passport JWT. Extrait le token du header `Authorization: Bearer`. Utilise `JWT_SECRET` comme clé HMAC. Algorithme imposé : `HS256`. La méthode `validate()` retourne `{ userId: payload.sub, phone: payload.phone }` qui est injecté dans `req.user`. |
 | `src/auth/jwt-auth.guard.ts` | Simple extension de `AuthGuard('jwt')` de `@nestjs/passport`. |
@@ -371,7 +380,7 @@ healthcheck:
   start_period: 40s
 ```
 
-> ⚠️ Le healthcheck Docker utilise le chemin `/health/ready` (sans le préfixe `api/v1`), ce qui est **correct** car le healthcheck s'exécute **à l'intérieur du container** et le préfixe global `api/v1` est bien appliqué par NestJS. La route effective est donc `/api/v1/health/ready` mais le healthcheck Docker appelle `http://localhost:3002/health/ready` — **cela ne fonctionnera pas** car le préfixe `api/v1` est manquant. C'est un bug à corriger.
+> Le healthcheck Docker appelle `http://localhost:3002/health/ready`, sans le préfixe global `api/v1` (la route complète exposée par NestJS est `/api/v1/health/ready`). Le chemin sans préfixe ne correspond à aucune route déclarée : le healthcheck ne renvoie donc pas un succès.
 
 ---
 
@@ -513,22 +522,17 @@ La résolution DNS interne permet à `user-service` d'accéder à `auth-service`
 
 ---
 
-## 13. Limites constatées
+## 13. Comportements notables
 
-### Bugs / Problèmes identifiés
+### Appels HTTP et orchestration
 
-1. **Healthcheck Docker invalide** : Le healthcheck dans `docker-compose.yml` appelle `http://localhost:3002/health/ready` mais la route réelle est `/api/v1/health/ready`. Le healthcheck échouera toujours. Correction : remplacer par `http://localhost:3002/api/v1/health/ready`.
+1. **Healthcheck Docker** : Le healthcheck déclaré dans `docker-compose.yml` appelle `http://localhost:3002/health/ready`, c'est-à-dire sans le préfixe global `api/v1`. La route exposée par NestJS est `/api/v1/health/ready` ; le chemin sans préfixe ne correspond à aucune route, le healthcheck ne renvoie donc pas un succès.
 
-2. **Pas de gestion des timeouts HTTP** : `UserService` utilise `axios` sans configuration de timeout. Si `auth-service` est lent ou bloqué, la requête peut rester pendante indéfiniment.
+2. **Absence de timeout / retry sur les appels HTTP** : `UserService` appelle `auth-service` via `axios` sans configuration de timeout ni de mécanisme de retry ou de circuit breaker. Une lenteur ou une indisponibilité de `auth-service` se propage directement aux requêtes de `user-service`, sans coupure ni nouvelle tentative.
 
-3. **Pas de retry/circuit breaker** : En cas d'échec de `auth-service`, l'erreur est simplement propagée. Aucun mécanisme de retry ou de circuit breaker n'est implémenté.
+3. **Compteurs Prometheus non incrémentés** : Les compteurs Prometheus sont déclarés dans le module `metrics` mais ne sont pas incrémentés par le code applicatif. L'endpoint `/api/v1/metrics` expose les métriques par défaut de `prom-client` (processus, Node.js) sans données métier.
 
-### Limitations fonctionnelles
-
-4. **Route `farms` non implémentée** : `GET /api/v1/farms` lance `NotImplementedException`.
-5. **Pas de pagination** : Aucune route de liste d'utilisateurs n'existe.
-6. **Pas de cache** : Chaque appel à `/user/profile` déclenche un appel HTTP à `auth-service`.
-7. **Pas de rate limiting** : Aucune protection contre les appels abusifs.
+4. **Route `farms` non implémentée** : `GET /api/v1/farms` lève une `NotImplementedException` et renvoie une réponse `501` avec le message `"Farms listing is not implemented yet"`.
 
 ---
 
