@@ -15,3 +15,20 @@ export interface RequestOtpResponse {
   message: string;
   expiresAt: string;
 }
+
+export interface VerifyOtpPayload {
+  phone: string;
+  otp: string;
+}
+
+export interface VerifyOtpResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType: string;
+  user: {
+    id: string;
+    phone: string;
+    createdAt: string;
+  };
+}
