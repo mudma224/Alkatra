@@ -83,6 +83,7 @@
   position: relative;
   z-index: 1;
   box-shadow: var(--shadow-card);
+  flex:1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -193,5 +194,6 @@
   /* Chevauchement réduit proportionnellement au hero desktop. */
   .card {
     margin-top: -120px;
+    flex:1;
   }
 }
