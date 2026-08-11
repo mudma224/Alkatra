@@ -1,0 +1,87 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-neutral-0);
+}
+
+.card {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: var(--spacing-xl) var(--spacing-lg);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.otpInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.expiration,
+.expired,
+.resend {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  text-align: center;
+}
+
+.expiration {
+  color: var(--color-neutral-grey);
+}
+
+.expired {
+  color: var(--color-error-500);
+}
+
+.resend {
+  color: var(--color-neutral-black);
+}
+
+.resendButton {
+  margin-left: var(--spacing-xs);
+  padding: 0;
+  border: none;
+  background: none;
+
+  font: inherit;
+  font-weight: var(--font-weight-button);
+  color: var(--color-accent-500);
+
+  cursor: pointer;
+}
+
+.resendButton:hover:not(:disabled) {
+  color: var(--color-primary-500);
+}
+
+.resendButton:focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.resendButton:disabled {
+  color: var(--color-neutral-grey);
+  cursor: not-allowed;
+}
+
+@media (min-width: 640px) {
+  .page {
+    align-items: center;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 480px;
+  }
+}
