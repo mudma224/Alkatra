@@ -12,22 +12,31 @@
   color: var(--color-neutral-black);
 }
 
+/* =========================================================================
+   Champ — conteneur flexible (input + prefix + icônes).
+   La hauteur passe de 52px à 49px pour s'aligner sur la maquette Figma
+   (4:938 qui dimensionne les inputs à height: 49).
+   ========================================================================= */
 .field {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  height: 52px;
+  height: 49px;
   padding: 0 var(--spacing-md);
   border-radius: var(--radius-input);
   border: 1px solid var(--color-neutral-grey);
-  background: var(--color-neutral-white);
-  transition: border-color 0.15s ease;
+  background: var(--color-neutral-0);
+  transition: border-color var(--transition-fast);
 }
 
 .field:focus-within {
+  border-color: var(--color-primary-500);
   border-width: 1.5px;
 }
 
+/* =========================================================================
+   États visuels (variants d'apparence) — alignés sur l'Input system Figma.
+   ========================================================================= */
 .default {
   border-color: var(--color-neutral-grey);
 }
@@ -37,9 +46,48 @@
 }
 
 .error {
-  border-color: var(--color-error-500);
+  border-color: var(--color-destructive-500);
 }
 
+/* =========================================================================
+   Variante search — icône loupe à gauche, bouton clear à droite.
+   Le bouton clear n'est affiché que si une valeur est présente.
+   ========================================================================= */
+.searchIcon {
+  flex-shrink: 0;
+  width: 19px;
+  height: 19px;
+  color: var(--color-neutral-grey);
+}
+
+.clearButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--color-neutral-grey);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: color var(--transition-fast);
+}
+
+.clearButton:hover {
+  color: var(--color-primary-500);
+}
+
+.clearButton:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   Préfixe (ex. "+212" pour le champ téléphone) — variante text uniquement.
+   ========================================================================= */
 .prefix {
   font-family: var(--font-family-base);
   font-size: var(--font-size-body);
@@ -47,6 +95,9 @@
   flex-shrink: 0;
 }
 
+/* =========================================================================
+   Input nu — hérite du style du champ conteneur.
+   ========================================================================= */
 .input {
   flex: 1;
   min-width: 0;
@@ -65,4 +116,5 @@
 
 .input:disabled {
   color: var(--color-neutral-grey);
+  cursor: not-allowed;
 }

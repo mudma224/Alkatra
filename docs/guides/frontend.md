@@ -1,152 +1,61 @@
-# Al Katra Bel Qatra — Frontend Documentation
+# Frontend — Documentation technique
 
-> **Méthodologie de cet audit** : ce document a été produit en reconstruisant réellement l'arborescence `frontend/` livrée par DEV1 (à partir du guide d'implémentation Phase A + B), puis en l'inspectant fichier par fichier — `package.json`, `tsconfig.json`, `vite.config.ts`, tous les fichiers `src/**` — et en exécutant réellement `npm install`, `npm run build`, `npm run dev` et `npm run test` pour vérifier ce qui fonctionne effectivement, plutôt que de se fier au guide Phase 1 prévisionnel. Toute divergence entre le code réel et les guides de planification (Sprint 4, stack technique prévue) est signalée explicitement ci-dessous, jamais masquée.
->
-> Légende utilisée dans ce document : ✅ Implemented · ⚠️ Partial · 🔵 Planned · ❌ Not implemented.
+## Table des matières
 
----
-
-## 1. Vue d'ensemble
-
-### Rôle du frontend
-
-Le frontend est l'application web/PWA destinée au fermier final. À ce stade réel du code (Phase A + B), **son seul rôle fonctionnel est l'écran de connexion par numéro de téléphone** : saisie du numéro, validation, et demande d'un code OTP auprès du backend. Aucun autre écran n'existe dans le code.
-
-### Objectif du MVP (tel que réellement livré)
-
-Livrer un écran de Login pixel-fidèle à la maquette Figma, connecté au vrai contrat de `auth-service` (`POST /api/v1/auth/register`), avec une architecture volontairement minimale et réutilisable pour que DEV2 puisse y greffer les écrans suivants (OTP, Farm, etc.) sans tout reconstruire.
-
-### Relation frontend / backend
-
-Le frontend appelle **directement** `auth-service` (`http://localhost:3001/api/v1`), sans passer par la `gateway` Nginx prévue dans `docker-compose.yml` — le fichier de configuration réel de cette gateway (`infra/nginx/nginx.conf`) n'a jamais été fourni à DEV1, et `auth-service` autorise déjà les requêtes cross-origin (`app.enableCors({ origin: true, credentials: true })` dans son `main.ts`), donc l'appel direct fonctionne sans configuration supplémentaire.
-
-**Point important vérifié dans le code** : l'écran de Login **n'appelle aucune API au chargement de la page** (aucun `useEffect` dans `LoginScreen.tsx`). L'appel réseau ne se déclenche qu'au clic sur « Envoyer OTP ». Le frontend peut donc être visualisé entièrement **sans que le backend soit démarré** — voir §16, étape 5.
-
-### Schéma d'architecture (adapté au code réel)
-
-Le code réel n'a **ni React Router, ni store Zustand, ni couche i18n**. Le schéma générique du brief est donc simplifié pour refléter ce qui existe vraiment :
-
-```
-User
- ↓
-React Frontend (Vite)
- ↓
-main.tsx → App.tsx
- ↓
-<LoginScreen />               (rendu unique, inconditionnel — pas de routing)
- ↓
-Components (Brand, Input, Button, ErrorMessage, LoadingSpinner)
- ↓
-Hook local (usePhoneNumber)   (pas de store global)
- ↓
-API Layer (src/api/client.ts, src/api/auth.api.ts)
- ↓
-auth-service (POST /api/v1/auth/register) — appelé directement, sans gateway
-```
+1. [Rôle du frontend](#1-rôle-du-frontend)
+2. [Architecture et flux](#2-architecture-et-flux)
+3. [Arborescence complète](#3-arborescence-complète)
+4. [Démarrage](#4-démarrage)
+5. [Configuration et variables d'environnement](#5-configuration-et-variables-denvironnement)
+6. [Stack technique](#6-stack-technique)
+7. [Design System](#7-design-system)
+8. [Écran Login (détail)](#8-écran-login-détail)
+9. [Flux d'authentification (login flow)](#9-flux-dauthentification-login-flow)
+10. [Couche API](#10-couche-api)
+11. [Tests](#11-tests)
+12. [Build et déploiement](#12-build-et-déploiement)
+13. [Conventions pour étendre le frontend](#13-conventions-pour-étendre-le-frontend)
+14. [Résumé opérationnel](#14-résumé-opérationnel)
 
 ---
 
-## 2. Stack technique réellement utilisée
+## 1. Rôle du frontend
 
-Versions relevées dans `frontend/package.json` (plages `^`) **et** versions réellement résolues lors d'un `npm install` exécuté pour cet audit (`node_modules/*/package.json` / `npm ls`). Comme les plages sont en `^`, les versions exactes installées par DEV2 pourront légèrement différer selon la date de son `npm install` — c'est un comportement normal de npm, pas une erreur.
+Le frontend est l'application web React + Vite + TypeScript de la plateforme Al Katra Bel Qatra. Il s'agit du point d'entrée destiné au fermier final. À ce stade, le frontend expose un seul écran : l'écran de connexion par numéro de téléphone (`LoginScreen`), qui permet la saisie d'un numéro marocain, sa validation et la demande d'un code OTP auprès du service `auth-service`.
 
-| Technologie | Plage déclarée (`package.json`) | Version résolue (audit) | Utilisation réelle |
-|---|---|---|---|
-| React | `^18.3.1` | 18.3.1 | Rendu de l'UI |
-| React DOM | `^18.3.1` | 18.3.1 | Rendu dans le DOM |
-| TypeScript | `^5.6.3` | 5.9.3 | Typage statique, `tsc -b` avant build |
-| Vite | `^5.4.9` | 5.4.21 | Dev server + bundler |
-| @vitejs/plugin-react | `^4.3.2` | 4.7.0 | Support JSX/Fast Refresh pour Vite |
-| Axios | `^1.7.7` | 1.19.0 | Client HTTP (`src/api/client.ts`) |
-| Vitest | `^2.1.3` | 2.1.9 | Test runner |
-| @testing-library/react | `^16.0.1` | 16.3.2 | Tests de composants |
-| @testing-library/jest-dom | `^6.5.0` | 6.9.1 | Matchers Jest-DOM pour Vitest |
-| jsdom | `^25.0.1` | 25.0.1 | Environnement DOM simulé pour les tests |
+Le package se nomme `alkatra-frontend` (`private: true`, `version: 0.1.0`, `type: module`). Il est intégré au monorepo : le `package.json` racine déclare `"workspaces": ["apps/*", "packages/*", "frontend/*"]`.
 
-**Écarts avec la stack "prévue" (guide Phase 1, Sprint 4)** — à ne pas documenter comme implémentés :
-
-| Techno prévue par le guide Phase 1 | État réel dans le code |
-|---|---|
-| Zustand (state management) | 🔵 Planned — absent de `package.json`, aucun store dans le code |
-| React Router | 🔵 Planned — absent de `package.json`, aucune route configurée |
-| i18next | 🔵 Planned — absent de `package.json`, textes FR codés en dur |
-| vite-plugin-pwa | 🔵 Planned — absent de `package.json`, aucun manifest, aucun service worker |
-| ESLint | ❌ Not implemented — aucun script `lint`, aucune dépendance ESLint dans `package.json` |
+Le frontend ne possède pas de routing : `App.tsx` rend `<LoginScreen>` de façon inconditionnelle. L'état est local aux composants (pas de store global). Les textes sont codés en dur en français.
 
 ---
 
-## 3. Structure réelle du frontend
+## 2. Architecture et flux
 
-Arborescence réellement présente (vérifiée fichier par fichier) :
+### Flux principal
 
 ```
-frontend/
-├── index.html
-├── package.json
-├── package-lock.json          (généré par npm install, pas versionné dans le guide source)
-├── tsconfig.json
-├── vite.config.ts
-├── .env.example
-├── src/
-│   ├── main.tsx
-│   ├── App.tsx
-│   ├── setupTests.ts
-│   ├── styles/
-│   │   ├── tokens.css
-│   │   └── global.css
-│   ├── types/
-│   │   ├── auth.types.ts
-│   │   └── api.types.ts
-│   ├── api/
-│   │   ├── client.ts
-│   │   └── auth.api.ts
-│   ├── hooks/
-│   │   └── usePhoneNumber.ts
-│   ├── components/
-│   │   ├── ui/
-│   │   │   ├── Button/
-│   │   │   │   ├── Button.tsx
-│   │   │   │   ├── Button.module.css
-│   │   │   │   └── Button.test.tsx
-│   │   │   ├── Input/
-│   │   │   │   ├── Input.tsx
-│   │   │   │   └── Input.module.css
-│   │   │   ├── LoadingSpinner/
-│   │   │   │   ├── LoadingSpinner.tsx
-│   │   │   │   └── LoadingSpinner.module.css
-│   │   │   └── ErrorMessage/
-│   │   │       ├── ErrorMessage.tsx
-│   │   │       └── ErrorMessage.module.css
-│   │   └── auth/
-│   │       └── Brand/
-│   │           ├── Brand.tsx
-│   │           └── Brand.module.css
-│   └── screens/
-│       └── auth/
-│           └── LoginScreen/
-│               ├── LoginScreen.tsx
-│               ├── LoginScreen.module.css
-│               └── LoginScreen.test.tsx
+Utilisateur
+   ↓
+React (Vite)  →  main.tsx  →  App.tsx
+   ↓
+<LoginScreen />   (rendu unique, inconditionnel — pas de routing)
+   ↓
+Composants (Brand, Input, Button, ErrorMessage, LoadingSpinner)
+   ↓
+Hook local (usePhoneNumber)   (état local au composant)
+   ↓
+Couche API (src/api/client.ts, src/api/auth.api.ts)
+   ↓
+auth-service (POST /api/v1/auth/register) — appel direct, sans gateway
 ```
 
+### Communication frontend / backend
 
-### Rôle de chaque dossier
+Le frontend appelle **directement** le service `auth-service` (`http://localhost:3001/api/v1`), sans transiter par la gateway Nginx. La base URL est configurable via la variable `VITE_API_BASE_URL`, avec une valeur codée en dur en secours (`http://localhost:3001/api/v1`). Le service `auth-service` autorise les requêtes cross-origin (CORS permissif : `origin: true, credentials: true`), ce qui rend l'appel direct fonctionnel sans configuration CORS supplémentaire côté frontend.
 
-| Dossier | Rôle | Fichiers présents | Dépendances importantes |
-|---|---|---|---|
-| `src/styles/` | Design tokens globaux (CSS custom properties) + reset minimal | `tokens.css`, `global.css` | Importés une seule fois dans `main.tsx` |
-| `src/types/` | Contrats TypeScript des payloads/réponses API | `auth.types.ts`, `api.types.ts` | Utilisés par `src/api/` |
-| `src/api/` | Couche HTTP — instance Axios + fonctions d'appel par domaine | `client.ts`, `auth.api.ts` | `axios`, `src/types/` |
-| `src/hooks/` | Logique réutilisable avec état local | `usePhoneNumber.ts` | Aucune dépendance externe |
-| `src/components/ui/` | Composants génériques réutilisables, sans logique métier | `Button`, `Input`, `LoadingSpinner`, `ErrorMessage` | `src/styles/tokens.css` (via variables CSS) |
-| `src/components/auth/` | Composants spécifiques au flux d'authentification (copy fixe) | `Brand` | — |
-| `src/screens/auth/LoginScreen/` | Écran complet — assemble composants, hook et API | `LoginScreen.tsx` | Tous les dossiers ci-dessus |
+L'écran `LoginScreen` ne déclenche aucun appel API au chargement de la page : il ne contient pas de `useEffect`. L'appel réseau se produit uniquement au clic sur le bouton « Envoyer OTP ». Le frontend est donc entièrement visualisable sans backend démarré.
 
----
-
-## 4. Architecture frontend
-
-### Communication entre les couches
+### Architecture des dépendances
 
 ```
 LoginScreen (screens/)
@@ -155,385 +64,110 @@ LoginScreen (screens/)
    └─ appelle → authApi.requestOtp() (api/)      → httpClient (Axios) → auth-service
 ```
 
-- **Screens** : `LoginScreen` est le seul écran. Il détient l'état de formulaire (`status`, `error`, `successNotice`) via `useState` local — pas de store partagé.
-- **Components** : purement présentationnels, pilotés par props (`state`, `disabled`, `loading`, etc.), aucun ne fait d'appel réseau lui-même.
-- **Hooks** : `usePhoneNumber` centralise le formatage, la normalisation et la validation du numéro — réutilisable si un futur écran a besoin d'un champ téléphone.
-- **Stores** : 🔵 Planned — aucun store Zustand n'existe. L'état est 100 % local au composant `LoginScreen`.
-- **API** : `src/api/client.ts` exporte une instance Axios unique (`httpClient`) ; `src/api/auth.api.ts` expose `authApi.requestOtp()`, seule fonction API existante.
-- **Types** : `RequestOtpPayload`, `RequestOtpResponse` (auth.types.ts) et `ApiErrorResponse` (api.types.ts) — c'est l'intégralité des types API actuellement définis.
+- **Screens** : `LoginScreen` détient l'état du formulaire (`status`, `error`, `successNotice`) via `useState` local.
+- **Components** : purement présentationnels, pilotés par props, aucun ne déclenche d'appel réseau.
+- **Hooks** : `usePhoneNumber` centralise le formatage, la normalisation et la validation du numéro.
+- **API** : `src/api/client.ts` exporte une instance Axios unique (`httpClient`) ; `src/api/auth.api.ts` expose `authApi.requestOtp()`.
+- **Types** : `RequestOtpPayload`, `RequestOtpResponse` (auth.types.ts) et `ApiErrorResponse` (api.types.ts).
 
 ---
 
-## 5. Design System
+## 3. Arborescence complète
 
-Toutes les valeurs ci-dessous sont extraites de `src/styles/tokens.css` — aucune valeur inventée.
+### `frontend/` (racine)
 
-### Couleurs
+```
+frontend/
+├── index.html                        HTML racine (lang="fr", titre, Google Fonts Inter)
+├── package.json                      Manifeste du package "alkatra-frontend"
+├── package-lock.json                 Lockfile npm
+├── tsconfig.json                     Config TypeScript racine (référence tsconfig.app/node)
+├── tsconfig.app.json                 Config TypeScript pour src/
+├── tsconfig.node.json                Config TypeScript pour la config Vite (non détaillé)
+├── tsconfig.tsbuildinfo              Artefact de build local (non suivi git)
+├── vite.config.ts                    Config Vite + Vitest
+├── eslint.config.js                  Config ESLint flat moderne
+├── setupTests.ts                     Setup Vitest (jest-dom)
+├── .env.example                      Modèle de variables d'environnement
+├── .gitignore                        Ignorés : logs, node_modules, dist, dist-ssr, *.local, .vscode/*, .idea, .DS_Store, etc.
+├── README.md                         Template Vite par défaut (non personnalisé pour Al Katra)
+├── public/
+│   ├── favicon.svg
+│   ├── icons.svg
+│   └── images/
+│       └── login-hero.jpg            Image hero du Login (3.5 Mo), référencée dans LoginScreen.module.css
+└── src/
+    └── ...                           (voir ci-dessous)
+```
 
-| Nom du token | Valeur hex | Usage réel dans le code |
-|---|---|---|
-| `--color-primary-500` | `#1B4332` | Titre, bordure input "filled", fond bouton actif |
-| `--color-accent-500` | `#94C857` | Lien "Réessayez.", lien "Sign up" |
-| `--color-error-500` | `#D32F2F` | Bordure input erreur, texte du message d'erreur |
-| `--color-neutral-black` | `#000000` | Texte du corps, préfixe "+212" |
-| `--color-neutral-white` | `#FFFFFF` | Fond de la carte, texte du bouton actif |
-| `--color-neutral-grey` | `#6B7280` | Bordure input par défaut, placeholder |
-| `--color-neutral-grey-light` | `#DDE5E1` | Fond du bouton désactivé |
+### `src/` (tous les fichiers suivis par git)
 
-Il n'y a **pas** de tokens `Success` / `Warning` / `Info` distincts dans le code — seuls Primary, Neutral, Accent et Error existent réellement.
+```
+src/
+├── main.tsx                          Bootstrap React (StrictMode, createRoot), import tokens.css + global.css
+├── App.tsx                           Rend <LoginScreen> inconditionnellement, callback onOtpRequested = console.info
+├── App.css                           (résidu template Vite, non importé)
+├── index.css                         (résidu template Vite, non importé)
+├── styles/
+│   ├── tokens.css                    Design tokens (CSS custom properties)
+│   └── global.css                    Reset minimal + styles globaux
+├── types/
+│   ├── auth.types.ts                 RequestOtpPayload, RequestOtpResponse
+│   └── api.types.ts                  ApiErrorResponse
+├── api/
+│   ├── client.ts                     httpClient (instance Axios)
+│   └── auth.api.ts                   authApi.requestOtp()
+├── hooks/
+│   └── usePhoneNumber.ts             Hook de gestion/formatage/validation du téléphone
+├── assets/                           (résidus template Vite)
+│   ├── hero.png                      (non utilisé — l'image active est dans public/images/)
+│   ├── react.svg
+│   └── vite.svg
+├── components/
+│   ├── ui/
+│   │   ├── Button/                   Button.tsx, Button.module.css, Button.test.tsx
+│   │   ├── Input/                    Input.tsx, Input.module.css
+│   │   ├── LoadingSpinner/           LoadingSpinner.tsx, LoadingSpinner.module.css
+│   │   └── ErrorMessage/             ErrorMessage.tsx, ErrorMessage.module.css
+│   └── auth/
+│       └── Brand/                    Brand.tsx, Brand.module.css
+└── screens/
+    └── auth/
+        └── LoginScreen/              LoginScreen.tsx, LoginScreen.module.css, LoginScreen.test.tsx
+```
 
-### Typographie
+### Rôle de chaque dossier
 
-| Token | Valeur | Origine |
-|---|---|---|
-| `--font-family-base` | `'Inter', system-ui, -apple-system, sans-serif` | Chargée via Google Fonts dans `index.html` |
-| `--font-size-title` | `24px` / `--font-weight-title: 500` | Titre "Al katra bel qatra" |
-| `--font-size-subtitle` | `12px` / `--font-weight-subtitle: 400` | Sous-titre |
-| `--font-size-label` | `16px` / `--font-weight-label: 500` | Label "Numéro de téléphone" |
-| `--font-size-body`, `--font-weight-body`, `--font-size-button`, `--font-weight-button`, `--font-size-error`, `--font-size-footer` | `16px`/`400`, `16px`/`600`, `13px`, `14px` | ⚠️ Valeurs déduites par DEV1 (non issues d'une spec Figma explicite), utilisées de façon cohérente |
-
-### Spacing / Radius
-
-| Token | Valeur |
+| Dossier | Rôle |
 |---|---|
-| `--radius-card` | `32px` |
-| `--radius-input` | `12px` |
-| `--radius-button` | `12px` |
-| `--spacing-xs` → `--spacing-xl` | `4px, 8px, 16px, 24px, 32px` |
-
-⚠️ Ces valeurs de layout sont également des choix de DEV1 (non extraites d'une spec chiffrée), à valider avec le design si besoin.
-
-### Boutons, inputs, cards — états réellement codés
-
-Voir §6.5 pour le détail exhaustif des états, ils sont identiques ici (Button/Input sont les seuls composants "form control" du design system actuel).
-
-### Comment réutiliser le design system pour un nouveau composant
-
-1. **Ne jamais écrire de couleur, taille ou espacement en dur.** Toujours consommer une variable CSS définie dans `src/styles/tokens.css` (ex. `color: var(--color-primary-500);`).
-2. Si une nouvelle valeur est nécessaire (nouvelle couleur, nouveau spacing), l'ajouter **dans `tokens.css`** avec un nom cohérent avec la convention existante (`--color-*`, `--font-size-*`, `--spacing-*`, `--radius-*`), pas directement dans le composant.
-3. Utiliser des **CSS Modules** (`NomDuComposant.module.css`), comme tous les composants existants — pas de `style={{ ... }}` inline, pas de CSS global en dehors de `styles/global.css`.
-4. Placer un nouveau composant générique (sans logique métier) sous `components/ui/`, un composant lié à un flux métier (ex. auth, farm) sous `components/<domaine>/`.
+| `src/styles/` | Design tokens (custom properties CSS) et reset minimal |
+| `src/types/` | Contrats TypeScript des payloads/réponses API |
+| `src/api/` | Couche HTTP — instance Axios + fonctions d'appel par domaine |
+| `src/hooks/` | Logique réutilisable avec état local |
+| `src/components/ui/` | Composants génériques réutilisables, sans logique métier |
+| `src/components/auth/` | Composants spécifiques au flux d'authentification |
+| `src/screens/auth/LoginScreen/` | Écran complet — assemble composants, hook et API |
 
 ---
 
-## 6. Login Screen — documentation détaillée
-
-### 6.1 Objectif
-
-Permettre au fermier de saisir son numéro de téléphone marocain et de déclencher l'envoi d'un code OTP via `auth-service`. C'est **la seule étape implémentée** du flux d'authentification — l'écran de saisie du code OTP n'existe pas encore (§9, §15).
-
-### 6.2 Structure
-
-Structure réelle, telle que rendue par `LoginScreen.tsx` :
-
-```
-LoginScreen (div.page)
- ├── Hero              (div.hero — actuellement un dégradé CSS, PAS une image réelle, voir 6.6)
- │
- ├── Card (main.card)
- │    ├── Brand          (titre + sous-titre)
- │    └── form.form
- │         ├── Input        (label "Numéro de téléphone", préfixe "+212")
- │         ├── Button        ("Envoyer OTP")
- │         ├── ErrorMessage  (conditionnel — affiché seulement si `error` est défini)
- │         └── <p> succès    (conditionnel — affiché seulement après une requête réussie)
- │
- └── Footer (footer.footer)
-      └── "Don't have an account ? Sign up"   (bouton statique, sans action)
-```
-
-### 6.3 Components utilisés
-
-| Composant | Fichier | Rôle | Props réelles | État interne | Interactions |
-|---|---|---|---|---|---|
-| `Brand` | `components/auth/Brand/Brand.tsx` | Affiche le titre et le sous-titre fixes | *(aucune prop)* | Aucun | Aucune |
-| `Input` | `components/ui/Input/Input.tsx` | Champ générique réutilisable, avec préfixe optionnel | `label?`, `state?` (`'default'\|'filled'\|'error'`), `prefix?`, `errorMessage?`, + toutes les props HTML natives d'`<input>` | Aucun (composant contrôlé, `forwardRef`) | `onChange`, focus visible au clavier |
-| `Button` | `components/ui/Button/Button.tsx` | Bouton générique avec état chargement | `loading?`, `disabled?`, + props HTML natives de `<button>` | Aucun | `onClick` (via `type="submit"` dans le formulaire), bloqué si `disabled` ou `loading` |
-| `LoadingSpinner` | `components/ui/LoadingSpinner/LoadingSpinner.tsx` | Spinner affiché dans `Button` pendant le chargement | `label?` | Aucun | Aucune (décoratif, `role="status"`) |
-| `ErrorMessage` | `components/ui/ErrorMessage/ErrorMessage.tsx` | Affiche un message d'erreur avec action optionnelle | `id?`, `message`, `actionLabel?`, `onAction?` | Aucun | `onClick` sur `actionLabel` (relance la requête) |
-
-### 6.4 Gestion du numéro de téléphone
-
-Toute la logique est centralisée dans `src/hooks/usePhoneNumber.ts` :
-
-- **Préfixe** : `+212` fixe, non éditable, affiché via la prop `prefix` de `Input`.
-- **Nombre de chiffres attendu** : 9 chiffres locaux (constante `LOCAL_DIGITS_LENGTH = 9`), tronqués automatiquement au-delà.
-- **Normalisation de la saisie** : `raw.replace(/\D/g, '').slice(0, 9)` — tout caractère non numérique est supprimé, quelle que soit la façon dont l'utilisateur tape ou colle le texte.
-- **Formatage d'affichage** : regroupement `3-2-2-2`, ex. `617 50 36 77` (fonction `formatLocalDigits`).
-- **Validation** : `MOROCCAN_PHONE_REGEX = /^\+212[67]\d{8}$/`, appliquée sur la valeur complète reconstruite `+212${digits}`. C'est exactement la regex utilisée côté backend dans `LoginDto`/`VerifyOtpDto` d'`auth-service`.
-- **Messages d'erreur** : géré dans `LoginScreen.tsx`, pas dans le hook — voir §6.5 et §7.
-- **État du bouton** : le bouton `Envoyer OTP` est désactivé **uniquement si le champ est vide** (`disabled={phone.isEmpty}`). Il reste actif même si le numéro est incomplet/invalide — la validation se déclenche au clic, pas en direct pendant la saisie (ce choix reproduit fidèlement les captures Figma fournies : un numéro incomplet + clic donne l'écran d'erreur avec un bouton toujours actif).
-
-### 6.5 États UI
-
-États réellement implémentés (vérifiés dans `Button.module.css`, `Input.module.css`, `LoginScreen.tsx`) :
-
-| État | Composant | Déclencheur réel dans le code |
-|---|---|---|
-| `default` | Input | `phone.isEmpty === true` → bordure grise `#6B7280` |
-| `filled` | Input | Champ non vide et pas d'erreur de validation → bordure verte `#1B4332` |
-| `error` | Input | `error?.type === 'validation'` → bordure rouge `#D32F2F` |
-| `disabled` (Input) | Input | `status === 'submitting'` → champ désactivé pendant l'envoi |
-| `disabled` (Button) | Button | `phone.isEmpty === true` → fond gris `#DDE5E1`, texte gris |
-| `loading` (Button) | Button | `status === 'submitting'` → spinner blanc, `aria-busy`, clics bloqués |
-| `focus` | Input, Button, liens | `:focus-visible` → contour visible (couleur primaire ou accent selon l'élément) |
-
-**Non implémentés / non pertinents ici** : il n'y a pas d'état `hover` explicitement défini par le design system pour l'Input (seul un `hover` inféré existe sur `Button.active` — assombrissement léger `#163a2b`, non issu d'une spec Figma). Aucun état `read-only` n'existe.
-
-### 6.6 Image Hero
-
-**Constat vérifié** : il n'existe **aucun fichier image réel** dans le repository livré (`public/` n'existe même pas, aucun `.png/.jpg/.svg/.webp` sous `src/`). La zone "hero" visible dans les captures Figma (photo + dégradé) est actuellement remplacée par un **placeholder purement CSS** :
-
-```css
-/* src/screens/auth/LoginScreen/LoginScreen.module.css */
-.hero {
-  height: 220px;
-  background-color: #d9e4d9; /* couleur de secours */
-  background-image: linear-gradient(180deg, rgba(27, 67, 50, 0.1), rgba(27, 67, 50, 0.55)),
-    var(--login-hero-image, none);
-  background-size: cover;
-  background-position: center;
-}
-```
-
-- **Où** : `div.hero` dans `LoginScreen.tsx`, stylée par `.hero` dans `LoginScreen.module.css`.
-- **Nom de fichier** : aucun — aucune image n'est importée.
-- **Import/référence** : la déclaration `var(--login-hero-image, none)` prévoit qu'une image soit injectée plus tard via une variable CSS (à définir, par ex. dans `tokens.css` ou en inline style), mais rien ne la définit actuellement — donc `none` s'applique et seul le dégradé de secours est visible.
-- **Overlay** : un dégradé vertical (`rgba(27,67,50,0.1)` → `rgba(27,67,50,0.55)`) est superposé, pour assurer la lisibilité si une vraie photo est ajoutée plus tard.
-- **`background-size`** : `cover`.
-- **`background-position`** : `center`.
-- **Comportement responsive** : la hauteur reste fixe à `220px` à toutes les tailles d'écran (aucune media query ne la modifie) ; seule la largeur du conteneur change (voir §11).
-
-**Impact concret pour DEV2** : à l'ouverture du Login Screen, la zone hero apparaît comme un bandeau vert clair uni (pas de photo) — c'est normal et attendu dans l'état actuel du code, pas un bug. Voir Known Issues.
-
----
-
-## 7. Login flow
-
-Flux réellement codé dans `LoginScreen.tsx`, vérifié étape par étape :
-
-```
-User enters phone (onChange → usePhoneNumber.setFromInput)
-       ↓
-Click "Envoyer OTP" (handleSubmit, si champ non vide et pas déjà en cours)
-       ↓
-Validation client (regex /^\+212[67]\d{8}$/)
-       ↓ invalide                              ↓ valide
-Erreur "Numéro de téléphone invalid."     status = 'submitting' (bouton → spinner, champ désactivé)
-(aucune requête envoyée)                        ↓
-                                          authApi.requestOtp({ phone })
-                                                 ↓
-                                    POST /api/v1/auth/register  (auth-service, port 3001)
-                                                 ↓ succès                     ↓ échec
-                            status='success' + message de confirmation   status='idle'
-                            onOtpRequested?.(phone, expiresAt)     "Impossible d'envoyer le code. Réessayez."
-                            (callback — aucune navigation réelle,   (message fixe, jamais l'erreur brute)
-                             voir §10)
-```
-
-### Détails vérifiés
-
-| Aspect | Valeur réelle |
-|---|---|
-| API appelée | `authApi.requestOtp()` — `src/api/auth.api.ts` |
-| Méthode HTTP | `POST` |
-| Endpoint | `/auth/register` (concaténé à la `baseURL`, donc `POST {VITE_API_BASE_URL}/auth/register`) |
-| Payload | `{ phone: string }` — ex. `{ "phone": "+212617503677" }` |
-| Réponse attendue | `{ success: true, message: string, expiresAt: string (ISO) }` |
-| Gestion des erreurs | Toute exception (réseau, 4xx, 5xx) est interceptée dans le `catch` de `submit()` ; l'erreur brute est loguée en `console.error` (jamais affichée), et le message fixe `"Impossible d'envoyer le code. Réessayez."` est affiché à la place |
-| Navigation après succès | ❌ Aucune navigation réelle — un message inline s'affiche et le callback optionnel `onOtpRequested(phone, expiresAt)` est appelé (par défaut, `App.tsx` se contente d'un `console.info`) |
-| Loading state | `status === 'submitting'` — champ désactivé, bouton en spinner, ré-entrance bloquée dans `handleSubmit` |
-
----
-
-## 8. API Layer
-
-Fichiers réellement présents sous `src/api/` : `client.ts` et `auth.api.ts` — **c'est l'intégralité de la couche API actuelle**.
-
-| Fonction | HTTP | Endpoint | Payload | Response | Utilisation |
-|---|---|---|---|---|---|
-| `authApi.requestOtp(payload)` | `POST` | `/auth/register` | `RequestOtpPayload { phone }` | `RequestOtpResponse { success, message, expiresAt }` | Appelée uniquement dans `LoginScreen.tsx`, au clic sur "Envoyer OTP" |
-
-### `httpClient`
-
-- Instance Axios unique, créée dans `src/api/client.ts`.
-- **Base URL** : `import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1'` — **une valeur de secours codée en dur existe**, donc la variable d'environnement n'est **pas obligatoire** pour que l'appel fonctionne en local (voir §13).
-- **Timeout** : `15000` ms.
-- **Headers par défaut** : `Content-Type: application/json`.
-
-### Interceptors / JWT / refresh token
-
-🔵 Planned — **aucun interceptor n'est configuré** (ni requête, ni réponse). Logique cohérente avec l'état actuel : aucun token n'existe encore côté frontend puisque l'écran OTP (qui recevrait le JWT) n'est pas implémenté. Il n'y a donc rien à intercepter pour l'instant.
-
-### Error handling
-
-Géré au niveau de l'appelant (`LoginScreen.tsx`), pas dans la couche API elle-même : `authApi.requestOtp()` ne fait aucune transformation d'erreur, elle laisse l'exception Axios remonter telle quelle. C'est `LoginScreen` qui décide de l'afficher (message fixe, jamais l'erreur brute — voir §7).
-
----
-
-## 9. State management
-
-❌ **Not implemented.** Aucune dépendance Zustand n'est présente dans `package.json`, aucun dossier `src/store/`. Tout l'état vit localement dans `LoginScreen.tsx` via trois `useState` :
-
-```
-LoginScreen (component)
-   ├─ phone   → usePhoneNumber()      (digits, formattedValue, fullPhone, isValid, isEmpty)
-   ├─ status  → useState<'idle'|'submitting'|'success'>
-   ├─ error   → useState<FormError | null>
-   └─ successNotice → useState<string | null>
-```
-
-Pas de persistance, pas de `localStorage`, pas d'état d'authentification global, pas de gestion de token — normal puisqu'aucun token n'est encore reçu par le frontend à ce stade (§8).
-
-Schéma générique demandé par le brief, adapté : il n'y a **pas** de "Store action" ni de "Store update" réels aujourd'hui, uniquement :
-
-```
-Component (LoginScreen)
-   ↓
-setState local (via useState / usePhoneNumber)
-   ↓
-Re-render du composant
-```
-
----
-
-## 10. Routing
-
-❌ **Not implemented.** Aucune dépendance `react-router-dom` (confirmé absente de `package.json` et de `node_modules` après `npm install`). `App.tsx` rend `<LoginScreen />` de façon **inconditionnelle**, sans notion de chemin (`path`) :
-
-```tsx
-function App() {
-  return <LoginScreen onOtpRequested={...} />;
-}
-```
-
-| Route | Screen | Protégée ? | Description |
-|---|---|---|---|
-| *(toutes, sans distinction)* | `LoginScreen` | Non | En l'absence de routeur, **toute URL servie par le serveur Vite affiche le même écran** — il n'existe pas de notion de route `/login` ou `/otp` dans le code |
-
-- **Route par défaut** : il n'y en a pas au sens propre — c'est le seul écran qui existe.
-- **Navigation** : aucune (pas de `<Link>`, pas de `navigate()`).
-- **Protected routes** : non applicable, aucun mécanisme d'auth-guard n'existe côté frontend.
-- **Redirects** : aucun.
-
-Le seul "seam" prévu pour la navigation future est la prop `onOtpRequested` de `LoginScreen` (voir §7) — un futur routeur pourra l'utiliser pour naviguer vers `/otp` sans modifier `LoginScreen` lui-même.
-
----
-
-## 11. Responsive design
-
-- **Stratégie** : mobile-first — les styles par défaut (sans media query) ciblent le mobile ; **une seule** media query élargit la mise en page au-delà.
-- **Breakpoints réellement présents dans le code** :
-
-| Breakpoint | Fichier | Effet réel |
-|---|---|---|
-| `@media (min-width: 640px)` | `LoginScreen.module.css` | `.page` centre son contenu, `.hero`/`.card`/`.footer` sont contraints à `max-width: 480px` |
-| `@media (prefers-reduced-motion: reduce)` | `LoadingSpinner.module.css` | Coupe l'animation du spinner |
-
-- **Comportement à 375px / 390px** : aucune media query dédiée à ces largeurs — le layout est fluide par défaut (colonne unique, `width: 100%`, hero à hauteur fixe `220px`), donc 375px et 390px se comportent de façon identique (pas de règle spécifique à l'un ou l'autre).
-- **Comportement desktop (≥640px)** : la carte, le hero et le footer sont recentrés avec une largeur maximale de `480px` — pas de mise en page "desktop" distincte, juste un plafond de largeur, conformément à la consigne de ne pas réinventer une maquette desktop.
-- **Règle importante** : aucune position `absolute`/`fixed` n'est utilisée pour la mise en page ; tout repose sur `flex` + `margin` négatif (pour le chevauchement carte/hero).
-
----
-
-## 12. PWA
-
-❌ **Not implemented — intégralement.**
-
-Vérifié : pas de dépendance `vite-plugin-pwa` dans `package.json`, pas de `manifest.json`, pas de `public/` (donc pas d'icônes), aucun enregistrement de service worker dans `main.tsx`, aucune configuration `VitePWA(...)` dans `vite.config.ts`.
-
-Il n'y a donc **rien à vérifier dans l'onglet Application de Chrome DevTools** aujourd'hui — l'application n'est pas installable, n'a pas de `theme-color`, pas de `display: standalone`, pas de cache offline. Ce sera à construire lors d'une itération future (voir Phase 1 / Sprint 4 prévu).
-
----
-
-## 13. Configuration et variables d'environnement
-
-| Variable | Obligatoire ? | Exemple (`.env.example`) | Utilisation |
-|---|---|---|---|
-| `VITE_API_BASE_URL` | **Non** — une valeur de secours est codée en dur dans `src/api/client.ts` (`http://localhost:3001/api/v1`) | `VITE_API_BASE_URL=http://localhost:3001/api/v1` | Base URL de tous les appels Axios (`httpClient`) |
-
-**Précision demandée par le brief** : pour afficher le Login Screen (sans cliquer sur "Envoyer OTP"), **aucune variable d'environnement n'est nécessaire** — la page se rend entièrement sans réseau. La variable ne devient pertinente qu'au moment où l'utilisateur soumet le formulaire et que le frontend a besoin de savoir quelle URL de backend contacter.
-
-Aucun secret n'est stocké côté frontend (aucun token, clé API, ou mot de passe dans le code ou dans `.env.example`).
-
----
-
-## 14. Scripts npm
-
-Scripts réellement définis dans `frontend/package.json` — **liste exhaustive, rien de plus n'existe** :
-
-| Script | Commande réelle | Fonctionne (vérifié lors de cet audit) ? |
-|---|---|---|
-| `npm run dev` | `vite` | ✅ Oui — serveur démarré, page servie, aucune erreur de transformation |
-| `npm run build` | `tsc -b && vite build` | ❌ **Non — échoue actuellement.** Voir Known Issues §K.1 |
-| `npm run preview` | `vite preview` | ⚠️ Non testé indépendamment lors de cet audit (dépend d'un `build` réussi au préalable, donc actuellement inutilisable tant que K.1 n'est pas corrigé) |
-| `npm run test` | `vitest run` | ✅ Oui — 8/8 tests passent (2 fichiers) |
-| `npm run test:watch` | `vitest` | Non testé en mode watch (équivalent de `test` sans l'option `run`) |
-
-**`npm run lint` n'existe pas** — aucun script `lint` n'est défini, et ESLint n'est pas une dépendance du projet. Ne pas exécuter cette commande, elle échouera avec `Missing script: "lint"`.
-
----
-
-## 15. État actuel du frontend
-
-| Fonctionnalité | État | Fichiers concernés |
-|---|---|---|
-| Setup React + Vite + TypeScript | ✅ | `package.json`, `vite.config.ts`, `tsconfig.json` |
-| Design tokens (couleurs, typographie) | ✅ | `src/styles/tokens.css` |
-| Image hero réelle (asset issu de Figma) | ❌ | — (placeholder CSS dans `LoginScreen.module.css`, voir §6.6) |
-| Composants UI (Button, Input, ErrorMessage, LoadingSpinner) | ✅ | `src/components/ui/` |
-| Composant Brand | ✅ | `src/components/auth/Brand/` |
-| Login Screen (saisie téléphone + soumission) | ✅ | `src/screens/auth/LoginScreen/` |
-| Validation téléphone (+212, 9 chiffres) | ✅ | `src/hooks/usePhoneNumber.ts` |
-| API client (Axios) | ✅ | `src/api/client.ts` |
-| Auth API — `requestOtp()` | ✅ | `src/api/auth.api.ts` |
-| Écran OTP | 🔵 Planned | — |
-| Écran Register / Sign up | 🔵 Planned | — (lien "Sign up" présent visuellement, sans action) |
-| Auth store (Zustand) | 🔵 Planned | — |
-| Routing (React Router) | 🔵 Planned | — |
-| i18n (FR/AR/Darija) | 🔵 Planned | — (FR codé en dur) |
-| PWA (manifest, service worker) | 🔵 Planned | — |
-| Farm screens | 🔵 Planned | — |
-| Recommendation screens | 🔵 Planned | — |
-| Tests unitaires (Vitest) | ✅ | `Button.test.tsx`, `LoginScreen.test.tsx` (8 tests, tous verts) |
-| `npm run build` | ❌ Cassé | voir Known Issues §K.1 |
-| `npm run lint` | ❌ Absent du projet | `package.json` |
-| Intégration monorepo (`turbo.json`, workspace racine) | ❌ | `frontend/` est livré comme package npm autonome, pas encore rattaché au monorepo Turborepo du projet |
-
----
-
-## 16. Guide DEV2 — lancer le frontend
+## 4. Démarrage
 
 ### Prérequis
 
-- **Node.js** : aucune contrainte n'est déclarée dans `package.json` (pas de champ `engines`), mais Vite 5 requiert Node.js **18+** (recommandé : Node 20 LTS ou plus récent — cet audit a été réalisé avec Node 22.22.2).
-- **npm** : fourni avec Node, aucune version minimale spécifique documentée dans le projet.
+- **Node.js** : aucune contrainte déclarée dans `package.json` (pas de champ `engines`), mais Vite 5 requiert Node.js 18+ (Node 20 LTS ou plus récent recommandé).
+- **npm** : fourni avec Node.
 - **Git** : pour récupérer le code.
-- Aucune autre dépendance système n'est requise pour lancer uniquement le frontend.
 
-### Étape 1 — Récupérer le code
-
-```bash
-git clone <url-du-repo>
-cd <nom-du-repo>
-git pull origin <votre-branche>
-```
-
-### Étape 2 — Se placer dans `frontend`
+### Installation
 
 ```bash
 cd frontend
-```
-
-### Étape 3 — Installer les dépendances
-
-```bash
 npm install
 ```
 
-À exécuter **dans `frontend/`**, pas à la racine du monorepo : à ce stade du code, `frontend/` est un package npm autonome (pas de `workspaces` racine le référençant), donc `npm install` doit être lancé directement dans ce dossier pour que `node_modules/` s'y crée.
+La commande crée un dossier `node_modules/` dans `frontend/`. Le package est intégré au monorepo via `"workspaces": ["apps/*", "packages/*", "frontend/*"]` dans le `package.json` racine ; l'installation peut donc être lancée soit dans `frontend/`, soit à la racine via npm workspaces.
 
-### Étape 4 — Configuration
+### Configuration
 
 ```bash
 cp .env.example .env
@@ -542,204 +176,554 @@ cp .env.example .env
 Contenu de `.env.example` :
 
 ```bash
+# auth-service is called directly (see guide §18) instead of through the gateway.
 VITE_API_BASE_URL=http://localhost:3001/api/v1
 ```
 
-Cette variable **n'est pas obligatoire** pour voir le Login Screen (§13) — une valeur de secours est déjà codée en dur dans `src/api/client.ts`. La copier reste une bonne pratique pour rendre la configuration explicite.
+Cette variable n'est pas obligatoire pour visualiser le Login Screen : une valeur de secours est codée en dur dans `src/api/client.ts`. La copier rend la configuration explicite.
 
-### Étape 5 — Backend : nécessaire ou non ?
-
-**Le Login Screen peut être visualisé sans démarrer le backend.** Confirmé dans le code : `LoginScreen.tsx` ne contient aucun `useEffect` ni aucun appel API au chargement — la page se rend uniquement à partir de son état local.
-
-Le backend (`auth-service`, port `3001`) n'est nécessaire que si vous voulez tester le clic sur **"Envoyer OTP"** jusqu'au bout (sinon vous obtiendrez l'écran d'erreur "Impossible d'envoyer le code. Réessayez.", ce qui est un comportement correct et attendu si le backend n'est pas lancé).
-
-### Étape 6 — Lancer le frontend
+### Lancer le serveur de développement
 
 ```bash
 npm run dev
 ```
 
-Port réel confirmé (`vite.config.ts` ne redéfinit pas `server.port`, donc c'est le défaut Vite) :
+Le serveur démarre sur le port par défaut de Vite (`vite.config.ts` ne redéfinit pas `server.port`) :
 
 ```
 http://localhost:5173
 ```
 
-### Étape 7 — Voir le Login Screen
+### Visualiser sans backend
 
-Ouvrir :
-
-```
-http://localhost:5173/
-```
-
-Aucune autre route n'existe (§10) — cette seule URL affiche déjà le Login Screen dans son intégralité.
-
-### Étape 8 — Vérification visuelle
-
-```
-□ Page chargée
-□ Bandeau "hero" visible (⚠️ actuellement un aplat vert dégradé, PAS une photo — normal, voir §6.6)
-□ Titre "Al katra bel qatra" + sous-titre visibles
-□ Champ "Numéro de téléphone" visible, avec préfixe "+212"
-□ Bouton "Envoyer OTP" visible, grisé tant que le champ est vide
-□ Saisie d'un chiffre → le bouton devient vert foncé et le champ passe en bordure verte
-□ Bas de page "Don't have an account ? Sign up" visible
-□ Aucune erreur dans la console du navigateur au chargement
-```
+L'écran `LoginScreen` se rend intégralement sans backend démarré : aucun `useEffect`, aucun appel réseau au chargement. Le backend `auth-service` (port `3001`) n'est nécessaire que pour tester le clic sur « Envoyer OTP » jusqu'au bout ; sans backend, ce clic produit l'écran d'erreur « Impossible d'envoyer le code. Réessayez. », ce qui est le comportement attendu.
 
 ---
 
-## 17. Troubleshooting DEV2
+## 5. Configuration et variables d'environnement
 
-### `npm install` échoue
+### Variables Vite
 
-Causes possibles :
-- Node.js trop ancien (< 18) → mettre à jour Node.
-- Cache npm corrompu → `npm cache clean --force` puis réessayer.
-- Exécuté à la racine du monorepo au lieu de `frontend/` → se replacer dans `frontend/` (§16, étape 2/3).
+| Variable | Obligatoire ? | Exemple (`.env.example`) | Utilisation |
+|---|---|---|---|
+| `VITE_API_BASE_URL` | Non — valeur de secours codée en dur dans `client.ts` | `VITE_API_BASE_URL=http://localhost:3001/api/v1` | Base URL de tous les appels Axios (`httpClient`) |
 
-### `npm run dev` échoue
+Aucun secret n'est stocké côté frontend.
 
-- Vérifier que `npm install` a bien été exécuté dans `frontend/` (dossier `node_modules/` présent).
-- Lire l'erreur affichée dans le terminal — Vite affiche généralement une erreur de syntaxe ou d'import précise.
+### Configuration TypeScript (tsconfig split)
 
-### `npm run build` échoue
+La configuration TypeScript est répartie en trois fichiers :
 
-**C'est un comportement connu et actuel du projet — voir Known Issues §K.1.** Ce n'est pas une erreur d'installation de DEV2. `npm run dev` continue de fonctionner normalement malgré cet échec de build.
+**`tsconfig.json`** (racine) — options principales :
 
-### Port 5173 déjà utilisé
-
-```bash
-# Libérer le port, ou lancer sur un autre port :
-npm run dev -- --port 5174
-```
-
-### Page blanche
-
-- Ouvrir la console du navigateur (F12) et regarder les erreurs JS.
-- Vérifier le terminal où tourne `npm run dev` pour une erreur de compilation Vite.
-- Vérifier qu'aucune route particulière n'est demandée dans l'URL — il n'y a pas de routing (§10), donc toute URL doit afficher le même contenu ; une page blanche indique une vraie erreur JS, pas un problème de route.
-
-### Image Hero absente
-
-**Normal, pas un bug d'installation.** Aucune image n'existe dans le repository (§6.6) — ni dans `public/` (qui n'existe pas), ni dans `src/assets/` (qui n'existe pas non plus). La zone hero affiche un dégradé CSS de secours. Rien à corriger côté installation.
-
-### API errors
-
-- **Frontend running** (`npm run dev` actif) mais **backend non démarré** → cliquer sur "Envoyer OTP" affichera `Impossible d'envoyer le code. Réessayez.` — c'est le comportement attendu (§7), pas un bug.
-- **Backend running** mais requête toujours en échec → vérifier que `auth-service` répond bien sur `http://localhost:3001/health`, et que `VITE_API_BASE_URL` (ou la valeur de secours) pointe vers le bon port.
-- **CORS** : non pertinent ici — `auth-service` autorise déjà toutes les origines (§1), aucune configuration CORS côté frontend n'est nécessaire ou présente.
-
----
-
-## 18. Workflow Dev1 → Dev2
-
-```
-Dev1
- ↓ développe
-Frontend components/screens (composants ui/, Brand, LoginScreen)
- ↓ commit + push
-Git branch (ex. feature/login-screen)
- ↓ pull request / merge
-Dev2
- ↓
-git pull
- ↓
-cd frontend && npm install
- ↓
-npm run dev   (vérifie que le Login Screen s'affiche toujours correctement)
- ↓
-Develop Farm screens (nouveaux dossiers, réutilisation des composants ui/)
-```
-
-### Commandes Git utiles
-
-```bash
-git status
-git pull origin <branche>
-git checkout -b feature/<nom-de-la-fonctionnalite>
-cd frontend
-npm install     # à refaire après chaque pull qui modifie package.json
-npm run dev
-```
-
-### Ce que DEV2 peut modifier librement
-
-- Créer de nouveaux dossiers sous `src/screens/` pour les futurs écrans (Farm, etc.).
-- Créer de nouveaux composants sous `src/components/ui/` ou `src/components/<domaine>/`.
-- Ajouter de nouvelles fonctions dans `src/api/` pour de nouveaux endpoints.
-- Ajouter de nouveaux tokens dans `src/styles/tokens.css` s'ils manquent.
-
-### Ce que DEV2 devrait éviter de modifier sans coordination avec DEV1
-
-- `src/components/ui/*` existants (Button, Input, ErrorMessage, LoadingSpinner) — ce sont des primitives partagées ; les faire évoluer sans concertation peut casser le Login Screen.
-- `src/screens/auth/LoginScreen/*` — écran déjà validé visuellement contre Figma.
-- `src/styles/tokens.css` — modifier une valeur existante (plutôt qu'en ajouter une nouvelle) change l'apparence de tout ce qui la consomme.
-- `src/hooks/usePhoneNumber.ts` — sa regex doit rester synchronisée avec le backend (`auth-service`).
-
----
-
-## 19. Convention pour continuer le développement
-
-Architecture à suivre pour tout nouvel écran, adaptée de celle déjà en place pour `LoginScreen` :
-
-```
-New screen (ex. FarmListScreen)
-   ↓
-src/screens/<domaine>/<NomEcran>/<NomEcran>.tsx  (+ .module.css, + .test.tsx)
-   ↓
-Composants réutilisables
-   ├─ génériques      → src/components/ui/      (ex. Card, Badge — s'ils n'existent pas déjà)
-   └─ métier          → src/components/<domaine>/  (ex. FarmCard sous components/farm/)
-   ↓
-API layer
-   └─ src/api/<domaine>.api.ts   (ex. farm.api.ts, sur le modèle de auth.api.ts)
-   ↓
-Types
-   └─ src/types/<domaine>.types.ts   (ex. farm.types.ts, sur le modèle de auth.types.ts)
-   ↓
-Store (si un état partagé entre écrans devient nécessaire)
-   └─ 🔵 à introduire seulement à ce moment-là — ne pas ajouter Zustand "au cas où"
-```
-
-**Où placer précisément les éléments mentionnés dans le brief Phase 1** (aucun n'existe encore, à créer selon ce patron) :
-
-| Élément prévu | Emplacement à suivre |
+| Option | Valeur |
 |---|---|
-| `FarmListScreen` | `src/screens/farm/FarmListScreen/` |
-| `FarmCard` | `src/components/farm/FarmCard/` |
-| `ParcelDetailScreen` | `src/screens/farm/ParcelDetailScreen/` |
-| Appels API Farm | `src/api/farm.api.ts` |
-| Store Zustand (si introduit) | `src/store/` (dossier à créer) |
-| Types Farm | `src/types/farm.types.ts` |
+| `target` | `ES2020` |
+| `useDefineForClassFields` | `true` |
+| `lib` | `["ES2020", "DOM", "DOM.Iterable"]` |
+| `module` | `ESNext` |
+| `moduleResolution` | `bundler` |
+| `resolveJsonModule` | `true` |
+| `isolatedModules` | `true` |
+| `skipLibCheck` | `true` |
+| `noEmit` | `true` |
+| `jsx` | `react-jsx` |
+| `strict` | `true` |
+| `noUnusedLocals` | `true` |
+| `noUnusedParameters` | `true` |
+| `noFallthroughCasesInSwitch` | `true` |
+| `types` | `["vite/client", "vitest/globals", "@testing-library/jest-dom"]` |
+| `include` | `["src", "setupTests.ts"]` |
+
+**`tsconfig.app.json`** (pour `src/`) — variantes notables :
+
+| Option | Valeur | Note |
+|---|---|---|
+| `target` | `es2023` | Cible plus récente |
+| `lib` | `["ES2023", "DOM"]` | — |
+| `types` | `["vite/client", "vitest/globals", "@testing-library/jest-dom"]` | Inclut `vite/client` → rend `import.meta.env` typé |
+| `allowArbitraryExtensions` | `true` | Permet d'importer `*.module.css` |
+| `allowImportingTsExtensions` | `true` | — |
+| `verbatimModuleSyntax` | `true` | — |
+| `moduleDetection` | `force` | — |
+| `erasableSyntaxOnly` | `true` | — |
+| `include` | `["src"]` | — |
+
+La combinaison de `allowArbitraryExtensions: true` et de `types: ["vite/client"]` permet d'importer les CSS Modules (`*.module.css`) et d'utiliser `import.meta.env` sans qu'un fichier `vite-env.d.ts` séparé soit nécessaire.
+
+**`tsconfig.node.json`** — configuration utilisée pour `vite.config.ts` (non détaillée ici).
+
+### Configuration ESLint
+
+Le fichier `eslint.config.js` définit une configuration ESLint flat moderne :
+
+- Imports : `@eslint/js`, `globals`, `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`, `typescript-eslint`, `eslint/config`.
+- `globalIgnores(['dist'])`.
+- Règles appliquées sur `**/*.{ts,tsx}` : `js.configs.recommended` + `tseslint.configs.recommended` + `reactHooks.configs.flat.recommended` + `reactRefresh.configs.vite`.
+- `languageOptions.globals = globals.browser`.
+
+Aucun script `lint` n'est défini dans `package.json` ; la configuration est en place, seul le script npm manque.
+
+### Configuration Vitest
+
+`vite.config.ts` contient le bloc `test` :
+
+```ts
+test: {
+  environment: 'jsdom',
+  setupFiles: './setupTests.ts',
+  globals: true,
+}
+```
+
+Le fichier `setupTests.ts` se limite à :
+
+```ts
+import '@testing-library/jest-dom/vitest';
+```
+
+L'option `globals: true` expose `describe`, `expect`, `it`, `vi` sans import explicite.
 
 ---
 
-## 20. Definition of Done — Frontend actuel
+## 6. Stack technique
 
-État réel après inspection (pas de case cochée par défaut) :
+Versions déclarées dans `frontend/package.json` (plages `^`) :
+
+### Dépendances runtime
+
+| Technologie | Version déclarée | Utilisation |
+|---|---|---|
+| react | `^18.3.1` | Rendu de l'UI |
+| react-dom | `^18.3.1` | Rendu dans le DOM |
+| axios | `^1.7.7` | Client HTTP (`src/api/client.ts`) |
+
+### Dépendances dev
+
+| Technologie | Version déclarée | Utilisation |
+|---|---|---|
+| typescript | `^5.6.3` | Typage statique, `tsc -b` avant build |
+| vite | `^5.4.9` | Dev server + bundler |
+| @vitejs/plugin-react | `^4.3.2` | Support JSX / Fast Refresh pour Vite |
+| vitest | `^2.1.3` | Test runner |
+| @testing-library/react | `^16.0.1` | Tests de composants |
+| @testing-library/jest-dom | `^6.5.0` | Matchers jest-dom pour Vitest |
+| @types/react | `^18.3.11` | Types React |
+| @types/react-dom | `^18.3.1` | Types React DOM |
+| jsdom | `^25.0.1` | Environnement DOM simulé pour les tests |
+
+### Choix d'architecture notables
+
+- Le frontend n'utilise pas de store global ; l'état est local aux composants via `useState`.
+- Le frontend ne possède pas de routing ; `App.tsx` rend `LoginScreen` inconditionnellement.
+- Les textes sont codés en dur en français (pas de couche i18n).
+- Le frontend n'est pas une PWA : pas de manifest, pas de service worker, pas de `vite-plugin-pwa`.
+- La couche Axios ne définit pas d'interceptors (pas de gestion de token JWT côté frontend).
+
+---
+
+## 7. Design System
+
+Toutes les valeurs sont extraites de `src/styles/tokens.css`. Aucune valeur n'est inventée.
+
+### Couleurs (tokens)
+
+| Token | Valeur hex | Usage |
+|---|---|---|
+| `--color-primary-500` | `#1B4332` | Titre, bordure input « filled », fond bouton actif |
+| `--color-accent-500` | `#94C857` | Lien « Réessayez. », lien « Sign up » |
+| `--color-error-500` | `#D32F2F` | Bordure input erreur, texte d'erreur |
+| `--color-neutral-black` | `#000000` | Texte du corps, préfixe « +212 » |
+| `--color-neutral-white` | `#FFFFFF` | Fond de la carte, texte du bouton actif |
+| `--color-neutral-grey` | `#6B7280` | Bordure input par défaut, placeholder |
+| `--color-neutral-grey-light` | `#DDE5E1` | Fond du bouton désactivé |
+
+### Typographie (tokens)
+
+| Token | Valeur | Usage |
+|---|---|---|
+| `--font-family-base` | `'Inter', system-ui, -apple-system, sans-serif` | Police globale (chargée via Google Fonts dans `index.html`) |
+| `--font-size-title` | `24px` / `--font-weight-title: 500` | Titre |
+| `--font-size-subtitle` | `12px` / `--font-weight-subtitle: 400` | Sous-titre |
+| `--font-size-label` | `16px` / `--font-weight-label: 500` | Label |
+| `--font-size-body` | `16px` / `--font-weight-body: 400` | Texte du corps |
+| `--font-size-button` | `16px` / `--font-weight-button: 600` | Texte du bouton |
+| `--font-size-error` | `13px` | Message d'erreur |
+| `--font-size-footer` | `14px` | Texte du pied de page |
+
+> Note : les tailles `body`, `button`, `error` et `footer` sont des choix du développeur, déduits du contexte du design ; elles sont appliquées de façon cohérente dans les composants.
+
+### Spacing et radius (tokens)
+
+| Token | Valeur |
+|---|---|
+| `--radius-card` | `32px` |
+| `--radius-input` | `12px` |
+| `--radius-button` | `12px` |
+| `--spacing-xs` | `4px` |
+| `--spacing-sm` | `8px` |
+| `--spacing-md` | `16px` |
+| `--spacing-lg` | `24px` |
+| `--spacing-xl` | `32px` |
+
+### Composants UI disponibles
+
+| Composant | Fichier | Rôle | Props principales | État interne |
+|---|---|---|---|---|
+| `Button` | `components/ui/Button/Button.tsx` | Bouton générique avec état chargement | `children`, `loading?`, `disabled?`, + props HTML natives (Omit `children`) | Aucun |
+| `Input` | `components/ui/Input/Input.tsx` | Champ contrôlé générique, `forwardRef` | `label?`, `state?` (`'default'\|'filled'\|'error'`), `prefix?`, `errorMessage?`, + `InputHTMLAttributes` (Omit `prefix`) | Aucun |
+| `LoadingSpinner` | `components/ui/LoadingSpinner/LoadingSpinner.tsx` | Spinner décoratif (`role="status"`) | `label?` | Aucun |
+| `ErrorMessage` | `components/ui/ErrorMessage/ErrorMessage.tsx` | Message d'erreur avec action optionnelle | `id?`, `message`, `actionLabel?`, `onAction?` | Aucun |
+| `Brand` | `components/auth/Brand/Brand.tsx` | Titre + sous-titre fixes | *(aucune)* | Aucun |
+
+**Comportements clés :**
+
+- `Button` : `type` par défaut `'button'` ; `disabled || loading` désactive le bouton HTML et pose `aria-busy` ; en `loading`, rend `<LoadingSpinner label="Envoi en cours">` au lieu des children.
+- `Input` : `state='error'` pose `aria-invalid` et `aria-describedby` pointant vers `${inputId}-error`. Composant contrôlé (pas d'état interne).
+
+### Conventions pour étendre le design system
+
+1. Ne jamais écrire de couleur, taille ou espacement en dur. Toujours consommer une variable CSS définie dans `src/styles/tokens.css` (ex. `color: var(--color-primary-500);`).
+2. Si une nouvelle valeur est nécessaire, l'ajouter dans `tokens.css` avec un nom cohérent (`--color-*`, `--font-size-*`, `--spacing-*`, `--radius-*`).
+3. Utiliser des CSS Modules (`NomDuComposant.module.css`), pas de style inline ni de CSS global hors `styles/global.css`.
+4. Placer un composant générique sous `components/ui/`, un composant métier sous `components/<domaine>/`.
+
+---
+
+## 8. Écran Login (détail)
+
+### Objectif
+
+Permettre au fermier de saisir un numéro de téléphone marocain et de déclencher l'envoi d'un code OTP via `auth-service`.
+
+### Structure rendue
 
 ```
-[x] npm install fonctionne                → vérifié, 182 packages installés sans erreur
-[ ] npm run build fonctionne              → ÉCHOUE actuellement (voir Known Issues §K.1)
-[x] Login screen accessible               → http://localhost:5173/, vérifié
-[ ] Hero image visible                    → placeholder CSS uniquement, aucune vraie image (§6.6)
-[x] No console errors (transform Vite)    → aucune erreur de transformation au démarrage ;
-                                             non vérifié dans un vrai navigateur graphique (sandbox headless)
-[x] Phone input fonctionne                → vérifié via les tests (LoginScreen.test.tsx)
-[x] Validation fonctionne                 → vérifié via les tests (regex backend respectée)
-[x] Button states fonctionnent            → vérifié via les tests (Button.test.tsx)
-[ ] Responsive mobile fonctionne          → non vérifié visuellement (pas de navigateur graphique
-                                             disponible pour cet audit) ; le CSS mobile-first est en
-                                             place et une seule media query desktop existe (§11)
+div.page
+├── div.hero (role="presentation")
+├── main.card
+│   ├── Brand
+│   └── form.form (noValidate)
+│       ├── Input (label "Numéro de téléphone", prefix "+212", placeholder "6XX XX XX XX", type tel, inputMode numeric, autoComplete tel-national)
+│       ├── Button ("Envoyer OTP", type submit)
+│       ├── ErrorMessage (conditionnel si error)
+│       └── p.success (conditionnel si successNotice, role="status")
+└── footer.footer
+    └── p "Don't have an account ? Sign up" (bouton SignUp statique, onClick TODO)
+```
+
+### Composants utilisés
+
+| Composant | Rôle dans l'écran |
+|---|---|
+| `Brand` | Affiche le titre et le sous-titre |
+| `Input` | Champ téléphone avec préfixe `+212` |
+| `Button` | Bouton « Envoyer OTP », type `submit` |
+| `ErrorMessage` | Affiché conditionnellement quand `error` est défini |
+| `LoadingSpinner` | Rendu par `Button` pendant `submitting` |
+
+### Gestion du numéro de téléphone (hook usePhoneNumber)
+
+Le hook `src/hooks/usePhoneNumber.ts` centralise toute la logique :
+
+- Constantes : `COUNTRY_CODE = '+212'`, `LOCAL_DIGITS_LENGTH = 9`.
+- Regex : `MOROCCAN_PHONE_REGEX = /^\+212[67]\d{8}$/` (miroir exact du backend `auth-service` dans `LoginDto` / `VerifyOtpDto`).
+- `formatLocalDigits(digits)` : regroupement `3-2-2-2`, ex. `617 50 36 77`.
+- `setFromInput(raw)` : `raw.replace(/\D/g, '').slice(0, 9)` (extrait les chiffres, tronque à 9).
+- Valeurs de retour :
+  - `digits` : chiffres locaux bruts (max 9 caractères).
+  - `formattedValue` : chiffres formatés pour l'affichage.
+  - `fullPhone` : valeur E.164 reconstruite (`+212` + digits), envoyée au backend.
+  - `isEmpty` : vrai si `digits.length === 0`.
+  - `isValid` : résultat du test de la regex sur `fullPhone`.
+  - `countryCode` : `+212`.
+  - `setFromInput(raw)` : alimente l'état depuis la saisie utilisateur.
+
+### États UI
+
+Le composant `LoginScreen` gère trois états locaux :
+
+- `status: 'idle' | 'submitting' | 'success'`
+- `error: { type: 'validation' | 'api'; message; actionLabel? } | null`
+- `successNotice: string | null`
+
+L'`inputState` est dérivé : `'error'` si `error?.type === 'validation'`, sinon `'default'` si vide, sinon `'filled'`.
+
+| État | Composant | Déclencheur | Rendu |
+|---|---|---|---|
+| `default` | Input | `phone.isEmpty === true` | Bordure grise |
+| `filled` | Input | Champ non vide, pas d'erreur | Bordure verte |
+| `error` | Input | `error?.type === 'validation'` | Bordure rouge, `aria-invalid` |
+| `disabled` (Input) | Input | `status === 'submitting'` | Champ désactivé |
+| `disabled` (Button) | Button | `phone.isEmpty === true` | Fond gris |
+| `loading` (Button) | Button | `status === 'submitting'` | Spinner blanc, `aria-busy`, clics bloqués |
+| `focus` | Input, Button, liens | `:focus-visible` | Contour visible |
+
+Le bouton est désactivé uniquement si le champ est vide (`disabled={phone.isEmpty}`), pas si le numéro est invalide : la validation se déclenche au clic sur « Envoyer OTP », pas pendant la saisie. Il n'y a pas d'état `hover` explicite sur l'Input.
+
+Comportement des handlers :
+
+- `submit()` : reset erreurs → si `!phone.isValid` → erreur validation → return ; sinon `status='submitting'` → `authApi.requestOtp({ phone: phone.fullPhone })` → `status='success'` + successNotice (« Code envoyé. Il expire à HH:mm. ») + callback `onOtpRequested` ; en `catch` → `status='idle'` + `console.error` (erreur brute loguée, pas affichée) + `error.message = "Impossible d'envoyer le code. "` + `actionLabel="Réessayez."`.
+- `handleSubmit` : `preventDefault`, bloque si vide ou `submitting`.
+- `handlePhoneChange` : `setFromInput` + reset erreur/notice.
+
+### Image hero
+
+La zone hero est stylée par `.hero` dans `LoginScreen.module.css` :
+
+```css
+.hero {
+  height: 220px;
+  background-color: #d9e4d9; /* fallback */
+  background-image:
+    linear-gradient(180deg, rgba(27, 67, 50, 0.1), rgba(27, 67, 50, 0.55)),
+    url('/images/login-hero.jpg');
+  background-size: cover;
+  background-position: center;
+}
+```
+
+L'image est câblée sur le fichier `public/images/login-hero.jpg` (3.5 Mo) via `url('/images/login-hero.jpg')`. Un dégradé vertical est superposé pour assurer la lisibilité. La hauteur reste fixée à `220px` à toutes les tailles d'écran ; seule la largeur du conteneur change avec le responsive.
+
+### Responsive
+
+- Stratégie mobile-first.
+- Une seule media query de layout : `@media (min-width: 640px)` dans `LoginScreen.module.css` — `.page` centre son contenu, `.hero`/`.card`/`.footer` sont contraints à `max-width: 480px`.
+- Une media query d'accessibilité : `@media (prefers-reduced-motion: reduce)` dans `LoadingSpinner.module.css` coupe l'animation.
+- Pas de media query dédiée à 375px/390px ; le layout est fluide.
+- Pas de position `absolute`/`fixed` pour la mise en page : tout repose sur `flex` + `margin` négatif (chevauchement carte/hero via `margin-top: -32px`).
+
+---
+
+## 9. Flux d'authentification (login flow)
+
+```
+Utilisateur saisit le numéro (onChange → usePhoneNumber.setFromInput)
+       ↓
+Clic "Envoyer OTP" (handleSubmit, si champ non vide et pas en submitting)
+       ↓
+Validation client (regex /^\+212[67]\d{8}$/)
+       ↓ invalide                                ↓ valide
+Erreur "Numéro de téléphone invalid."      status = 'submitting' (bouton → spinner, champ désactivé)
+(aucune requête envoyée)                          ↓
+                                          authApi.requestOtp({ phone })
+                                                 ↓
+                                    POST /auth/register  (auth-service, port 3001)
+                                                 ↓ succès                   ↓ échec
+                            status='success' + successNotice     status='idle'
+                            onOtpRequested?.(phone, expiresAt)   "Impossible d'envoyer le code. Réessayez."
+                            (callback — aucune navigation,       (message fixe, jamais l'erreur brute)
+                             App.tsx fait un console.info)
+```
+
+### Détails du flux
+
+| Aspect | Valeur |
+|---|---|
+| Fonction appelée | `authApi.requestOtp()` |
+| Méthode HTTP | `POST` |
+| Endpoint | `/auth/register` (concaténé à la `baseURL`) |
+| Payload | `{ phone: string }` (E.164, ex. `+212617503677`) |
+| Réponse attendue | `{ success: true, message: string, expiresAt: string (ISO) }` |
+| Gestion d'erreur | Toute exception (réseau, 4xx, 5xx) est interceptée dans `submit()` ; l'erreur brute est loguée en `console.error`, jamais affichée ; le message fixe est affiché à la place |
+| Navigation après succès | Aucune navigation réelle — message inline + callback `onOtpRequested(phone, expiresAt)` (par défaut, `App.tsx` fait `console.info`) |
+| État de chargement | `status === 'submitting'` — champ désactivé, bouton en spinner, ré-entrance bloquée dans `handleSubmit` |
+
+### Seam de navigation future
+
+La prop `onOtpRequested` de `LoginScreen` constitue le point d'extension pour une future navigation vers un écran OTP. `App.tsx` contient un commentaire TODO indiquant qu'un futur routeur pourrait naviguer vers `/otp` avec `{ phone, expiresAt }` en state.
+
+---
+
+## 10. Couche API
+
+### httpClient (Axios)
+
+Définition dans `src/api/client.ts` :
+
+```ts
+import axios from 'axios';
+
+const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1';
+export const httpClient = axios.create({
+  baseURL,
+  timeout: 15000,
+  headers: { 'Content-Type': 'application/json' },
+});
+```
+
+- Base URL : `import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1'` (la variable n'est pas obligatoire).
+- Timeout : `15000` ms.
+- Headers par défaut : `Content-Type: application/json`.
+- Aucun interceptor (ni requête ni réponse) — cohérent avec l'absence de gestion de token JWT côté frontend.
+
+### authApi
+
+Définition dans `src/api/auth.api.ts` :
+
+```ts
+export const authApi = {
+  requestOtp: async (payload: RequestOtpPayload): Promise<RequestOtpResponse> => {
+    const { data } = await httpClient.post('/auth/register', payload);
+    return data;
+  },
+};
+```
+
+`authApi.requestOtp()` est la seule fonction API existante.
+
+### Types associés
+
+`src/types/auth.types.ts` :
+
+- `RequestOtpPayload { phone: string }` — doit matcher `/^\+212[67]\d{8}$/`.
+- `RequestOtpResponse { success: true; message: string; expiresAt: string }`.
+
+`src/types/api.types.ts` :
+
+- `ApiErrorResponse { statusCode: number; message: string | string[]; error: string }` — format d'erreur NestJS (ValidationPipe / HttpException), pas affiché à l'utilisateur (réservé au logging futur).
+
+### Gestion des erreurs
+
+La gestion s'effectue au niveau de l'appelant (`LoginScreen.tsx`), pas dans la couche API. La fonction `authApi.requestOtp()` ne transforme pas les erreurs : elle laisse l'exception Axios remonter telle quelle. `LoginScreen` détecte les erreurs Axios via `isAxiosError<ApiErrorResponse>`, logge le contenu en `console.error`, et affiche un message fixe à la place de l'erreur brute.
+
+---
+
+## 11. Tests
+
+### Fichiers de test
+
+**`src/components/ui/Button/Button.test.tsx`** — 3 tests :
+
+1. Rendu et clic quand le bouton est activé.
+2. Pas de clic quand le bouton est désactivé.
+3. Spinner affiché et clics bloqués en `loading`.
+
+Le fichier importe explicitement `describe`, `expect`, `it`, `vi` depuis `vitest` (redondant avec `globals: true`, mais fonctionnel).
+
+**`src/screens/auth/LoginScreen/LoginScreen.test.tsx`** — 5 tests :
+
+1. Bouton désactivé si le champ est vide.
+2. Bouton activé dès le premier chiffre saisi.
+3. Erreur de validation sur numéro incomplet, sans appel API.
+4. Appel `authApi.requestOtp` avec le numéro au format E.164 sur une entrée valide.
+5. Message d'erreur retryable affiché, sans fuite de l'erreur brute.
+
+Le fichier mocke `authApi` via `vi.mock` et utilise `@testing-library/react` (`render`, `fireEvent`, `waitFor`).
+
+### Couverture actuelle
+
+| Fichier | Nombre de tests |
+|---|---|
+| `Button.test.tsx` | 3 |
+| `LoginScreen.test.tsx` | 5 |
+| **Total** | **8 tests dans 2 fichiers** |
+
+### Commandes
+
+```bash
+npm run test          # vitest run (exécution unique)
+npm run test:watch    # vitest (mode watch)
 ```
 
 ---
 
-## 21. Résumé pour DEV2
+## 12. Build et déploiement
 
-### TL;DR
+### Build de production
+
+```bash
+npm run build
+```
+
+Commande réelle : `tsc -b && vite build`. Le `tsc -b` effectue la vérification de types (projet référencé via les trois `tsconfig*.json`), puis `vite build` produit le bundle dans `dist/`.
+
+Le répertoire `dist/` est ignoré par git (`.gitignore`) et nettoyé à chaque build.
+
+Aperçu du bundle de production :
+
+```bash
+npm run preview       # vite preview
+```
+
+Le script `preview` sert le contenu de `dist/` via un serveur statique local.
+
+### Fichiers résiduels du template Vite
+
+Plusieurs fichiers hérités du template Vite sont présents dans `src/` mais ne sont pas utilisés :
+
+| Fichier | Statut |
+|---|---|
+| `src/App.css` | Non importé dans `main.tsx` ni `App.tsx` |
+| `src/index.css` | Non importé |
+| `src/assets/react.svg` | Icône template |
+| `src/assets/vite.svg` | Icône template |
+| `src/assets/hero.png` | Non référencé dans le code (l'image active est `public/images/login-hero.jpg`) |
+| `README.md` | Template Vite par défaut (non personnalisé pour Al Katra) |
+
+---
+
+## 13. Conventions pour étendre le frontend
+
+### Ajouter un nouvel écran
+
+Suivre le patron de `LoginScreen` :
+
+```
+src/screens/<domaine>/<NomEcran>/<NomEcran>.tsx      (+ .module.css, + .test.tsx)
+```
+
+L'écran assemble des composants (`components/ui/` et `components/<domaine>/`), un ou plusieurs hooks, et appelle les fonctions API de `src/api/`.
+
+### Ajouter un composant
+
+- Composant générique (sans logique métier) : `src/components/ui/<Nom>/` avec `<Nom>.tsx`, `<Nom>.module.css`, et `<Nom>.test.tsx` si pertinent.
+- Composant métier : `src/components/<domaine>/<Nom>/`.
+- Toujours consommer les tokens via `var(--token)`, jamais de valeur en dur.
+- Préférer les CSS Modules à un style inline.
+
+### Ajouter une fonction API
+
+Suivre le patron de `auth.api.ts` :
+
+```ts
+// src/api/<domaine>.api.ts
+import { httpClient } from './client';
+import type { ... } from '../types/<domaine>.types';
+
+export const domainApi = {
+  action: async (payload): Promise<Response> => {
+    const { data } = await httpClient.post('/endpoint', payload);
+    return data;
+  },
+};
+```
+
+Définir les types associés dans `src/types/<domaine>.types.ts` sur le modèle de `auth.types.ts` et `api.types.ts`.
+
+### Ce qui reste à éviter sans coordination
+
+- Modifier les primitives existantes de `src/components/ui/*` (Button, Input, ErrorMessage, LoadingSpinner) sans vérifier l'impact sur `LoginScreen`.
+- Modifier une valeur existante de `src/styles/tokens.css` (cela change l'apparence de tous les consommateurs).
+- Modifier `src/hooks/usePhoneNumber.ts` : sa regex doit rester synchronisée avec le backend (`auth-service`).
+
+---
+
+## 14. Résumé opérationnel
+
+### Commandes essentielles
+
+| Action | Commande | Résultat |
+|---|---|---|
+| Installer les dépendances | `npm install` | Crée `node_modules/` dans `frontend/` |
+| Copier l'environnement | `cp .env.example .env` | Variable `VITE_API_BASE_URL` (optionnelle) |
+| Lancer le dev | `npm run dev` | Serveur sur `http://localhost:5173` |
+| Build de production | `npm run build` | `tsc -b && vite build` → `dist/` |
+| Prévisualiser le build | `npm run preview` | Sert `dist/` |
+| Lancer les tests | `npm run test` | `vitest run` (8 tests, 2 fichiers) |
+| Tests en watch | `npm run test:watch` | `vitest` (mode watch) |
+
+### Démarrage rapide
 
 ```bash
 git pull
@@ -748,56 +732,14 @@ npm install
 npm run dev
 ```
 
-Puis ouvrir :
+Puis ouvrir `http://localhost:5173`. Le backend n'est pas nécessaire pour visualiser le Login Screen ; il ne devient utile qu'au moment de tester l'envoi effectif d'un OTP.
 
-```
-http://localhost:5173
-```
+### Particularités à retenir
 
-**Le backend n'est pas nécessaire pour simplement voir le Login Screen** — il ne devient utile qu'au moment de tester réellement l'envoi d'un OTP (bouton "Envoyer OTP").
-
----
-
-## Known Issues
-
-### K.1 — `npm run build` échoue (bug réel, confirmé lors de cet audit)
-
-**Symptôme** :
-
-```
-src/api/client.ts(3,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
-src/components/auth/Brand/Brand.tsx(1,20): error TS2307: Cannot find module './Brand.module.css' ...
-src/components/ui/Button/Button.tsx(3,20): error TS2307: Cannot find module './Button.module.css' ...
-... (même erreur pour ErrorMessage, Input, LoadingSpinner, LoginScreen)
-```
-
-**Cause** : il manque un fichier `src/vite-env.d.ts` contenant `/// <reference types="vite/client" />`. C'est ce fichier qui déclare, pour TypeScript, le type de `import.meta.env` **et** les déclarations de module ambiantes pour les imports `*.module.css`. Sans lui, `tsc -b` échoue sur ces deux points.
-
-**Impact réel, vérifié** :
-- `npm run dev` **n'est pas affecté** — Vite transforme le code avec esbuild sans vérification de types complète, donc le serveur de développement démarre et sert correctement le Login Screen (vérifié : titre correct, module CSS chargé avec un `200`).
-- `npm run build` (qui lance `tsc -b` avant `vite build`) **échoue** et ne produit aucun artefact de production.
-- `npm run preview` est donc également inutilisable tant que `build` échoue.
-
-**Correction attendue** (à faire par DEV1, pas appliquée ici conformément à la consigne de ne modifier aucun fichier du projet dans le cadre de cet audit) : ajouter un fichier `frontend/src/vite-env.d.ts` avec le contenu suivant :
-
-```ts
-/// <reference types="vite/client" />
-```
-
-C'est le fichier standard généré par tout template officiel Vite + TypeScript ; son absence ici est un oubli lors du scaffolding initial.
-
-### K.2 — Image hero manquante
-
-Aucun asset image réel n'a été fourni/intégré (§6.6). Ce n'est pas bloquant pour le fonctionnement de l'application, mais l'écran ne ressemble pas encore visuellement à 100 % à la maquette Figma (photo absente).
-
-### K.3 — Aucun `.gitignore`
-
-Le dossier `frontend/` tel que livré ne contient pas de `.gitignore`. À créer avant tout commit pour éviter de versionner `node_modules/`, `dist/` et `.env`.
-
-### K.4 — `frontend/` non intégré au monorepo
-
-`frontend/` est un package npm autonome (son propre `package.json`, sa propre installation) — il n'est pas référencé par un `turbo.json` ou un `package.json` racine avec des `workspaces`. Si le reste du monorepo Al Katra Bel Qatra utilise Turborepo, l'intégration reste à faire.
-
-
-
-
+- Le frontend n'a pas de routing (`App.tsx` rend `LoginScreen` inconditionnellement).
+- Le frontend n'utilise pas de store global (état 100 % local via `useState` dans `LoginScreen`).
+- Les textes sont codés en dur en français (pas d'i18n).
+- Pas de PWA (pas de manifest, pas de service worker, pas de `vite-plugin-pwa`).
+- Pas d'interceptors Axios (pas de gestion de token JWT côté frontend).
+- Le frontend appelle `auth-service` directement (pas via la gateway Nginx).
+- Aucun appel API au chargement de la page → le frontend est visualisable sans backend.
