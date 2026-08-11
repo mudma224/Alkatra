@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useState } from 'react';
 import { isAxiosError } from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { Brand } from '../../../components/auth/Brand/Brand';
 import { Input } from '../../../components/ui/Input/Input';
 import { Button } from '../../../components/ui/Button/Button';
@@ -17,16 +18,8 @@ type FormError = {
   actionLabel?: string;
 } | null;
 
-export interface LoginScreenProps {
-  /**
-   * Fires once auth-service has confirmed the OTP was requested. The OTP
-   * screen itself is out of scope here — the caller decides what happens
-   * next (e.g. navigating to it once it exists). See guide §16.
-   */
-  onOtpRequested?: (phone: string, expiresAt: string) => void;
-}
-
-export function LoginScreen({ onOtpRequested }: LoginScreenProps) {
+export function LoginScreen() {
+  const navigate = useNavigate();
   const phone = usePhoneNumber();
   const [status, setStatus] = useState<FormStatus>('idle');
   const [error, setError] = useState<FormError>(null);
@@ -53,7 +46,12 @@ export function LoginScreen({ onOtpRequested }: LoginScreenProps) {
           minute: '2-digit',
         })}.`,
       );
-      onOtpRequested?.(phone.fullPhone, response.expiresAt);
+      navigate('/otp', {
+        state: {
+          phone: phone.fullPhone,
+          expiresAt: response.expiresAt,
+        },
+      });
     } catch (caughtError) {
       setStatus('idle');
       // Captured for future logging/observability, deliberately not shown to
@@ -69,7 +67,7 @@ export function LoginScreen({ onOtpRequested }: LoginScreenProps) {
         actionLabel: 'Réessayez.',
       });
     }
-  }, [phone, onOtpRequested]);
+  }, [navigate, phone]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
