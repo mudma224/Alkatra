@@ -1,5 +1,5 @@
 import { httpClient } from './client';
-import type { RequestOtpPayload, RequestOtpResponse } from '../types/auth.types';
+import type { RequestOtpPayload, RequestOtpResponse, VerifyOtpPayload, VerifyOtpResponse, } from '../types/auth.types';
 
 export const authApi = {
   /**
@@ -10,4 +10,9 @@ export const authApi = {
     const { data } = await httpClient.post('/auth/register', payload);
     return data;
   },
+
+  verifyOtp: async (payload: VerifyOtpPayload): Promise<VerifyOtpResponse> => {
+    const { data } = await httpClient.post('/auth/verify-otp', payload);
+    return data;
+  }
 };
