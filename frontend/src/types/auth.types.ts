@@ -21,14 +21,31 @@ export interface VerifyOtpPayload {
   otp: string;
 }
 
+export interface AuthUser {
+  id: string;
+  phone: string;
+  createdAt: string;
+}
+
 export interface VerifyOtpResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
   tokenType: string;
-  user: {
-    id: string;
-    phone: string;
-    createdAt: string;
-  };
+  user: AuthUser;
+}
+
+/**
+ * Response body of POST /api/v1/auth/refresh (alias of /login).
+ * Same contract as VerifyOtpResponse.
+ */
+export type AuthResult = VerifyOtpResponse;
+
+/**
+ * Payload for POST /api/v1/auth/refresh.
+ * `phone` must match auth-service's validated format: /^\+212[67]\d{8}$/
+ */
+export interface RefreshTokenPayload {
+  phone: string;
+  refreshToken: string;
 }
