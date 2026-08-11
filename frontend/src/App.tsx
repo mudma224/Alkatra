@@ -1,13 +1,36 @@
+import { useState } from 'react';
+
 import { LoginScreen } from './screens/auth/LoginScreen/LoginScreen';
+import { OTPScreen } from './screens/auth/OTPScreen/OTPScreen';
+
+type AuthScreen = 'login' | 'otp';
 
 function App() {
+  const [screen, setScreen] = useState<AuthScreen>('login');
+
+  const [otpData, setOtpData] = useState<{
+    phone: string;
+    expiresAt: string;
+  } | null>(null);
+
+  if (screen === 'otp' && otpData) {
+    return (
+      <OTPScreen
+        phone={otpData.phone}
+        expiresAt={otpData.expiresAt}
+      />
+    );
+  }
+
   return (
     <LoginScreen
       onOtpRequested={(phone, expiresAt) => {
-        // TODO (next iteration): once the OTP screen exists, navigate to it
-        // here (e.g. with react-router: navigate('/otp', { state: { phone, expiresAt } })).
-        // Intentionally left as a no-op placeholder for this task's scope.
-        console.info('OTP requested', { phone, expiresAt });
+        setOtpData({
+          phone,
+          expiresAt,
+        });
+
+        setScreen('otp');
       }}
     />
   );
