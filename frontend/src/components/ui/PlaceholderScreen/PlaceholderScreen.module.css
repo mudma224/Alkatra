@@ -1,0 +1,37 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  background: var(--color-neutral-0);
+}
+
+.card {
+  max-width: 420px;
+  width: 100%;
+  background: var(--color-neutral-0);
+  border-radius: var(--radius-card);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-neutral-black);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.description {
+  font-size: 0.875rem;
+  color: var(--color-neutral-grey);
+  margin: 0 0 var(--spacing-md);
+}
+
+.phase {
+  font-size: 0.75rem;
+  color: var(--color-primary-500);
+  margin: 0;
+}
