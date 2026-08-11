@@ -1,0 +1,37 @@
+:root {
+  /* Colors — from the provided design system */
+  --color-primary-500: #1B4332;
+  --color-accent-500: #94C857;
+  --color-error-500: #D32F2F;
+  --color-neutral-black: #000000;
+  --color-neutral-white: #FFFFFF;
+  --color-neutral-grey: #6B7280;
+  --color-neutral-grey-light: #DDE5E1;
+
+  /* Typography */
+  --font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --font-size-title: 24px;
+  --font-weight-title: 500;
+  --font-size-subtitle: 12px;
+  --font-weight-subtitle: 400;
+  --font-size-label: 16px;
+  --font-weight-label: 500;
+
+  /* Inferred — not given by the design system text block */
+  --font-size-body: 16px;
+  --font-weight-body: 400;
+  --font-size-button: 16px;
+  --font-weight-button: 600;
+  --font-size-error: 13px;
+  --font-size-footer: 14px;
+
+  --radius-card: 32px;
+  --radius-input: 12px;
+  --radius-button: 12px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+}

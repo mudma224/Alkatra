@@ -1,0 +1,23 @@
+.message {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  color: var(--color-error-500);
+}
+
+.action {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font: inherit;
+  font-size: var(--font-size-error);
+  color: var(--color-accent-500);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+}
