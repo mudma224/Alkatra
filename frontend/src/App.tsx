@@ -1,39 +1,8 @@
-import { useState } from 'react';
-
-import { LoginScreen } from './screens/auth/LoginScreen/LoginScreen';
-import { OTPScreen } from './screens/auth/OTPScreen/OTPScreen';
-
-type AuthScreen = 'login' | 'otp';
+import { RouterProvider } from 'react-router-dom';
+import { router } from './router';
 
 function App() {
-  const [screen, setScreen] = useState<AuthScreen>('login');
-
-  const [otpData, setOtpData] = useState<{
-    phone: string;
-    expiresAt: string;
-  } | null>(null);
-
-  if (screen === 'otp' && otpData) {
-    return (
-      <OTPScreen
-        phone={otpData.phone}
-        expiresAt={otpData.expiresAt}
-      />
-    );
-  }
-
-  return (
-    <LoginScreen
-      onOtpRequested={(phone, expiresAt) => {
-        setOtpData({
-          phone,
-          expiresAt,
-        });
-
-        setScreen('otp');
-      }}
-    />
-  );
+  return <RouterProvider router={router} />;
 }
 
 export default App;
