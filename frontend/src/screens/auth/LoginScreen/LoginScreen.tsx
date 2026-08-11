@@ -109,7 +109,13 @@ export function LoginScreen({ onOtpRequested }: LoginScreenProps) {
             errorMessage={error?.message}
           />
 
-          <Button type="submit" disabled={phone.isEmpty} loading={status === 'submitting'}>
+          <Button
+            variant="primary"
+            type="submit"
+            block
+            disabled={phone.isEmpty}
+            loading={status === 'submitting'}
+          >
             Envoyer OTP
           </Button>
 

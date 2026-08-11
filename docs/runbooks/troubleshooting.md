@@ -1,211 +1,213 @@
-# Runbook de depannage
+# Runbook de dépannage
 
-Ce fichier liste les problemes deja rencontres et les corrections connues.
+Ce fichier liste les problèmes connus et leurs corrections.
 
-## Turbo: Missing packageManager field
+## Turbo : Missing packageManager field
 
-Symptome:
+Symptôme :
 
 ```text
 Could not resolve workspaces.
 Missing packageManager field in package.json
 ```
 
-Cause:
+Cause :
 
 Turbo 2 attend le champ `packageManager` dans le `package.json` racine.
 
-Correction:
+Correction :
 
 ```json
 "packageManager": "npm@11.9.0"
 ```
 
-## Jest: Cannot find name describe
+## Jest : Cannot find name describe
 
-Symptome VS Code/TypeScript:
+Symptôme VS Code/TypeScript :
 
 ```text
 Cannot find name 'describe'
 ```
 
-Cause:
+Cause :
 
 Les types Jest ne sont pas visibles dans le `tsconfig.json` du service.
 
-Correction dans `apps/iot-service/tsconfig.json`:
+Correction dans `apps/iot-service/tsconfig.json` :
 
 ```json
 "types": ["node", "jest"]
 ```
 
-Puis redemarrer le serveur TypeScript dans VS Code:
+Puis redémarrer le serveur TypeScript dans VS Code :
 
 ```text
 TypeScript: Restart TS Server
 ```
 
-## npm run test:cov manque a la racine
+## `npm run test:cov` absent de la racine
 
-Symptome:
+Symptôme :
 
 ```text
 npm error Missing script: "test:cov"
 ```
 
-Cause:
+Cause :
 
-Le script existait dans `apps/iot-service/package.json`, mais pas au niveau racine.
+Le script est défini dans `apps/iot-service/package.json` mais pas au niveau racine.
 
-Correction:
+Correction :
 
 ```json
 "test:cov": "turbo run test:cov"
 ```
 
-Et ajouter la tache `test:cov` dans `turbo.json`.
+Et ajouter la tâche `test:cov` dans `turbo.json`.
 
 ## Grafana ne montre pas le dashboard
 
-Symptome:
+Symptôme :
 
-Le dossier `Al Katra IoT` est vide ou le dashboard `Al Katra - IoT Pipeline` n'apparait pas.
+Le dossier `Al Katra IoT` est vide ou le dashboard `Al Katra - IoT Pipeline` n'apparaît pas.
 
-Causes possibles:
+Causes possibles :
 
-- le dossier des dashboards JSON n'est pas monte dans le conteneur;
-- `dashboards.yml` pointe vers le mauvais chemin;
-- Grafana n'a pas ete recree apres modification du provisioning.
+- le dossier des dashboards JSON n'est pas monté dans le conteneur ;
+- `dashboards.yml` pointe vers le mauvais chemin ;
+- Grafana n'a pas été recréé après modification du provisioning.
 
-Chemins corrects:
+Chemins corrects :
 
 ```yaml
 ./../../infra/grafana/provisioning:/etc/grafana/provisioning:ro
 ./../../infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
 ```
 
-Provider correct:
+Provider correct :
 
 ```yaml
 options:
   path: /var/lib/grafana/dashboards
 ```
 
-Commande:
+Commande :
 
 ```bash
 docker compose --env-file .env -f infra/docker/docker-compose.yml up -d --force-recreate grafana
 ```
 
-## Grafana redemarre en boucle
+## Grafana redémarre en boucle
 
-Symptome:
+Symptôme :
 
 ```text
 Datasource provisioning error: data source not found
 ```
 
-Cause rencontree:
+Cause :
 
-Le dashboard reference une datasource par UID force alors que Grafana a deja une datasource existante dans son volume.
+Le dashboard référence une datasource par UID forcé alors que Grafana dispose d'une datasource existante dans son volume.
 
-Correction appliquee:
+Correction :
 
-- ne pas forcer `uid: prometheus` dans `datasources.yml`;
-- referencer la datasource par nom `"Prometheus"` dans le dashboard JSON.
+- ne pas forcer `uid: prometheus` dans `datasources.yml` ;
+- référencer la datasource par nom `"Prometheus"` dans le dashboard JSON.
 
-## MLflow redemarre en boucle: caracteres CRLF
+## MLflow redémarre en boucle : caractères CRLF
 
-Symptome:
+Symptôme :
 
 ```text
 /start.sh: 3: ^M: not found
 Error: Got unexpected extra argument (^M)
 ```
 
-Cause:
+Cause :
 
-`infra/mlflow/start.sh` avait des fins de ligne Windows `CRLF`.
+`infra/mlflow/start.sh` contient des fins de ligne Windows `CRLF`.
 
-Correction:
+Correction :
 
-- convertir `start.sh` en `LF`;
-- ajouter `.gitattributes`:
+- convertir `start.sh` en `LF` ;
+- ajouter `.gitattributes` :
 
 ```text
 *.sh text eol=lf
 ```
 
-## MLflow ne se connecte pas a Postgres
+## MLflow ne se connecte pas à Postgres
 
-Symptome:
+Symptôme :
 
 ```text
 FATAL: role "alkatra_user" does not exist
 ```
 
-Cause:
+Cause :
 
-Docker Compose n'utilisait pas le `.env` racine et retombait sur les valeurs par defaut du compose. Le volume Postgres avait ete initialise avec un autre utilisateur.
+Docker Compose n'utilise pas le `.env` racine et retombe sur les valeurs par défaut du compose. Le volume Postgres a été initialisé avec un autre utilisateur.
 
-Correction:
+Correction :
 
-Utiliser toujours les scripts racine:
+Utiliser les scripts racine :
 
 ```bash
 npm run docker:up
 ```
 
-Ils executent Compose avec:
+Ils exécutent Compose avec :
 
 ```bash
 --env-file .env
 ```
 
-Pour verifier la config resolue:
+Pour vérifier la config résolue :
 
 ```bash
 docker compose --env-file .env -f infra/docker/docker-compose.yml config
 ```
 
-## MLflow healthcheck: curl not found
+## MLflow healthcheck : curl not found
 
-Symptome:
+Symptôme :
 
 ```text
 /bin/sh: 1: curl: not found
 ```
 
-Cause:
+Cause :
 
 L'image `python:3.11-slim` ne contient pas `curl`.
 
-Correction:
+Correction :
 
-Healthcheck Docker avec Python:
+Healthcheck Docker avec Python, en interrogeant la racine du serveur MLflow (MLflow ne expose pas d'endpoint `/health` dédié) :
 
 ```yaml
-test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)\""]
+test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/', timeout=5)\""]
 ```
 
-## Postgres init.sql ne s'applique pas apres modification
+## Les scripts d'initialisation Postgres ne s'appliquent pas après modification
 
-Cause:
+Cause :
 
-Les scripts dans `/docker-entrypoint-initdb.d` ne sont executes qu'a la creation initiale du volume Postgres.
+Les scripts placés dans `/docker-entrypoint-initdb.d` ne sont exécutés qu'à la création initiale du volume Postgres.
 
-Si `infra/postgres/init.sql` change apres creation du volume, il faut:
+L'initialisation des bases s'effectue via `infra/postgres/00-create-databases.sh` (création des bases, utilisateurs et droits) puis les fichiers SQL du dossier `infra/postgres/schemas/` (`auth-db.sql`, `farm-db.sql`, `recommendation-db.sql`, `notification-db.sql`). Si l'un de ces fichiers change après création du volume, le conteneur ne les rejoue pas automatiquement.
 
-- soit appliquer une migration SQL manuelle;
-- soit faire un reset de volume en developpement.
+Pour appliquer les modifications :
 
-Reset:
+- soit exécuter une migration SQL manuelle ;
+- soit faire un reset du volume en développement.
+
+Reset :
 
 ```bash
 npm run docker:reset
 ```
 
-Attention: cela supprime les donnees locales.
+Attention : cela supprime les données locales.
 
 ## CI GitHub Actions : lint échoue sur des dossiers vides
 
@@ -226,25 +228,6 @@ ESLint cherche un `tsconfig.json` à la racine. Si le fichier manque ou que le p
 
 **Correction :**
 Vérifier que `tsconfig.json` existe à la racine du monorepo et que `.eslintrc.js` est commité.
-
----
-
-## CI GitHub Actions : build Docker iot-service échoue
-
-**Symptôme :**
-
-```
-ERROR: failed to solve: failed to read dockerfile: open apps/iot-service/Dockerfile
-```
-
-**Cause :**
-Le `Dockerfile` de `iot-service` n'existe pas encore (Dev2 doit le créer).
-
-**Impact :**
-Le job `build-docker-images` dans `ci-common.yml` échoue. Les autres jobs (`lint-and-typecheck`, `validate-k8s-manifests`) ne sont pas affectés.
-
-**À faire :**
-Attendre que Dev2 crée `apps/iot-service/Dockerfile` (Sprint S2). En attendant, le build iot-service peut être passé en `continue-on-error: true` si nécessaire.
 
 ---
 

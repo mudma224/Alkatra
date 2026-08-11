@@ -2,69 +2,54 @@
 
 ## Objectif produit
 
-Al Katra Bel Qatra est une plateforme d'irrigation intelligente. L'objectif est de collecter des donnees terrain via capteurs IoT, les traiter en flux, alimenter un futur modele IA, puis produire des recommandations d'irrigation.
+Al Katra Bel Qatra (« Goutte à goutte ») est une plateforme d'irrigation intelligente. Elle collecte les données terrain via des capteurs IoT, les traite en flux, alimente un modèle d'apprentissage automatique d'aide à la décision, puis produit des recommandations d'irrigation consultables par l'agriculteur. Chaque recommandation indique s'il faut irriguer, en quelle quantité (mm), pendant combien de temps (minutes), avec une explication en français et en darija.
 
-## Ce qui existe actuellement
+La plateforme cible prioritairement l'oléiculture au Maroc. Le coefficient cultural Kc et les seuils d'anomalie sont adaptés à ce contexte.
 
-Le projet contient actuellement:
+## Ce que contient le dépôt
 
-- une stack d'infrastructure locale Docker;
-- un service IoT NestJS dans `apps/iot-service`;
-- un broker MQTT Mosquitto;
-- Kafka en mode KRaft avec Kafka UI;
-- Postgres/PostGIS pour les donnees metier;
-- MongoDB et Redis prepares pour les prochaines phases;
-- MLflow pour le tracking et le registry des modeles IA;
-- Prometheus et Grafana pour l'observabilite;
-- un simulateur de capteur MQTT dans `scripts/simulate-sensor.js`;
-- des tests unitaires Jest sur les services MQTT/Kafka.
+- **7 services applicatifs** :
+  - `auth-service` — Inscription téléphone, OTP SMS, JWT, profil
+  - `user-service` — Proxy/BFF public vers auth-service
+  - `farm-service` — Fermes, parcelles, capteurs
+  - `recommendation-service` — Recommandations d'irrigation
+  - `iot-service` — Bridge MQTT → Kafka → Mongo
+  - `ml-inference-service` — Inférence XGBoost via MLflow
+  - `spark-jobs` — Feature engineering (ETo, Kc) et streaming Kafka
+- **Une stack d'infrastructure Docker locale** : PostgreSQL multi-bases, MongoDB, Redis, Kafka (KRaft), Mosquitto, MinIO, MLflow, Prometheus, Grafana, Nginx
+- **Un simulateur de capteur** (`scripts/simulate-sensor.js`)
+- **Une stack CI/CD** GitHub Actions (6 workflows)
+- **Une documentation** complète dans `docs/`
 
-## Ce qui n'est pas encore complet
+## Organisation du monorepo
 
-Les briques suivantes sont preparees ou reservees, mais pas encore implementees completement:
+Le dépôt est organisé en workspaces npm, orchestrés par Turborepo :
 
-- service ML inference;
-- jobs Spark ou consumers Kafka aval;
-- persistance time-series des mesures capteurs;
-- API metier agriculteur/parcelle/recommandations;
-- authentification Keycloak;
-- pipelines de deploiement Kubernetes.
-
-## Priorite actuelle
-
-La priorite actuelle est la coherence du pipeline IoT avec le futur modele IA.
-
-Le pipeline brut doit garantir que les messages envoyes a Kafka contiennent exactement les variables attendues par le modele:
-
-```text
-temperature_min_c
-temperature_max_c
-wind_speed_ms
-solar_radiation_mj_m2_day
-soil_humidity_pct
-air_humidity_pct
-rain_mm_day
+```
+apps/         Services applicatifs (NestJS, FastAPI, PySpark)
+packages/     Code partagé (shared-types, shared-utils)
+infra/        Infrastructure Docker (compose, nginx, postgres, kafka, etc.)
+scripts/      Scripts utilitaires
+docs/         Documentation
+.github/      Workflows CI/CD
 ```
 
-Ces champs sont documentes dans [le contrat payload capteur](../reference/iot-sensor-payload.md).
+Turborepo orchestre les commandes `build`, `test`, `test:cov`, `lint` et `dev` à travers tous les workspaces. Le champ `"packageManager": "npm@11.9.0"` est obligatoire pour Turborepo 2.
 
-## Monorepo
+## Stack technique en bref
 
-Le repo est organise en workspaces npm:
+- **Backend NestJS** : TypeScript, TypeORM, Passport-JWT
+- **ML** : Python 3.11, FastAPI, XGBoost, MLflow, SHAP
+- **Spark** : PySpark 3.5.1 (Structurred Streaming)
+- **Données** : PostgreSQL 16 + PostGIS, MongoDB 7.0, Redis 7.2
+- **Streaming** : Apache Kafka 3.7 (mode KRaft single-node)
+- **IoT** : MQTT via Mosquitto
+- **Observabilité** : Prometheus, Grafana
+- **Gateway** : Nginx avec template dynamique
 
-```text
-apps/
-  iot-service/
-packages/
-infra/
-scripts/
-docs/
-```
+## Pour aller plus loin
 
-Turborepo orchestre les commandes `build`, `test`, `test:cov`, `lint` et `dev`.
-
-Le champ racine suivant est obligatoire pour Turbo 2:
-
-```json
-"packageManager": "npm@11.9.0"
-```
+- [Architecture technique détaillée](./architecture.md) — interactions, pipeline, persistance
+- [Carte du repository](./repository-map.md) — structure détaillée du dépôt
+- [AL-KATRA-SKILL](../AL-KATRA-SKILL.md) — référence complète pour assistance IA
+- [Démarrage local](../guides/local-development.md) — lancer la plateforme en local

@@ -1,126 +1,248 @@
-# Tests et qualite
+# Tests et qualité
 
-## Commandes principales
+Ce guide décrit la stratégie de test de la plateforme Al Katra Bel Qatra, les
+commandes à utiliser, la configuration des runners et les spécificités par
+service. L'exécution des tests en intégration continue est détaillée dans
+[`guides/ci-cd.md`](./ci-cd.md).
 
-Depuis la racine:
+---
+
+## Vue d'ensemble
+
+La stratégie de test repose sur trois axes complémentaires :
+
+- **Tests unitaires par service** (TypeScript / Jest) : chaque service NestJS
+  possède sa propre suite de tests qui couvre les contrôleurs, services et
+  utilitaires, en mockant les dépendances externes (base de données, Kafka,
+  services HTTP amont).
+- **Tests E2E pour les services critiques** : un test bout-en-bout monte
+  l'application NestJS réelle (guards, pipes, filtres) en ne remplaçant que les
+  dépendances externes, afin de valider la chaîne complète.
+- **Tests Python (pytest)** : les composants ML (`ml-inference-service`) et de
+  feature engineering (`spark-jobs`) sont testés avec `pytest`, avec un
+  fonctionnement en mode DEMO qui ne requiert aucun modèle entraîné ni Spark.
+
+La couverture de code est collectée localement et remontée vers Codecov pour
+certains services via les workflows GitHub Actions.
+
+---
+
+## Commandes de test
+
+### TypeScript (monorepo Turborepo)
+
+Depuis la racine du dépôt :
 
 ```bash
+# Lancer les tests de tous les workspaces (via Turborepo)
 npm run test
+
+# Lancer les tests d'un service spécifique
+npm run test -w @alkatra/auth-service
+npm run test -w @alkatra/user-service
+npm run test -w @alkatra/farm-service
+npm run test -w @alkatra/recommendation-service
+npm run test -w @alkatra/iot-service
+
+# Lancer les tests avec collecte de couverture
 npm run test:cov
-npm run build
 ```
 
-Pour cibler seulement le service IoT:
+L'alias `-w <nom-du-workspace>` cible un workspace précis. Les noms de
+workspaces suivent la convention `@alkatra/<service>`.
+
+### Python (pytest)
+
+Pour les composants ML et Spark, se placer dans le répertoire du service et
+lancer `pytest` :
 
 ```bash
-npm test -w @alkatra/iot-service
-npm run test:cov -w @alkatra/iot-service
-npm run build -w @alkatra/iot-service
+# ml-inference-service (mode DEMO, sans modèles ni MLflow)
+cd apps/ml-inference-service
+pytest tests/ -v
+
+# spark-jobs (fonctions pures, sans cluster Spark)
+cd apps/spark-jobs
+pytest tests/ -v
 ```
 
-Sous PowerShell, si `npm.ps1` ou `npx.ps1` est bloque par la policy Windows, utiliser:
+En CI, les tests ML sont lancés avec
+`pytest tests/ -v --cov=app --cov-report=xml` et les tests Spark avec
+`pytest tests/ -v -k "not spark and not kafka"` afin d'écarter les tests qui
+nécessiteraient un cluster Spark ou Kafka.
 
-```powershell
-npm.cmd run test
-npx.cmd tsc -p apps/iot-service/tsconfig.json --noEmit
-```
-
-## Tests actuels
-
-Les tests sont dans:
-
-```text
-apps/iot-service/tests
-```
-
-Fichiers principaux:
-
-- `mqtt.service.spec.ts`
-- `kafka.service.spec.ts`
-
-Ils valident:
-
-- instanciation des services;
-- connexion mockee MQTT/Kafka;
-- validation des 7 variables IA;
-- detection d'anomalies simples;
-- rejet des payloads incomplets;
-- publication Kafka vers `raw-sensor-data`.
+---
 
 ## Couverture
 
-La commande:
+La couverture est collectée via Jest (`test:cov`) ou `pytest-cov`. La remontée
+vers Codecov est portée par les workflows CI. En particulier,
+`.github/workflows/ci-iot.yml` contient une étape d'upload explicite :
+
+```yaml
+- name: Upload coverage
+  uses: codecov/codecov-action@v4
+  with:
+    directory: apps/iot-service/coverage
+    flags: iot-service
+```
+
+Les autres workflows CI exécutent `test:cov` (ou `pytest --cov`) et produisent
+les rapports dans le dossier `coverage/` de chaque service.
+
+---
+
+## Configuration Jest par service
+
+Deux conventions coexistent dans le monorepo :
+
+- **Fichier `jest.config.js` dédié** : utilisé par `farm-service` et
+  `recommendation-service`. Ces fichiers centralisent la configuration
+  (`testRegex`, `testMatch`, `collectCoverageFrom`, `moduleNameMapper`).
+- **Clé `"jest"` dans `package.json`** : utilisée par `auth-service`,
+  `user-service` et `iot-service`.
+
+### Patterns de découverte des tests
+
+| Service | Source de config | Pattern |
+| --- | --- | --- |
+| `auth-service` | `package.json` | `<rootDir>/src/**/*.spec.ts`, `<rootDir>/test/**/*.spec.ts` |
+| `user-service` | `package.json` | `<rootDir>/src/**/*.spec.ts`, `<rootDir>/test/**/*.spec.ts` |
+| `iot-service` | `package.json` | `.*\.spec\.ts$` (regex) |
+| `farm-service` | `jest.config.js` | `.*\.spec\.ts$`, racines `<rootDir>/src/` et `<rootDir>/test/` |
+| `recommendation-service` | `jest.config.js` | `<rootDir>/tests/**/*.spec.ts`, `<rootDir>/tests/**/*.e2e-spec.ts` |
+
+Tous les runners utilisent `ts-jest` comme transform TypeScript et
+`testEnvironment: "node"`.
+
+---
+
+## TypeScript
+
+Le fichier `tsconfig.json` à la racine définit la configuration de base
+partagée par tous les services :
+
+- `module: "commonjs"`, `target: "ES2020"`, `sourceMap: true`.
+- Décorateurs expérimentaux activés (`experimentalDecorators`,
+  `emitDecoratorMetadata`), requis par NestJS.
+- Les fichiers `*.spec.ts` sont exclus de la compilation de production.
+
+Chaque service étend cette base via son propre `tsconfig.json`
+(`"extends": "../../tsconfig.json"`) et y ajoute ses spécificités (répertoires
+`src/`, `tests/`, alias de chemins comme `@/*`). `farm-service` définit ainsi
+l'alias `@/*` vers `src/*`, et `recommendation-service` inclut `tests/**/*`
+dans sa portée de compilation.
+
+---
+
+## Lint
+
+Le lint est orchestré par Turborepo :
 
 ```bash
-npm run test:cov
+# Linter tous les workspaces
+npm run lint
+
+# Linter un service spécifique
+npm run lint -w @alkatra/farm-service
 ```
 
-lance Jest avec coverage.
+ESLint est configuré à la racine via `.eslintrc.js` (plugin
+`@typescript-eslint`, presets recommandés, environnement `node` + `jest`). Le
+formatage est assuré par Prettier (`.prettierrc` à la racine), invoqué par
+`npm run format`.
 
-La couverture indique quelles lignes/fonctions/branches sont executees par les tests. Elle ne garantit pas que les assertions sont suffisantes, mais elle aide a trouver les zones non testees.
+Pour les composants Python, `ruff` est utilisé dans les workflows CI
+(`ruff check apps/ml-inference-service/app/ apps/spark-jobs/jobs/`).
 
-Les zones a ameliorer plus tard:
-
-- `HealthController`;
-- cas d'erreur Kafka;
-- cas d'erreur MQTT;
-- `main.ts`;
-- modules Nest;
-- futurs consumers Kafka.
-
-## TypeScript et Jest
-
-`apps/iot-service/tsconfig.json` inclut:
-
-```json
-"types": ["node", "jest"]
-```
-
-C'est necessaire pour que VS Code reconnaisse `describe`, `it`, `expect` et `jest` dans les tests.
-
-`apps/iot-service/tsconfig.build.json` exclut les tests du build:
-
-```json
-"exclude": ["node_modules", "test", "tests", "dist", "**/*.spec.ts"]
-```
+---
 
 ## Turborepo
 
-Turbo exige le champ racine:
+`turbo.json` orchestre les tâches du monorepo. Les tâches pertinentes pour la
+qualité sont :
 
-```json
-"packageManager": "npm@11.9.0"
-```
+| Tâche | Dépendance | Sorties |
+| --- | --- | --- |
+| `build` | `^build` | `dist/**` |
+| `test` | `^build` | `coverage/**` |
+| `test:cov` | `^build` | `coverage/**` |
+| `lint` | — | — |
 
-Sans ce champ, `npm run test` echoue avec:
+Les tâches `test` et `test:cov` dépendent de `^build`, ce qui garantit que les
+packages internes (par exemple `@alkatra/shared-types`) sont compilés avant que
+les tests d'un service ne s'exécutent. Le cache est désactivé pour `test`,
+`test:cov`, `dev` (`cache: false`).
 
-```text
-Could not resolve workspaces.
-Missing packageManager field in package.json
-```
+---
 
-## Pipelines CI/CD GitHub Actions
+## Tests par catégorie
 
-Les pipelines sont documentés en détail dans [ci-cd.md](./ci-cd.md).
+### Services NestJS (auth, user, farm, recommendation)
 
-Résumé rapide pour les tests :
+Les services NestJS utilisent `@nestjs/testing` pour instancier les modules de
+test. Les dépendances externes (repositories TypeORM, clients HTTP, Kafka) sont
+remplacées par des mocks Jest. La couverture est configurée pour exclure les
+fichiers structurels (`*.module.ts`, `*.entity.ts`, `main.ts`, `config/**`)
+lorsque pertinent.
 
-**Vérifier en local avant de pousser :**
+### recommendation-service (E2E)
 
-```bash
-npm run lint
-npx prettier --check "**/*.{ts,js,json}"
-npm run test
-npm run build
-```
+`recommendation-service` possède un test E2E :
+`apps/recommendation-service/tests/e2e/recommendations.e2e-spec.ts`. Il monte
+l'application NestJS réelle (guards JWT, pipes de validation, filtres
+d'exceptions, contrôleur) en ne substituant que les dépendances externes (base
+de données, Kafka, client HTTP vers farm-service). Le guard JWT reste réel :
+un token est signé avec le même secret que la `JwtStrategy` afin de valider la
+chaîne d'authentification de bout en bout via `supertest`.
 
-**Trois workflows actifs :**
+### iot-service (MQTT et Kafka)
 
-- `ci-common.yml` — lint + build Docker + K8s dry-run (tout push / PR)
-- `ci-iot.yml` — tests Jest IoT (changements dans `apps/iot-service/`)
-- `ci-ml.yml` — tests pytest ML + Spark (changements dans `apps/ml-inference-service/` ou `apps/spark-jobs/`)
+Les tests d'`iot-service` couvrent le pont MQTT vers Kafka. Les clients MQTT et
+Kafka sont mockés, ce qui permet d'exécuter la suite sans broker réel. En CI,
+les variables de connexion pointent vers des adresses factices
+(`mqtt://localhost:1883`, `kafka:9092`, `mongodb://localhost:27017/test`) et
+n'ont pas besoin d'être joignables.
 
-**Règle importante** : les tests Jest du service IoT utilisent des mocks pour MQTT et Kafka. Ils ne nécessitent pas que la stack Docker soit démarrée pour passer.
+### ml-inference-service (pytest, mode DEMO)
 
-**Couverture actuelle :** voir `ci-iot.yml` → step `Upload coverage`. Le rapport est uploadé sur Codecov après chaque passage du pipeline IoT.
+Les tests Python se trouvent dans `apps/ml-inference-service/tests/` :
 
+- `test_model_service.py`
+- `test_predict_endpoint.py`
+
+Ils s'exécutent en mode DEMO : lorsque `MLFLOW_TRACKING_URI` n'est pas
+joignable (cas de la CI), le service n'échoue pas mais fonctionne avec des
+modèles de substitution. Aucun modèle entraîné ni serveur MLflow n'est requis.
+
+### spark-jobs (pytest, fakeredis)
+
+Les tests de `apps/spark-jobs` couvrent les **fonctions pures** de feature
+engineering et de gestion d'état, sans dépendre d'un cluster Spark ou Kafka.
+
+Le test `tests/test_state_manager.py` utilise `fakeredis` ( bibliothèque
+fournissant un client Redis en mémoire) pour substituer le client Redis réel.
+La fixture `fake_redis_client` remplace `jobs.state_manager._redis_client` par
+une instance `fakeredis.FakeRedis(decode_responses=True)`, ce qui permet de
+tester la logique d'état des parcelles sans instance Redis.
+
+Le fichier `tests/conftest.py` ajoute le répertoire racine du package à
+`sys.path` afin que les tests puissent importer le package `jobs` sous la forme
+`jobs.*`.
+
+### farm-service (Postgres PostGIS en CI)
+
+`farm-service` interagit avec une base PostgreSQL/PostGIS. Le workflow
+`.github/workflows/ci-farm.yml` provisionne un conteneur de service
+`postgis/postgis:16-3.4-alpine` (utilisateur `farm_user`, base `farm_db`) et
+initialise le schéma depuis `infra/postgres/schemas/farm-db.sql` avant
+d'exécuter `npm run test --workspace=farm-service`. Les tests accèdent ainsi à
+une base réelle avec l'extension spatiale PostGIS disponible.
+
+---
+
+## Exécution en intégration continue
+
+L'exécution orchestrée des tests, la matrice de workflows par service et la
+remontée de couverture vers Codecov sont documentées dans
+[`guides/ci-cd.md`](./ci-cd.md).

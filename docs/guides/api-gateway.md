@@ -1,431 +1,214 @@
-# `infra/nginx/` — API Gateway (NGINX)
+# API Gateway (Nginx)
 
-> **Date** : juillet 2026  
-> **Port** : 8080  
-> **Image** : `nginx:alpine` avec `gettext` pour `envsubst`  
-> **Routage** : `auth-service` (port 3001), `user-service` (port 3002)
+Ce guide documente la configuration et le fonctionnement de la passerelle HTTP
+de la plateforme Al Katra Bel Qatra. La passerelle est implémentée par un
+conteneur Nginx qui expose un point d'entrée unique sur le port `8080` et route
+les requêtes vers les services NestJS sous-jacents.
 
----
+Sources de configuration :
 
-## Table des matières
-
-1. [Rôle du gateway](#1-rôle-du-gateway)
-2. [Architecture et flux](#2-architecture-et-flux)
-3. [Fichiers du gateway](#3-fichiers-du-gateway)
-4. [Dockerfile](#4-dockerfile)
-5. [Entrypoint (entrypoint.sh)](#5-entrypoint-entrypointsh)
-6. [Template Nginx (nginx.conf.template)](#6-template-nginx-nginxconftemplate)
-7. [Service Docker Compose](#7-service-docker-compose)
-8. [Variables d'environnement](#8-variables-denvironnement)
-9. [Routes exposées](#9-routes-exposées)
-10. [Sécurité](#10-sécurité)
-11. [Démarrage et tests](#11-démarrage-et-tests)
-12. [Ajouter un nouveau service](#12-ajouter-un-nouveau-service)
-13. [Limites constatées](#13-limites-constatées)
+- `infra/nginx/nginx.conf.template`
+- `infra/nginx/entrypoint.sh`
+- `infra/nginx/Dockerfile`
+- Section `gateway` de `infra/docker/docker-compose.yml`
 
 ---
 
-## 1. Rôle du gateway
+## Rôle du gateway
 
-Le gateway est un **reverse proxy** basé sur NGINX qui sert de **point d'entrée unique** pour les clients de la plateforme (applications mobiles, web frontend, etc.).
+Le gateway est l'unique point d'entrée HTTP exposé vers l'extérieur pour les
+API REST de la plateforme. Il est porté par un conteneur Nginx écoutant sur le
+port **8080**.
 
-**Ce qu'il fait :**
-- Il reçoit toutes les requêtes HTTP des clients sur le port **8080**
-- Il **route** chaque requête vers le service approprié selon le chemin (`/api/v1/auth/*` → `auth-service`, `/api/v1/user/*` → `user-service`)
-- Il **maintient un point d'accès unique** : le client n'a besoin de connaître que l'adresse du gateway, pas celle de chaque service individuel
-- Il reste **transparent** : les services continuent de fonctionner exactement comme avant, que la gateway soit présente ou non
+Responsabilités :
 
-**Ce qu'il ne fait PAS :**
-- ❌ Il **ne gère pas l'authentification** (chaque service conserve sa propre validation JWT)
-- ❌ Il **ne modifie pas** le corps des requêtes ou des réponses
-- ❌ Il **n'implémente pas** de logique métier
+- Réception des requêtes HTTP entrantes sur le port `8080`.
+- Routage vers les services amont (auth, user, farm) selon le préfixe de chemin.
+- Application d'un rate limiting différencié par type de route.
+- Ajout systématique d'en-têtes de sécurité (recommandations OWASP).
+- Journalisation structurée au format JSON.
+- Exposition d'un endpoint de santé interne (`/health`).
 
----
-
-## 2. Architecture et flux
-
-### Schéma général
-
-```
-                    ┌──────────────────────────┐
-                    │      Client (mobile/web)  │
-                    └────────────┬─────────────┘
-                                 │
-                                 │ HTTP sur port 8080
-                                 ▼
-                    ┌──────────────────────────┐
-                    │   NGINX API GATEWAY      │
-                    │   (alkatra-gateway)      │
-                    │   Port : 8080            │
-                    │                          │
-                    │   Routage basé sur       │
-                    │   le chemin de l'URL     │
-                    └──┬───────────┬───────────┘
-                       │           │
-                       │           │
-              ┌────────▼────┐  ┌───▼──────────┐
-              │ auth-service│  │ user-service  │
-              │ Port : 3001 │  │ Port : 3002   │
-              │             │  │               │
-              │ JWT, OTP    │  │ Profil user   │
-              │ PostgreSQL  │  │ (proxy vers   │
-              │ Redis       │  │  auth-service)│
-              └─────────────┘  └───────────────┘
-```
-
-### Flux des requêtes
-
-```
-1. Client envoie : POST http://localhost:8080/api/v1/auth/register
-   ──────────────────────────────────────────────────────────────
-   Gateway reçoit sur port 8080
-   → Vérifie la correspondance : /api/v1/auth/ → auth-service
-   → Transfère vers http://auth-service:3001/api/v1/auth/register
-   → Retourne la réponse au client
-
-2. Client envoie : GET http://localhost:8080/api/v1/user/profile
-                                                  (avec Bearer JWT)
-   ──────────────────────────────────────────────────────────────
-   Gateway reçoit sur port 8080
-   → Vérifie la correspondance : /api/v1/user/ → user-service
-   → Transfère vers http://user-service:3002/api/v1/user/profile
-   → user-service valide le JWT, appelle auth-service pour le profil
-   → Retourne la réponse au client
-
-3. Client envoie : GET http://localhost:8080/api/v1/farms
-   ──────────────────────────────────────────────────────────────
-   Gateway reçoit sur port 8080
-   → Vérifie la correspondance : /api/v1/farms/ → user-service
-   → Transfère vers http://user-service:3002/api/v1/farms/
-   → user-service retourne NotImplementedException
-   → Retourne l'erreur au client
-```
+La configuration Nginx n'est pas écrite en dur : elle est produite au démarrage
+du conteneur par substitution de variables (`envsubst`) à partir d'un template.
+Cela permet de résoudre les hôtes et ports des services amont à l'exécution,
+via le resolver DNS interne de Docker.
 
 ---
 
-## 3. Fichiers du gateway
+## Architecture
 
-```
-infra/nginx/
-├── Dockerfile                    # Construction de l'image Docker
-├── entrypoint.sh                 # Script de démarrage du conteneur
-└── nginx.conf.template           # Template de configuration Nginx (avec variables)
-```
+Le gateway repose sur trois fichiers dans `infra/nginx/` :
 
-### Comment ces fichiers interagissent au démarrage
+| Fichier | Rôle |
+| --- | --- |
+| `nginx.conf.template` | Template de configuration Nginx, contenant des variables `${VAR}` substituées au démarrage. |
+| `entrypoint.sh` | Script de démarrage : valide les variables requises, génère `nginx.conf` via `envsubst`, valide la configuration, puis lance Nginx au premier plan. |
+| `Dockerfile` | Image Nginx Alpine avec `gettext` (qui fournit `envsubst`). |
 
-```
-1. DOCKER BUILD
-   Infra/nginx/Dockerfile
-   ├── FROM nginx:alpine
-   ├── apk add gettext             ← Installe envsubst
-   ├── COPY entrypoint.sh          ← Copie le script de démarrage
-   ├── COPY nginx.conf.template    ← Copie le template
-   └── ENTRYPOINT ["/entrypoint.sh"]
+Flux de démarrage du conteneur :
 
-2. DOCKER RUN (démarrage du conteneur)
-   /entrypoint.sh
-   ├── Vérifie que les 4 variables d'env sont présentes
-   │   (AUTH_SERVICE_HOST, AUTH_SERVICE_PORT,
-   │    USER_SERVICE_HOST, USER_SERVICE_PORT)
-   │
-   ├── Exécute envsubst :
-   │   nginx.conf.template + variables d'env → /etc/nginx/nginx.conf
-   │   (remplace ${AUTH_SERVICE_HOST} par "auth-service", etc.)
-   │
-   ├── Valide la syntaxe : nginx -t
-   │
-   └── Démarre Nginx : nginx -g 'daemon off;'
-       (mode foreground pour Docker)
+1. `entrypoint.sh` s'exécute avec `set -e` (échec immédiat en cas d'erreur).
+2. Pour chaque variable listée dans `REQUIRED_VARS`, le script vérifie sa
+   présence ; si l'une est vide, le conteneur s'arrête avec un message
+   d'erreur explicite.
+3. `envsubst` lit `nginx.conf.template`, substitue les variables d'environnement
+   et écrit le résultat dans `/etc/nginx/nginx.conf`.
+4. `nginx -t` valide la syntaxe de la configuration générée.
+5. `exec nginx -g 'daemon off;'` démarre Nginx au premier plan (requis pour
+   Docker).
 
-3. REQUÊTE CLIENT
-   NGINX utilise nginx.conf généré
-   ├── location /api/v1/auth/ → proxy_pass http://auth-service:3001
-   ├── location /api/v1/user/ → proxy_pass http://user-service:3002
-   └── location /              → 404 JSON
-```
+Ce mécanisme garantit qu'aucune configuration invalide ne peut démarrer :
+toute variable manquante ou toute erreur de syntaxe provoque l'arrêt du
+conteneur avant l'ouverture du port.
 
 ---
 
-## 4. Dockerfile
+## Dockerfile
 
 ```dockerfile
-# Fichier : infra/nginx/Dockerfile
-
 FROM nginx:alpine
-
-# gettext fournit envsubst — standard Alpine, aucune dépendance externe
 RUN apk add --no-cache gettext
-
-# Supprimer la config nginx par défaut
 RUN rm /etc/nginx/conf.d/default.conf
-
-# Copier le template de configuration
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
-
-# Copier et rendre exécutable le script d'entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-
-# Port d'écoute du gateway
 EXPOSE 8080
-
 ENTRYPOINT ["/entrypoint.sh"]
 ```
 
-### Explication
+Points notables :
 
-| Instruction | Rôle |
-|-------------|------|
-| `FROM nginx:alpine` | Image de base : NGINX sur Alpine Linux (~23MB) |
-| `apk add --no-cache gettext` | Installe `envsubst` (utilitaire de substitution de variables dans les templates) |
-| `rm /etc/nginx/conf.d/default.conf` | Supprime la configuration par défaut de NGINX pour la remplacer par la nôtre |
-| `COPY nginx.conf.template ...` | Copie le template dans le conteneur |
-| `COPY entrypoint.sh /entrypoint.sh` | Copie le script de démarrage |
-| `RUN chmod +x /entrypoint.sh` | Rend le script exécutable |
-| `EXPOSE 8080` | Déclare que le conteneur écoute sur le port 8080 |
-| `ENTRYPOINT ["/entrypoint.sh"]` | Commande exécutée au démarrage du conteneur |
+- Image de base `nginx:alpine`, légère.
+- `gettext` apporte la commande `envsubst`, sans dépendance externe.
+- La configuration Nginx par défaut est supprimée pour éviter tout conflit.
+- Le port exposé est `8080`, conformément à la directive `listen 8080` du
+  template.
 
 ---
 
-## 5. Entrypoint (entrypoint.sh)
+## Routes HTTP
 
-```bash
-#!/bin/sh
-# Fichier : infra/nginx/entrypoint.sh
+La table suivante reflète exactement le contenu de `nginx.conf.template`.
+Toutes les routes sont définies dans un unique bloc `server` écoutant sur
+`8080`. Les routes regex acceptent un slash final optionnel.
 
-set -e
+| Route | Cible | Rate limiting |
+| --- | --- | --- |
+| `GET /health` | Interne, JSON `200` | — |
+| `/api/v1/auth/` | `${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT}` | `auth_limit` (10 r/s, burst 20) |
+| `/api/v1/user/` | `${USER_SERVICE_HOST}:${USER_SERVICE_PORT}` | — |
+| `~ ^/api/v1/farms(?:/.*)?$` (regex) | `${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT}` | `api_limit` (30 r/s, burst 20) |
+| `~ ^/api/v1/parcels(?:/.*)?$` (regex) | `${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT}` (farm-service) | `api_limit` |
+| `~ ^/api/v1/sensors(?:/.*)?$` (regex) | `${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT}` (farm-service) | `api_limit` |
+| `/` (fallback) | JSON `404` | — |
 
-# -----------------------------------------------------------------------------
-# 1. Validation des variables requises (fail fast)
-# -----------------------------------------------------------------------------
-REQUIRED_VARS="AUTH_SERVICE_HOST AUTH_SERVICE_PORT USER_SERVICE_HOST USER_SERVICE_PORT"
+Précisions :
 
-for VAR in $REQUIRED_VARS; do
-    eval VALUE=\$$VAR
-    if [ -z "$VALUE" ]; then
-        echo "[ERROR] Variable d'environnement manquante : $VAR"
-        echo "[ERROR] Le gateway ne peut pas démarrer sans cette variable."
-        exit 1
-    fi
-done
+- Les routes `/api/v1/farms`, `/api/v1/parcels` et `/api/v1/sensors` sont toutes
+  trois routées vers le **farm-service** ; ce service gère conjointement les
+  fermes, les parcelles et les capteurs.
+- Les expressions rationnelles utilisent la forme `(?:/.*)?` afin d'accepter
+  aussi bien `/api/v1/farms` que `/api/v1/farms/`, `/api/v1/farms/:id`, etc.
+- Le fallback `/` renvoie un objet JSON structuré
+  `{"error":"Not Found","message":"Route introuvable sur le gateway","path":"$uri"}`
+  avec un code `404`.
 
-echo "[INFO] Variables d'environnement validées :"
-echo "       AUTH_SERVICE_HOST=${AUTH_SERVICE_HOST}"
-echo "       AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT}"
-echo "       USER_SERVICE_HOST=${USER_SERVICE_HOST}"
-echo "       USER_SERVICE_PORT=${USER_SERVICE_PORT}"
+### Services non routés
 
-# -----------------------------------------------------------------------------
-# 2. Génération de nginx.conf depuis le template
-# -----------------------------------------------------------------------------
-TEMPLATE_PATH="/etc/nginx/nginx.conf.template"
-OUTPUT_PATH="/etc/nginx/nginx.conf"
+Les services suivants ne sont **pas** exposés via le gateway :
 
-echo "[INFO] Génération de la configuration nginx depuis le template..."
+- `iot-service`
+- `ml-inference-service`
+- `recommendation-service`
 
-envsubst '${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} ${USER_SERVICE_HOST} ${USER_SERVICE_PORT}' \
-    < "$TEMPLATE_PATH" \
-    > "$OUTPUT_PATH"
-
-echo "[INFO] Configuration générée : $OUTPUT_PATH"
-
-# -----------------------------------------------------------------------------
-# 3. Validation de la config nginx avant démarrage
-# -----------------------------------------------------------------------------
-echo "[INFO] Validation de la configuration nginx..."
-nginx -t
-
-echo "[INFO] Configuration nginx valide. Démarrage du gateway..."
-
-# -----------------------------------------------------------------------------
-# 4. Démarrage de nginx (foreground pour Docker)
-# -----------------------------------------------------------------------------
-exec nginx -g 'daemon off;'
-```
-
-### Explication étape par étape
-
-#### Étape 1 : Validation (fail fast)
-
-```bash
-REQUIRED_VARS="AUTH_SERVICE_HOST AUTH_SERVICE_PORT USER_SERVICE_HOST USER_SERVICE_PORT"
-
-for VAR in $REQUIRED_VARS; do
-    eval VALUE=\$$VAR       # Récupère la valeur de la variable dont le nom est dans $VAR
-    if [ -z "$VALUE" ]; then # Si la variable est vide
-        echo "[ERROR] Variable d'environnement manquante : $VAR"
-        exit 1               # Arrête immédiatement le conteneur
-    fi
-done
-```
-
-- Vérifie que les 4 variables sont définies avant de continuer.
-- Si une variable manque, le conteneur s'arrête immédiatement (`exit 1`).
-- `set -e` en ligne 9 : le script s'arrête dès qu'une commande échoue.
-
-#### Étape 2 : Génération de la configuration
-
-```bash
-envsubst '${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} ${USER_SERVICE_HOST} ${USER_SERVICE_PORT}' \
-    < "$TEMPLATE_PATH" \
-    > "$OUTPUT_PATH"
-```
-
-- `envsubst` lit le template (`nginx.conf.template`)
-- Remplace `${AUTH_SERVICE_HOST}` par sa valeur (`auth-service`), etc.
-- Écrit le résultat dans `/etc/nginx/nginx.conf`
-- Seules les variables listées entre guillemets simples sont substituées (les autres variables Nginx comme `$host`, `$remote_addr` ne sont pas touchées)
-
-#### Étape 3 : Validation de la syntaxe
-
-```bash
-nginx -t
-```
-
-- Commande NGINX qui **teste** la syntaxe du fichier de configuration sans démarrer le serveur.
-- Si la syntaxe est invalide, `nginx -t` retourne une erreur → `set -e` arrête le script → le conteneur ne démarre pas.
-
-#### Étape 4 : Démarrage
-
-```bash
-exec nginx -g 'daemon off;'
-```
-
-- `nginx -g 'daemon off;'` : démarre NGINX en **mode foreground** (obligatoire pour Docker, sinon le conteneur s'arrête immédiatement)
-- `exec` : remplace le processus shell par le processus Nginx (les signaux Docker sont transmis directement à Nginx)
+Ces services communiquent principalement via Kafka et MongoDB, ou exposent des
+endpoints consommés en interne ; ils ne disposent donc pas de route publique
+sur la passerelle.
 
 ---
 
-## 6. Template Nginx (nginx.conf.template)
+## Variables d'environnement
 
-### Structure générale
+Le script `entrypoint.sh` définit la liste stricte suivante de variables
+requises :
 
 ```
-events {
-    worker_connections 1024;
-    multi_accept on;
-    use epoll;
-}
-
-http {
-    [paramètres généraux]
-    [resolver DNS]
-    [format de log]
-    [rate limiting]
-
-    server {
-        listen 8080;
-        [headers de sécurité]
-
-        location /health                  → Réponse JSON directe
-        location /_internal/check_auth    → Vérification auth-service (interne)
-        location /_internal/check_user    → Vérification user-service (interne)
-
-        location /api/v1/auth/            → proxy_pass auth-service
-        location /api/v1/user/            → proxy_pass user-service
-        location /api/v1/farms/           → proxy_pass user-service
-
-        location /                        → 404 JSON
-    }
-}
+REQUIRED_VARS="AUTH_SERVICE_HOST AUTH_SERVICE_PORT \
+               USER_SERVICE_HOST USER_SERVICE_PORT \
+               FARM_SERVICE_HOST FARM_SERVICE_PORT"
 ```
 
-### Détail des sections
+Soit **6 variables** obligatoires (hôte + port pour chacun des trois services
+routés). Le conteneur refuse de démarrer si l'une d'elles est vide.
 
-#### Section `events`
+La substitution opérée par `envsubst` porte explicitement sur ces 6 variables :
 
-```nginx
-events {
-    worker_connections 1024;   # Nombre max de connexions simultanées par worker
-    multi_accept on;            # Accepte plusieurs connexions à la fois
-    use epoll;                  # Mécanisme d'I/O (Linux, performant)
-}
+```sh
+envsubst '${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} \
+          ${USER_SERVICE_HOST} ${USER_SERVICE_PORT} \
+          ${FARM_SERVICE_HOST} ${FARM_SERVICE_PORT}' \
+    < "$TEMPLATE_PATH" > "$OUTPUT_PATH"
 ```
 
-#### Paramètres généraux HTTP
+### Variables injectées mais non substituées
 
-```nginx
-http {
-    sendfile on;                # Optimise l'envoi de fichiers statiques
-    tcp_nopush on;              # Optimise l'envoi des paquets TCP
-    tcp_nodelay on;             # Désactive l'algorithme Nagle (faible latence)
-    keepalive_timeout 65;       # Durée max d'une connexion keep-alive
-    types_hash_max_size 2048;   # Taille de la table des types MIME
+La section `gateway` de `infra/docker/docker-compose.yml` injecte également :
 
-    include /etc/nginx/mime.types;    # Types MIME standards
-    default_type application/octet-stream;
+- `RECOMMENDATION_SERVICE_HOST` (défaut `recommendation-service`)
+- `RECOMMENDATION_SERVICE_PORT` (défaut `3004`)
 
-    client_max_body_size 10M;   # Taille max du corps des requêtes (10MB)
+Ces deux variables **ne sont pas** reprises dans `REQUIRED_VARS` ni dans la
+liste de substitution de `envsubst`, et le template ne les référence pas.
+Elles sont réservées à une route future vers le recommendation-service. Elles
+n'ont aucun effet sur la configuration Nginx générée.
 
-    proxy_connect_timeout 30s;  # Timeout de connexion aux services
-    proxy_send_timeout 60s;     # Timeout d'envoi aux services
-    proxy_read_timeout 60s;     # Timeout de lecture depuis les services
-}
-```
+### Valeurs par défaut dans le compose
 
-#### Résolveur DNS interne Docker
+| Variable | Défaut (`docker-compose.yml`) |
+| --- | --- |
+| `AUTH_SERVICE_HOST` | `auth-service` |
+| `AUTH_SERVICE_PORT` | `3001` |
+| `USER_SERVICE_HOST` | `user-service` |
+| `USER_SERVICE_PORT` | `3002` |
+| `FARM_SERVICE_HOST` | `farm-service` |
+| `FARM_SERVICE_PORT` | `3003` |
 
-```nginx
-resolver 127.0.0.11 valid=10s ipv6=off;
-resolver_timeout 5s;
-```
+---
 
-- **127.0.0.11** : adresse IP fixe du serveur DNS interne de Docker, présente dans tous les conteneurs.
-- **valid=10s** : les résolutions DNS sont mises en cache 10 secondes maximum. Passé ce délai, Nginx re-résout le nom.
-- **ipv6=off** : désactive la résolution IPv6 (les services Docker sont sur un réseau bridge IPv4).
-- Utile car les `proxy_pass` utilisent des variables Nginx (`$auth_upstream`, `$user_upstream`), ce qui force la résolution DNS à chaque requête (contrairement à un proxy_pass statique qui résout une seule fois au démarrage).
+## Rate limiting
 
-#### Format de log structuré (JSON)
-
-```nginx
-log_format gateway_json escape=json '{'
-    '"timestamp":"$time_iso8601",'
-    '"remote_addr":"$remote_addr",'
-    '"request":"$request",'
-    '"status":$status,'
-    '"body_bytes_sent":$body_bytes_sent,'
-    '"http_referer":"$http_referer",'
-    '"http_user_agent":"$http_user_agent",'
-    '"upstream_addr":"$upstream_addr",'
-    '"upstream_status":"$upstream_status",'
-    '"request_time":$request_time,'
-    '"upstream_response_time":"$upstream_response_time"'
-'}';
-
-access_log /var/log/nginx/access.log gateway_json;
-error_log /var/log/nginx/error.log warn;
-```
-
-- Les logs sont formatés en JSON structuré (interopérable avec des outils de logging comme Elasticsearch, Loki, etc.).
-- `escape=json` : les caractères spéciaux dans les valeurs sont échappés selon les règles JSON.
-- Champs inclus :
-  - `timestamp` : date/heure de la requête (format ISO 8601)
-  - `remote_addr` : adresse IP du client
-  - `request` : méthode HTTP + chemin + protocole (ex: `POST /api/v1/auth/register HTTP/1.1`)
-  - `status` : code HTTP retourné au client
-  - `body_bytes_sent` : taille de la réponse en octets
-  - `http_referer` : en-tête Referer (provenance du client)
-  - `http_user_agent` : user-agent du client
-  - `upstream_addr` : adresse du service qui a traité la requête
-  - `upstream_status` : code HTTP retourné par le service en amont
-  - `request_time` : temps total de traitement de la requête (secondes)
-  - `upstream_response_time` : temps de réponse du service en amont (secondes)
-
-#### Rate limiting
+Deux zones de limitation de débit sont définies au niveau du bloc `http` :
 
 ```nginx
 limit_req_zone $binary_remote_addr zone=api_limit:10m rate=30r/s;
 limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/s;
 ```
 
-- Définit deux zones de limitation de débit :
-  - `api_limit` : 30 requêtes par seconde pour l'API générale
-  - `auth_limit` : 10 requêtes par seconde pour l'authentification
-- Clé de limitation : `$binary_remote_addr` (adresse IP du client, format binaire pour économiser la mémoire)
-- Taille de la zone : 10MB (peut stocker environ 160 000 adresses IP uniques)
+| Zone | Taux | Burst | Routes concernées |
+| --- | --- | --- | --- |
+| `api_limit` | 30 requêtes/s | 20 (`nodelay`) | `/api/v1/farms`, `/api/v1/parcels`, `/api/v1/sensors` |
+| `auth_limit` | 10 requêtes/s | 20 (`nodelay`) | `/api/v1/auth/` |
 
-#### Headers de sécurité (OWASP)
+Les deux zones sont effectivement appliquées sur leurs routes respectives via la
+directive `limit_req zone=... burst=20 nodelay;`. La clé de limitation est
+`$binary_remote_addr` (l'adresse IP du client), ce qui rend le plafond
+indépendant pour chaque client.
+
+`auth_limit` est plus stricte que `api_limit` : les endpoints d'authentification
+(login, OTP, refresh) sont sensibles et exposés au brute-force ; un plafond de
+10 requêtes/s par client réduit la surface d'attaque. La limite `api_limit` des
+routes métier (farm/parcels/sensors) est plus permissive pour ne pas pénaliser
+les usages légitimes.
+
+---
+
+## Sécurité
+
+### En-têtes OWASP
+
+Les en-têtes suivants sont ajoutés au niveau du `server`, avec le suffixe
+`always` pour garantir leur présence y compris sur les réponses d'erreur :
 
 ```nginx
 add_header X-Frame-Options "SAMEORIGIN" always;
@@ -435,17 +218,184 @@ add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
 ```
 
-| Header | Valeur | Protection |
-|--------|--------|------------|
-| `X-Frame-Options` | `SAMEORIGIN` | Empêche le clickjacking (site affiché dans une iframe d'un autre domaine) |
-| `X-Content-Type-Options` | `nosniff` | Empêche le MIME-type sniffing (le navigateur ne devine pas le type du contenu) |
-| `X-XSS-Protection` | `1; mode=block` | Active le filtre XSS du navigateur |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Contrôle les informations envoyées dans l'en-tête Referer |
-| `Permissions-Policy` | `geolocation=(), ...` | Désactive les API sensibles du navigateur (géolocalisation, microphone, caméra) |
+Signification :
+
+- `X-Frame-Options: SAMEORIGIN` empêche l'intégration de la page dans un
+  `iframe` tiers (protection clickjacking).
+- `X-Content-Type-Options: nosniff` interdit au navigateur de deviner le type
+  MIME.
+- `X-XSS-Protection` active le filtre XSS hérité des navigateurs legacy.
+- `Referrer-Policy` limite la fuite d'URL via l'en-tête `Referer`.
+- `Permissions-Policy` désactive les API sensibles du navigateur
+  (géolocalisation, micro, caméra).
+
+### Journalisation JSON
+
+Un format de log structuré `gateway_json` est défini et appliqué aux access
+logs :
+
+```nginx
+log_format gateway_json escape=json '{ ... }';
+access_log /var/log/nginx/access.log gateway_json;
+error_log /var/log/nginx/error.log warn;
+```
+
+Les champs journalisés incluent l'horodatage ISO 8601, l'adresse distante, la
+requête, le code HTTP, la taille du corps, les temps de réponse amont et
+global, etc. Ce format est directement ingéré par les pipelines
+d'observabilité.
+
+### Resolver DNS
+
+```nginx
+resolver 127.0.0.11 valid=10s ipv6=off;
+resolver_timeout 5s;
+```
+
+`127.0.0.11` est l'adresse du resolver DNS interne fixe de Docker, présente
+dans tout conteneur. Elle permet à Nginx de résoudre dynamiquement les noms de
+services (`auth-service`, `farm-service`…) au moment du `proxy_pass`, ce qui
+garantit le fonctionnement en cas de mise à l'échelle ou de redémarrage des
+services amont. Le TTL est forcé à 10 secondes (`valid=10s`).
+
+### Taille du corps
+
+```nginx
+client_max_body_size 10M;
+```
+
+Les requêtes entrantes sont limitées à 10 Mo. Les uploads dépassant cette
+taille reçoivent une erreur `413 Request Entity Too Large`.
+
+### Timeouts proxy
+
+```nginx
+proxy_connect_timeout 30s;
+proxy_send_timeout 60s;
+proxy_read_timeout 60s;
+```
+
+Ces valeurs protègent le gateway contre les services amont lents ou
+indisponibles.
 
 ---
 
-## 7. Service Docker Compose
+## Healthchecks internes
+
+Le template définit deux locations marquées `internal`, donc inaccessibles
+depuis l'extérieur mais utilisables depuis la configuration Nginx elle-même
+(healthchecks composés, checks amont) :
+
+```nginx
+location /_internal/check_auth {
+    internal;
+    set $auth_upstream http://${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
+    proxy_pass $auth_upstream/health;
+    proxy_method HEAD;
+}
+
+location /_internal/check_user {
+    internal;
+    set $user_upstream http://${USER_SERVICE_HOST}:${USER_SERVICE_PORT};
+    proxy_pass $user_upstream/api/v1/health/live;
+    proxy_method HEAD;
+}
+```
+
+Ces locations sondent respectivement le `auth-service` (`/health`) et le
+`user-service` (`/api/v1/health/live`) en méthode `HEAD`.
+
+L'endpoint public `/health` est servi directement par le gateway et renvoie un
+JSON sans déléguer vers un service amont :
+
+```nginx
+location /health {
+    default_type application/json;
+    return 200 '{"status":"ok","service":"alkatra-gateway","timestamp":"$time_iso8601"}';
+}
+```
+
+Dans le compose, le healthcheck Docker du conteneur `gateway` interroge cet
+endpoint :
+
+```yaml
+healthcheck:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+```
+
+---
+
+## Ajouter une route
+
+Pour exposer un nouveau service via le gateway, suivre les étapes suivantes.
+
+### 1. Éditer le template `nginx.conf.template`
+
+Ajouter un nouveau bloc `location` dans le `server`. Pour un service
+`reco-service` exposé sur `/api/v1/recommendations/` :
+
+```nginx
+location ~ ^/api/v1/recommendations(?:/.*)?$ {
+    set $reco_upstream http://${RECO_SERVICE_HOST}:${RECO_SERVICE_PORT};
+    proxy_pass $reco_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    limit_req zone=api_limit burst=20 nodelay;
+}
+```
+
+Pour un préfixe simple (sans regex), préférer une location littérale
+(`location /api/v1/reco/ { ... }`).
+
+### 2. Mettre à jour `entrypoint.sh`
+
+Ajouter les nouvelles variables dans les deux endroits :
+
+- La liste `REQUIRED_VARS` (si la variable est obligatoire).
+- La liste des variables passées à `envsubst`.
+
+```sh
+REQUIRED_VARS="... RECO_SERVICE_HOST RECO_SERVICE_PORT"
+
+envsubst '${...} ${RECO_SERVICE_HOST} ${RECO_SERVICE_PORT}' \
+    < "$TEMPLATE_PATH" > "$OUTPUT_PATH"
+```
+
+Si une variable doit rester optionnelle (valeur par défaut côté compose),
+ne pas l'ajouter à `REQUIRED_VARS` mais bien à la commande `envsubst`.
+
+### 3. Mettre à jour `infra/docker/docker-compose.yml`
+
+Dans la section `environment` du service `gateway`, exposer les variables :
+
+```yaml
+environment:
+  RECO_SERVICE_HOST: ${RECO_SERVICE_HOST:-reco-service}
+  RECO_SERVICE_PORT: ${RECO_SERVICE_PORT:-3004}
+```
+
+### 4. Tester
+
+Reconstruire l'image du gateway et vérifier :
+
+```bash
+docker compose -f infra/docker/docker-compose.yml --profile phase1 build gateway
+docker compose -f infra/docker/docker-compose.yml --profile phase1 up -d gateway
+curl http://localhost:8080/health
+curl http://localhost:8080/api/v1/recommendations/
+```
+
+La validation `nginx -t` exécutée par l'entrypoint échoue bruyamment en cas de
+syntaxe incorrecte, ce qui évite un démarrage silencieux d'une configuration
+cassée.
+
+---
+
+## Configuration Docker Compose
+
+La section `gateway` de `infra/docker/docker-compose.yml` :
 
 ```yaml
 gateway:
@@ -463,10 +413,18 @@ gateway:
     AUTH_SERVICE_PORT: ${AUTH_SERVICE_PORT:-3001}
     USER_SERVICE_HOST: ${USER_SERVICE_HOST:-user-service}
     USER_SERVICE_PORT: ${USER_SERVICE_PORT:-3002}
+    FARM_SERVICE_HOST: ${FARM_SERVICE_HOST:-farm-service}
+    FARM_SERVICE_PORT: ${FARM_SERVICE_PORT:-3003}
+    RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST:-recommendation-service}
+    RECOMMENDATION_SERVICE_PORT: ${RECOMMENDATION_SERVICE_PORT:-3004}
   depends_on:
     auth-service:
       condition: service_healthy
     user-service:
+      condition: service_healthy
+    farm-service:
+      condition: service_healthy
+    recommendation-service:
       condition: service_healthy
   networks:
     - alkatra-net
@@ -478,240 +436,14 @@ gateway:
     start_period: 10s
 ```
 
-### Détail des options
-
-| Option | Valeur | Explication |
-|--------|--------|-------------|
-| `build.context` | `./../../infra/nginx` | Chemin vers le dossier contenant le Dockerfile |
-| `image` | `alkatra-gateway:latest` | Nom de l'image construite (utile pour le partage ou le cache) |
-| `profiles` | `["phase1"]` | Le gateway n'est démarré que si le profil `phase1` est activé |
-| `ports` | `"8080:8080"` | Le port 8080 du host est mappé au port 8080 du conteneur |
-| `environment` | 4 variables | Les adresses des services sont injectées au démarrage |
-| `depends_on` | `auth-service`, `user-service` | Attend que ces services soient "healthy" avant de démarrer |
-| `healthcheck` | `wget http://localhost:8080/health` | Vérifie que le gateway répond sur `/health` |
-| `start_period` | `10s` | Délai de grâce au démarrage (le temps que Nginx s'initialise) |
-
-### Variables d'environnement avec valeurs par défaut
-
-```yaml
-AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST:-auth-service}  # défaut : "auth-service"
-AUTH_SERVICE_PORT: ${AUTH_SERVICE_PORT:-3001}          # défaut : "3001"
-USER_SERVICE_HOST: ${USER_SERVICE_HOST:-user-service}  # défaut : "user-service"
-USER_SERVICE_PORT: ${USER_SERVICE_PORT:-3002}          # défaut : "3002"
-```
-
-Syntaxe `${VAR:-default}` : si la variable `${VAR}` n'est pas définie dans le fichier `.env`, la valeur `default` est utilisée.
-
----
-
-## 8. Variables d'environnement
-
-| Variable | Défaut | Description |
-|----------|--------|-------------|
-| `AUTH_SERVICE_HOST` | `auth-service` | Nom d'hôte du service d'authentification (résolu via DNS Docker) |
-| `AUTH_SERVICE_PORT` | `3001` | Port du service d'authentification |
-| `USER_SERVICE_HOST` | `user-service` | Nom d'hôte du service utilisateur |
-| `USER_SERVICE_PORT` | `3002` | Port du service utilisateur |
-
-Ces variables sont utilisées par `envsubst` dans l'entrypoint pour générer le fichier `nginx.conf` final.
-
----
-
-## 9. Routes exposées
-
-### Routes publiques
-
-| Méthode | Chemin via gateway | Cible | Comportement |
-|---------|--------------------|-------|-------------|
-| `GET` | `/api/v1/auth/register` | auth-service:3001 | Inscription (envoi OTP) |
-| `POST` | `/api/v1/auth/verify-otp` | auth-service:3001 | Vérification OTP |
-| `POST` | `/api/v1/auth/login` | auth-service:3001 | Connexion avec refresh token |
-| `POST` | `/api/v1/auth/refresh` | auth-service:3001 | Rafraîchissement de session |
-| `GET` | `/api/v1/user/profile` | user-service:3002 | Profil utilisateur (JWT requis) |
-| `PATCH` | `/api/v1/user/profile` | user-service:3002 | Mise à jour profil (JWT requis) |
-| `GET` | `/api/v1/farms` | user-service:3002 | Liste des fermes (non implémenté) |
-
-### Health checks
-
-| Méthode | Chemin | Comportement |
-|---------|--------|-------------|
-| `GET` | `/health` | Retourne `{"status":"ok","service":"alkatra-gateway","timestamp":"..."}` |
-| `GET` | `/health/upstream` | **Endpoints internes** : `/api/v1/health/upstream` n'est pas défini dans le template actuel |
-
-### Endpoints internes (ne pas exposer au public)
-
-| Méthode | Chemin | Comportement |
-|---------|--------|-------------|
-| `HEAD` | `/_internal/check_auth` | Vérifie via HEAD que `auth-service/health` répond |
-| `HEAD` | `/_internal/check_user` | Vérifie via HEAD que `user-service/api/v1/health/live` répond |
-
-Ces endpoints sont marqués `internal;` dans Nginx, ce qui signifie qu'ils ne sont accessibles que par des sous-requêtes internes (pas directement depuis l'extérieur).
-
-### Fallback
-
-| Chemin | Réponse |
-|--------|---------|
-| `/*` (tout autre chemin) | `404 {"error":"Not Found","message":"Route introuvable sur le gateway","path":"..."}` |
-
----
-
-## 10. Sécurité
-
-### Headers HTTP de sécurité
-
-5 headers de sécurité OWASP sont ajoutés à chaque réponse (voir section 6).
-
-### Rate limiting
-
-Deux zones de limitation :
-- **30 req/s** pour l'API générale (toutes les routes sauf auth)
-- **10 req/s** pour l'authentification (route `/api/v1/auth/`)
-
-La zone `auth_limit` est explicitement appliquée à la route `/api/v1/auth/` avec `burst=20 nodelay` : jusqu'à 20 requêtes en rafale sont autorisées au-delà de la limite, mais elles sont traitées immédiatement.
-
-### Taille maximale des requêtes
-
-`client_max_body_size 10M` : les requêtes avec un corps plus grand que 10MB sont rejetées.
-
-### Timeouts
-
-Les connexions entre le gateway et les services en amont ont des timeouts :
-- Connexion : 30s
-- Envoi : 60s
-- Lecture : 60s
-
----
-
-## 11. Démarrage et tests
-
-### Prérequis
-
-- Docker Desktop installé et en cours d'exécution
-- Le profil `phase1` doit être activé (contient `auth-service`, `user-service` et `gateway`)
-
-### Démarrer la stack
-
-```bash
-docker compose --profile phase1 -f infra/docker/docker-compose.yml up -d
-```
-
-### Vérifier que le gateway est bien démarré
-
-```bash
-# Via le healthcheck
-docker compose -f infra/docker/docker-compose.yml ps gateway
-# Statut : Up (healthy)
-
-# Via HTTP
-curl http://localhost:8080/health
-# Réponse attendue : {"status":"ok","service":"alkatra-gateway","timestamp":"..."}
-```
-
-### Tester les routes via le gateway
-
-```bash
-# 1. Demander un code OTP (développement)
-curl -X POST http://localhost:8080/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"phone": "+212612345678"}'
-# Réponse : {"success":true,"message":"OTP envoyé","expiresAt":"..."}
-
-# 2. Vérifier le profil utilisateur (nécessite un JWT valide)
-curl -H "Authorization: Bearer <token>" \
-  http://localhost:8080/api/v1/user/profile
-
-# 3. Vérifier qu'une route inexistante retourne 404
-curl http://localhost:8080/api/v1/unknown
-# Réponse : 404 {"error":"Not Found","message":"Route introuvable sur le gateway","path":"..."}
-```
-
-### Voir les logs
-
-```bash
-docker compose -f infra/docker/docker-compose.yml logs -f gateway
-# Exemple de log :
-# {"timestamp":"2026-07-15T12:00:00+00:00","remote_addr":"172.20.0.1","request":"GET /health HTTP/1.1","status":200,...}
-```
-
-### Arrêter la stack
-
-```bash
-docker compose --profile phase1 -f infra/docker/docker-compose.yml down
-```
-
----
-
-## 12. Ajouter un nouveau service
-
-Pour ajouter un nouveau service au routage du gateway (par exemple `farm-service` sur le port 3003), les modifications à effectuer sont :
-
-### 1. Dans `nginx.conf.template`
-
-Ajouter en haut du template (dans les `# ROUTES API`) :
-
-```nginx
-# ---- Farm Service ----
-location /api/v1/farms/ {
-    set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
-    proxy_pass $farm_upstream;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
-
-### 2. Dans `entrypoint.sh`
-
-Ajouter les nouvelles variables à la liste des variables requises :
-
-```bash
-REQUIRED_VARS="AUTH_SERVICE_HOST AUTH_SERVICE_PORT USER_SERVICE_HOST USER_SERVICE_PORT FARM_SERVICE_HOST FARM_SERVICE_PORT"
-```
-
-Et dans la commande `envsubst` :
-
-```bash
-envsubst '${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} ${USER_SERVICE_HOST} ${USER_SERVICE_PORT} ${FARM_SERVICE_HOST} ${FARM_SERVICE_PORT}'
-```
-
-### 3. Dans `docker-compose.yml`
-
-Ajouter les variables d'environnement au service `gateway` :
-
-```yaml
-FARM_SERVICE_HOST: ${FARM_SERVICE_HOST:-farm-service}
-FARM_SERVICE_PORT: ${FARM_SERVICE_PORT:-3003}
-```
-
-Et ajouter `farm-service` dans `depends_on` :
-
-```yaml
-depends_on:
-  auth-service:
-    condition: service_healthy
-  user-service:
-    condition: service_healthy
-  farm-service:
-    condition: service_healthy
-```
-
----
-
-## 13. Limites constatées
-
-### Ce qui n'est pas implémenté dans le template actuel
-
-1. **Pas d'endpoint `/health/upstream` agrégé** : contrairement à la première version du gateway, le template actuel ne propose pas d'endpoint pour vérifier l'état de tous les services en amont en une seule requête.
-
-2. **Pas de cache** : aucune réponse n'est mise en cache par le gateway. Chaque requête est systématiquement transmise au service en amont.
-
-3. **Pas de connexion HTTPS** : le gateway écoute uniquement en HTTP (port 8080). Aucun certificat SSL n'est configuré.
-
-4. **Pas de load balancing** : chaque service est défini avec une seule instance. Si un service est scalable, l'upstream Nginx n'est pas configuré pour répartir la charge.
-
-5. **Le rate limiting n'est appliqué que sur `/api/v1/auth/`** : la zone `api_limit` est déclarée mais n'est pas utilisée dans un bloc `location`. Elle n'a aucun effet.
-
-### Comportements
-
-6. **Le resolver DNS 127.0.0.11 n'est nécessaire qu'avec des variables** : dans ce template, les `proxy_pass` utilisent des variables Nginx (`$auth_upstream`), ce qui force l'utilisation du resolver. Si on utilisait des `proxy_pass` statiques (`proxy_pass http://auth-service:3001;`), le resolver ne serait pas nécessaire.
+Points clés :
+
+- Le gateway appartient au profil `phase1` ; il démarre avec
+  `npm run docker:up-phase1` (ou `docker compose --profile phase1 up`).
+- Le port `8080` est mappé sur l'hôte.
+- Les services amont (`auth-service`, `user-service`, `farm-service`,
+  `recommendation-service`) doivent être sains avant le démarrage du gateway
+  (`depends_on` avec `condition: service_healthy`).
+- Le réseau partagé est `alkatra-net`, indispensable pour la résolution DNS
+  des noms de services.
+- Le healthcheck Docker interroge `/health` toutes les 30 secondes.

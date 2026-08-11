@@ -7,8 +7,10 @@
 | **API Gateway** | `alkatra-gateway` | `localhost:8080` | — | `phase1` |
 | **Auth Service** | `alkatra-auth` | `http://localhost:3001` | `http://localhost:8080/api/v1/auth/*` | `phase1` |
 | **User Service** | `alkatra-user` | `http://localhost:3002` | `http://localhost:8080/api/v1/user/*` | `phase1` |
-| **IoT Service** | `alkatra-iot` | `http://localhost:3005` | À venir | — |
-| **ML Inference** | `alkatra-ml` | `http://localhost:8000` | À venir | — |
+| **Farm Service** | `alkatra-farm` | `http://localhost:3003` | `http://localhost:8080/api/v1/farms/*`, `/api/v1/parcels/*`, `/api/v1/sensors/*` | `phase1` |
+| **Recommendation Service** | `alkatra-recommendation` | `http://localhost:3004` | Non exposé (consommation interne) | `phase1` |
+| **IoT Service** | `alkatra-iot` | `http://localhost:3005` | Non exposé (communication interne uniquement) | — |
+| **ML Inference** | `alkatra-ml` | `http://localhost:8000` | Non exposé (communication interne uniquement) | — |
 
 ## Infrastructure
 
@@ -27,7 +29,7 @@
 | **Minio Console** | `alkatra-minio` | `http://localhost:9001` | Interface d'admin MinIO |
 | **MailHog SMTP** | `alkatra-mailhog` | `localhost:1025` | SMTP de développement |
 | **MailHog UI** | `alkatra-mailhog` | `http://localhost:8025` | Interface email dev |
-| **Keycloak** | `alkatra-keycloak` | `http://localhost:8081` | Auth OIDC (Phase 2), port changé à 8081 pour éviter conflit avec la gateway (8080) |
+| **Keycloak** | `alkatra-keycloak` | `http://localhost:8081` | Auth OIDC (intégration produit réservée), port changé à 8081 pour éviter conflit avec la gateway (8080) |
 | **Prometheus** | `alkatra-prometheus` | `http://localhost:9090` | Collecte de métriques |
 | **Grafana** | `alkatra-grafana` | `http://localhost:3000` | Dashboards |
 
@@ -36,10 +38,13 @@
 | Route Gateway | Cible | Description |
 |---------------|-------|-------------|
 | `GET /health` | Gateway | Health check du gateway lui-même |
-| `GET /health/upstream` | Gateway | Health check agrégé (auth + user) |
 | `/api/v1/auth/*` | auth-service:3001 | Authentification (register, verify-otp, login, refresh) |
 | `/api/v1/user/*` | user-service:3002 | Profil utilisateur |
-| `/api/v1/farms/*` | user-service:3002 | Fermes (placeholder) |
+| `/api/v1/farms/*` | farm-service:3003 | Gestion des fermes |
+| `/api/v1/parcels/*` | farm-service:3003 | Gestion des parcelles |
+| `/api/v1/sensors/*` | farm-service:3003 | Gestion des capteurs |
+
+Le gateway (NGINX, template `infra/nginx/nginx.conf.template`) est en place et exécute le routage ci-dessus. Les services `iot-service` et `ml-inference-service` ne sont pas exposés via le gateway : ils ne communiquent qu'en interne sur le réseau Docker.
 
 ## Commandes utiles
 

@@ -1,6 +1,5 @@
 # PostgreSQL — Architecture multi-bases
 
-> **Date** : juillet 2026  
 > **Conteneur** : `alkatra-postgres`  
 > **Image** : `postgis/postgis:16-3.4-alpine`  
 > **Port** : 5432  
@@ -64,9 +63,9 @@ Chaque microservice possède **sa propre base de données** et **son propre util
 | Service | Base de données | Utilisateur | Tables |
 |---------|----------------|-------------|--------|
 | `auth-service` | `auth_db` | `auth_user` | `users` |
-| `farm-service` (à implémenter) | `farm_db` | `farm_user` | `farms`, `parcels`, `sensors` |
-| `recommendation-service` (à implémenter) | `recommendation_db` | `recommendation_user` | `recommendations` |
-| `alert-service` (à implémenter) | `notification_db` | `notify_user` | `alerts` |
+| `farm-service` | `farm_db` | `farm_user` | `farms`, `parcels`, `sensors` |
+| `recommendation-service` | `recommendation_db` | `recommendation_user` | `recommendations` |
+| `alert-service` | `notification_db` | `notify_user` | `alerts` |
 | `keycloak` | `keycloak_db` | `keycloak_user` | schema `keycloak` (géré par Keycloak) |
 | `mlflow` | `mlflow_db` | `mlflow_user` | Tables gérées par MLflow (Alembic) |
 
@@ -102,13 +101,13 @@ Chaque service se connecte à sa base via la variable d'environnement `DATABASE_
 # auth-service
 DATABASE_URL: postgresql://auth_user:${AUTH_DB_PASSWORD}@postgres:5432/auth_db
 
-# farm-service (futur)
+# farm-service
 DATABASE_URL: postgresql://farm_user:${FARM_DB_PASSWORD}@postgres:5432/farm_db
 
-# recommendation-service (futur)
+# recommendation-service
 DATABASE_URL: postgresql://recommendation_user:${RECOMMENDATION_DB_PASSWORD}@postgres:5432/recommendation_db
 
-# alert-service (futur)
+# alert-service
 DATABASE_URL: postgresql://notify_user:${NOTIFY_DB_PASSWORD}@postgres:5432/notification_db
 ```
 
@@ -118,7 +117,7 @@ DATABASE_URL: postgresql://notify_user:${NOTIFY_DB_PASSWORD}@postgres:5432/notif
 
 ### Création des utilisateurs
 
-Les utilisateurs sont créés dans `00-create-databases.sh` (Phase 2) :
+Les utilisateurs sont créés dans `00-create-databases.sh` :
 
 ```bash
 CREATE USER auth_user WITH PASSWORD '${AUTH_DB_PASSWORD}';
@@ -132,7 +131,7 @@ GRANT CREATE ON SCHEMA public TO auth_user;
 
 Chaque utilisateur ne peut se connecter qu'à **sa propre base**. L'isolation est assurée par 3 mécanismes :
 
-#### Mécanisme 1 : Révocation de l'accès public (Phase 3)
+#### Mécanisme 1 : Révocation de l'accès public (étape 3 du script)
 
 ```sql
 REVOKE CONNECT ON DATABASE auth_db FROM public;
@@ -142,7 +141,7 @@ REVOKE CONNECT ON DATABASE farm_db FROM public;
 
 Par défaut, PostgreSQL donne le droit `CONNECT` à `public` sur toutes les bases. Cette commande le révoque.
 
-#### Mécanisme 2 : Transfert de propriété du schema (Phase 4)
+#### Mécanisme 2 : Transfert de propriété du schema (étape 4 du script)
 
 ```sql
 ALTER SCHEMA public OWNER TO auth_user;
@@ -150,7 +149,7 @@ ALTER SCHEMA public OWNER TO auth_user;
 
 Chaque schema `public` appartient à l'utilisateur du service. L'utilisateur admin (`admin`) n'est plus propriétaire.
 
-#### Mécanisme 3 : Révocation de l'accès croisé (Phase 5)
+#### Mécanisme 3 : Révocation de l'accès croisé (étape 5 du script)
 
 ```sql
 -- auth_user ne peut PAS se connecter aux autres bases
@@ -213,16 +212,16 @@ postgres:
 
 ### Script `00-create-databases.sh`
 
-Le script s'exécute en **6 phases** :
+Le script s'exécute en **6 étapes** :
 
-| Phase | Action | Détail |
+| Étape | Action | Détail |
 |-------|--------|--------|
-| **Phase 1** | Création des bases | `CREATE DATABASE auth_db`, `farm_db`, `recommendation_db`, `notification_db`, `keycloak_db`, `mlflow_db` |
-| **Phase 2** | Création des utilisateurs | `CREATE USER auth_user WITH PASSWORD ...`, etc. + droits de connexion et création |
-| **Phase 3** | Révocation accès public | `REVOKE CONNECT ON DATABASE ... FROM public` |
-| **Phase 4** | Transfert propriété schema | `ALTER SCHEMA public OWNER TO auth_user` (dans chaque base) |
-| **Phase 5** | Révocation accès croisé | `REVOKE CONNECT ON DATABASE farm_db FROM auth_user`, etc. |
-| **Phase 6** | Exécution des schemas | `psql --dbname auth_db < /scripts/schemas/auth-db.sql`, etc. |
+| **Étape 1** | Création des bases | `CREATE DATABASE auth_db`, `farm_db`, `recommendation_db`, `notification_db`, `keycloak_db`, `mlflow_db` |
+| **Étape 2** | Création des utilisateurs | `CREATE USER auth_user WITH PASSWORD ...`, etc. + droits de connexion et création |
+| **Étape 3** | Révocation accès public | `REVOKE CONNECT ON DATABASE ... FROM public` |
+| **Étape 4** | Transfert propriété schema | `ALTER SCHEMA public OWNER TO auth_user` (dans chaque base) |
+| **Étape 5** | Révocation accès croisé | `REVOKE CONNECT ON DATABASE farm_db FROM auth_user`, etc. |
+| **Étape 6** | Exécution des schemas | `psql --dbname auth_db < /scripts/schemas/auth-db.sql`, etc. |
 
 ### Fichiers de schema
 
@@ -296,7 +295,7 @@ CREATE TABLE users (
 | `otp_attempts` | INT | défaut 0 | Nombre de tentatives OTP échouées |
 | `otp_blocked_until` | TIMESTAMP | nullable | Date de fin de blocage OTP |
 | `last_login_at` | TIMESTAMP | nullable | Dernière connexion |
-| `keycloak_id` | VARCHAR(100) | UNIQUE, nullable | ID de l'utilisateur dans Keycloak (Phase 2) |
+| `keycloak_id` | VARCHAR(100) | UNIQUE, nullable | ID de l'utilisateur dans Keycloak |
 | `created_at` | TIMESTAMP | NOT NULL, auto | Date de création |
 | `updated_at` | TIMESTAMP | NOT NULL, auto | Date de dernière modification |
 
@@ -308,7 +307,7 @@ CREATE TABLE users (
 ### `farm_db` — Tables `farms`, `parcels`, `sensors`
 
 **Fichier** : `infra/postgres/schemas/farm-db.sql`  
-**Service propriétaire** : `farm-service` (à implémenter)  
+**Service propriétaire** : `farm-service`  
 **Utilisateur** : `farm_user`
 
 #### Table `farms`
@@ -316,7 +315,7 @@ CREATE TABLE users (
 ```sql
 CREATE TABLE farms (
     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id        UUID NOT NULL,
+    owner_id       UUID NOT NULL,
     name           VARCHAR(150) NOT NULL,
     region         VARCHAR(100),
     location       GEOMETRY(POINT, 4326),
@@ -330,7 +329,7 @@ CREATE TABLE farms (
 | Colonne | Type | Contrainte | Description |
 |---------|------|-----------|-------------|
 | `id` | UUID | PK, auto-généré | Identifiant unique de la ferme |
-| `user_id` | UUID | NOT NULL | Propriétaire de la ferme (dans auth_db, pas de FK) |
+| `owner_id` | UUID | NOT NULL | Propriétaire de la ferme (dans auth_db, pas de FK) |
 | `name` | VARCHAR(150) | NOT NULL | Nom de la ferme |
 | `region` | VARCHAR(100) | nullable | Région géographique |
 | `location` | GEOMETRY(POINT, 4326) | nullable | Coordonnées GPS (PostGIS) |
@@ -338,7 +337,7 @@ CREATE TABLE farms (
 | `created_at` | TIMESTAMP | NOT NULL, auto | Date de création |
 | `updated_at` | TIMESTAMP | NOT NULL, auto | Date de modification |
 
-**Index** : `idx_farms_user_id` (user_id), `idx_farms_location` (GIST sur location)  
+**Index** : `idx_farms_owner_id` (owner_id), `idx_farms_location` (GIST sur location)  
 **Trigger** : `set_farms_updated_at`
 
 #### Table `parcels`
@@ -423,7 +422,7 @@ CREATE TABLE sensors (
 | `created_at` | TIMESTAMP | auto | Date de création |
 | `updated_at` | TIMESTAMP | auto | Date de modification |
 
-**Index** : `idx_sensors_parcel_id`, `idx_sensors_device_id`, `idx_sensors_active` (partiel)  
+**Index** : `idx_sensors_parcel_id`, `idx_sensors_device_id`, `idx_sensors_active`  
 **Trigger** : `set_sensors_updated_at`
 
 ---
@@ -431,7 +430,7 @@ CREATE TABLE sensors (
 ### `recommendation_db` — Table `recommendations`
 
 **Fichier** : `infra/postgres/schemas/recommendation-db.sql`  
-**Service propriétaire** : `recommendation-service` (à implémenter)  
+**Service propriétaire** : `recommendation-service`  
 **Utilisateur** : `recommendation_user`
 
 ```sql
@@ -453,7 +452,11 @@ CREATE TABLE recommendations (
     status                   recommendation_status_enum DEFAULT 'pending',
     user_feedback            recommendation_feedback_enum,
     feedback_at              TIMESTAMP WITH TIME ZONE,
+    demo_mode                BOOLEAN NOT NULL DEFAULT FALSE,
     created_at               TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    -- Idempotence : un replay Kafka ne doit pas créer de doublon pour une même
+    -- parcelle et un même instant de génération.
+    UNIQUE (parcel_id, generated_at),
     CHECK (confidence_score BETWEEN 0 AND 1),
     CHECK (quantity_mm >= 0),
     CHECK (duration_minutes >= 0)
@@ -479,16 +482,19 @@ CREATE TABLE recommendations (
 | `status` | ENUM | défaut `'pending'` | Statut de la recommandation |
 | `user_feedback` | ENUM | nullable | Feedback de l'utilisateur |
 | `feedback_at` | TIMESTAMP | nullable | Date du feedback |
+| `demo_mode` | BOOLEAN | NOT NULL, défaut `FALSE` | Indique si la recommandation a été générée en mode démo (sans capteur réel) |
 | `created_at` | TIMESTAMP | auto | Date de création |
 
-**Index** : `idx_recommendations_parcel_id`, `idx_recommendations_generated_at` (DESC), `idx_recommendations_irrigate`
+**Contrainte unique** : `UNIQUE (parcel_id, generated_at)` — garantit l'idempotence des replays Kafka (une seule recommandation par parcelle et par instant de génération).
+
+**Index** : `idx_recommendations_parcel_id`, `idx_recommendations_generated_at` (DESC), `idx_recommendations_irrigate`, `idx_recommendations_parcel_generated` (composite `parcel_id`, `generated_at DESC`, optimise la requête de recherche par parcelle et par journée)
 
 ---
 
 ### `notification_db` — Table `alerts`
 
 **Fichier** : `infra/postgres/schemas/notification-db.sql`  
-**Service propriétaire** : `alert-service` (à implémenter)  
+**Service propriétaire** : `alert-service`  
 **Utilisateur** : `notify_user`
 
 ```sql
@@ -620,21 +626,21 @@ Les bases de données sont **strictement isolées**. Aucun service ne peut lire 
 
 | Besoin | Service appelant | Service appelé | Méthode |
 |--------|-----------------|----------------|---------|
-| Lire le profil d'un utilisateur | `user-service` | `auth-service` | `GET /internal/user/:userId` (déjà implémenté) |
-| Vérifier qu'un utilisateur existe | `farm-service` (futur) | `auth-service` | `GET /internal/user/:userId` |
-| Récupérer les parcelles d'une ferme | `recommendation-service` (futur) | `farm-service` (futur) | `GET /api/v1/parcels?farmId=...` |
-| Envoyer une notification | `alert-service` (futur) | `auth-service` | `GET /internal/user/:userId` (pour récupérer le téléphone) |
+| Lire le profil d'un utilisateur | `user-service` | `auth-service` | `GET /internal/user/:userId` |
+| Vérifier qu'un utilisateur existe | `farm-service` | `auth-service` | `GET /internal/user/:userId` |
+| Récupérer les parcelles d'une ferme | `recommendation-service` | `farm-service` | `GET /api/v1/parcels?farmId=...` |
+| Envoyer une notification | `alert-service` | `auth-service` | `GET /internal/user/:userId` (pour récupérer le téléphone) |
 
 ### Conséquences sur les foreign keys
 
 Les colonnes qui référençaient des tables d'autres services ne peuvent plus avoir de contrainte `REFERENCES` (PostgreSQL ne supporte pas les foreign keys entre bases différentes).
 
-| Table | Colonne | Référence (avant) | Comportement actuel |
-|-------|---------|-------------------|---------------------|
-| `farms` | `user_id` | `REFERENCES users(id)` | Pas de FK. L'intégrité est gérée par l'application |
-| `recommendations` | `parcel_id` | `REFERENCES parcels(id)` | Pas de FK. L'intégrité est gérée par l'application |
-| `alerts` | `user_id` | `REFERENCES users(id)` | Pas de FK |
-| `alerts` | `parcel_id` | `REFERENCES parcels(id)` | Pas de FK |
+| Table | Colonne | Cible logique | Contrainte SQL |
+|-------|---------|---------------|----------------|
+| `farms` | `owner_id` | `users(id)` (base `auth_db`) | Pas de FK. L'intégrité est gérée par l'application |
+| `recommendations` | `parcel_id` | `parcels(id)` (base `farm_db`) | Pas de FK. L'intégrité est gérée par l'application |
+| `alerts` | `user_id` | `users(id)` (base `auth_db`) | Pas de FK |
+| `alerts` | `parcel_id` | `parcels(id)` (base `farm_db`) | Pas de FK |
 
 Les foreign keys **internes à une même base** sont conservées :
 - `parcels.farm_id → farms(id)` ✅ (même base `farm_db`)
@@ -713,7 +719,7 @@ docker compose -f infra/docker/docker-compose.yml logs postgres
 
 ### Problème : `FATAL: database "auth_db" does not exist`
 
-**Cause** : Les scripts d'initialisation n'ont pas été exécutés (volume existant avec des données précédentes).
+**Cause** : Les scripts d'initialisation n'ont pas été exécutés (le volume a été créé sans les scripts d'init, ou avec un jeu de scripts différent).
 
 **Solution** : Supprimer le volume et redémarrer :
 ```bash
@@ -744,12 +750,12 @@ docker exec alkatra-postgres psql -U auth_user -d auth_db -c "\dt"
 
 ### Problème : `ERROR: column "phone_number" of relation "users" does not exist`
 
-**Cause** : L'ancien `init.sql` référençait `phone_number` mais la table a été recréée avec `phone`.
+**Cause** : La colonne s'appelle `phone` dans le schéma `auth-db.sql`. Le nom `phone_number` correspond à une autre convention de nommage.
 
-**Solution** : C'est normal. La nouvelle table utilise `phone` (conforme à l'entité TypeORM `UserEntity`).
+**Solution** : Utiliser `phone` dans les requêtes et les entités (conforme à l'entité TypeORM `UserEntity`).
 
 ### Problème : `ERROR: must be owner of schema public`
 
 **Cause** : Le script tente de créer des objets avec un utilisateur qui n'est pas propriétaire du schema.
 
-**Solution** : Vérifier que `SET ROLE auth_user;` est exécuté avant les commandes `CREATE TABLE`. Vérifier que `ALTER SCHEMA public OWNER TO auth_user;` a bien été exécuté dans la Phase 4.
+**Solution** : Vérifier que `SET ROLE auth_user;` est exécuté avant les commandes `CREATE TABLE`. Vérifier que `ALTER SCHEMA public OWNER TO auth_user;` a bien été exécuté à l'étape 4 du script.

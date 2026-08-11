@@ -18,7 +18,7 @@ Projet Docker Compose : **al-katra-bel-qatra** (déclaré via `name:` dans `infr
 | `SPARK_CHECKPOINT_DIR` | `/tmp/spark-checkpoint` | Checkpoint (volume nommé `spark-job`) |
 | `REDIS_HOST/PORT/PASSWORD` | `redis`/`6379`/`.env` | État journalier par parcelle |
 
-Surcharges au lancement (via `.env` ou inline) : `KAFKA_STARTING_OFFSETS`, `KAFKA_FAIL_ON_DATA_LOSS`, `SPARK_DRY_RUN`.
+Surcharges au lancement (via `.env` ou inline) : `KAFKA_STARTING_OFFSETS`, `KAFKA_FAIL_ON_DATA_LOSS`, `DRY_RUN`.
 
 ## 2. Build & Run
 

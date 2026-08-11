@@ -1,0 +1,14 @@
+.card {
+  background-color: var(--color-neutral-0);
+  border-radius: var(--radius-card);
+  padding: var(--spacing-lg);
+  box-sizing: border-box;
+}
+
+.elevated {
+  box-shadow: var(--shadow-card);
+}
+
+.block {
+  width: 100%;
+}

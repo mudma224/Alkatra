@@ -1,6 +1,4 @@
-# `apps/ml-inference-service` — Documentation factuelle
-
-> **Mise à jour : août 2026** — Cette documentation reflète l'état réel du code source, de la configuration et des tests. Elle est basée uniquement sur le code implémenté, pas sur les commentaires.
+# `apps/ml-inference-service` — Documentation technique
 
 ---
 
@@ -23,7 +21,7 @@
 15. [Tests](#15-tests)
 16. [Docker](#16-docker)
 17. [Ce que le service NE fait PAS](#17-ce-que-le-service-ne-fait-pas)
-18. [Limites constatées](#18-limites-constatées)
+18. [Comportements notables](#18-comportements-notables)
 19. [Résumé opérationnel](#19-résumé-opérationnel)
 
 ---
@@ -470,7 +468,20 @@ self.col.create_index([("parcel_id", DESCENDING), ("created_at", DESCENDING)])
 | `source` | argument (toujours `"kafka"`) | str |
 | `created_at` | `datetime.now(timezone.utc)` | datetime UTC |
 
-> ⚠️ Les prédictions via `/predict` (HTTP) **ne sont pas écrites dans MongoDB**. Seules les prédictions issues du consumer Kafka sont persistées (`source="kafka"`). Les prédictions HTTP sont uniquement publiées sur Kafka.
+> Les prédictions via `/predict` (HTTP) ne sont pas écrites dans MongoDB. Seules les prédictions issues du consumer Kafka sont persistées (`source="kafka"`). Les prédictions HTTP sont uniquement publiées sur Kafka.
+
+### Asymétrie avec le message Kafka
+
+Le message publié sur le topic `recommendations-generated` (section 10) contient 4 champs supplémentaires qui **ne sont pas persistés dans le document MongoDB** :
+
+| Champ | Présent dans Kafka | Présent dans Mongo |
+|---|---|---|
+| `duration_minutes` | Oui (`null` par défaut) | Non |
+| `soil_humidity_pct` | Oui (depuis la requête) | Non |
+| `eto` | Oui (depuis la requête) | Non |
+| `generated_at` | Oui | Non |
+
+Cette asymétrie est intentionnelle : MongoDB sert d'historique des prédictions brutes (sortie modèle), tandis que le message Kafka alimente le `recommendation-service` en aval, qui projette ces champs dans PostgreSQL (`recommendation_db`). Le schéma Postgres est plus riche que le document Mongo.
 
 ---
 
@@ -670,7 +681,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ---
 
-## 18. Limites constatées
+## 18. Comportements notables
 
 1. **`duration_minutes` toujours `None`** : Le débit d'irrigation et la surface de la parcelle ne sont pas des features d'entrée. Ce champ est publié à `null` sur Kafka. Pour l'alimenter, il faudrait enrichir le `PredictionRequest` ou récupérer ces données depuis le farm-service.
 
