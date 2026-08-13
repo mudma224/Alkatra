@@ -136,20 +136,7 @@ export function LoginScreen({ onOtpRequested }: LoginScreenProps) {
         </form>
       </main>
 
-      <footer className={styles.footer}>
-        <p className={styles.footerText}>
-          Don&apos;t have an account ?{' '}
-          <button
-            type="button"
-            className={styles.signUp}
-            onClick={() => {
-              // TODO: navigate to the Register screen — out of scope for this task.
-            }}
-          >
-            Sign up
-          </button>
-        </p>
-      </footer>
+      
     </div>
   );
 }

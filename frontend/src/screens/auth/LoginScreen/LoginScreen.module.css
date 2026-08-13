@@ -108,63 +108,10 @@
   color: var(--color-primary-500);
 }
 
-/* ---------------------------------------------------------------------------
-   .footer — bandeau vert en bas de page.
-   - `margin-top: auto` a été RETIRÉ : c'était lui qui poussait le footer tout
-     en bas de l'écran et laissait un grand vide sous la card. Le footer est
-     maintenant collé sous la card grâce au flex normal.
-   - `background` : VERT primary — c'est le seul endroit vert pleine largeur.
-   - `padding` : espace intérieur du footer (haut/bas = 32px, côtés = 24px).
-   - `flex-shrink: 0` : empêche le footer de rétrécir.
-   --------------------------------------------------------------------------- */
-.footer {
-  background-color: var(--color-primary-500);
-  padding: var(--spacing-xl) var(--spacing-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
 
-/* ---------------------------------------------------------------------------
-   .footerText — texte "Don't have an account ? Sign up".
-   --------------------------------------------------------------------------- */
-.footerText {
-  margin: 0;
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-footer);
-  color: var(--color-neutral-0);
-  text-align: center;
-}
 
-/* ---------------------------------------------------------------------------
-   .signUp — bouton "Sign up" à l'intérieur du footer.
-   C'est un `<button>` transparent pour l'accessibilité (clic clavier),
-   mais visuellement c'est un lien vert clair (accent).
-   - `margin-left: 4px` : petit espace entre le "?" et "Sign up".
-   - `:hover` : passe au vert clair (secondary-500) au survol.
-   --------------------------------------------------------------------------- */
-.signUp {
-  background: none;
-  border: none;
-  padding: 0;
-  margin-left: 4px;
-  font: inherit;
-  font-weight: var(--font-weight-button);
-  color: var(--color-accent-500);
-  cursor: pointer;
-  transition: color var(--transition-fast);
-}
 
-.signUp:focus-visible {
-  outline: 2px solid var(--color-accent-500);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
 
-.signUp:hover {
-  color: var(--color-secondary-500);
-}
 
 /* =========================================================================
    Responsive — desktop (≥ 640px)
@@ -181,10 +128,6 @@
 
   .hero,
   .card,
-  .footer {
-    width: 100%;
-    max-width: 480px;
-  }
 
   /* Hero plus court sur desktop pour préserver l'équilibre visuel. */
   .hero {
