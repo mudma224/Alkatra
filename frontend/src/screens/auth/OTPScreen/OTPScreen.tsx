@@ -39,12 +39,14 @@ export interface OTPScreenProps {
    * result and navigate to the application.
    */
   onVerified?: (response: VerifyOtpResponse) => void;
+  onBack?: () => void;
 }
 
 export function OTPScreen({
   phone,
   expiresAt: initialExpiresAt,
   onVerified,
+  onBack,
 }: OTPScreenProps) {
   const [otp, setOtp] = useState('');
 
@@ -319,6 +321,18 @@ export function OTPScreen({
               message={error}
             />
           )}
+
+          {onBack && (
+            <button
+              type="button"
+              className={styles.backLink}
+              onClick={onBack}
+              disabled={status !== 'idle'}
+            >
+              Modifier le numéro de téléphone
+            </button>
+          )}
+          
         </form>
       </section>
     </main>
