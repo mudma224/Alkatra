@@ -14,6 +14,8 @@ function makeAuthResult(): AuthResult {
     user: {
       id: 'user-1',
       phone: '+212617503677',
+      name: null,
+      preferredLanguage: 'french',
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   };

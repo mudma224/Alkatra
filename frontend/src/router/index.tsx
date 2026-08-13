@@ -1,25 +1,42 @@
-import { createBrowserRouter, Navigate, useLocation } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { LoginScreen } from '../screens/auth/LoginScreen/LoginScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen/OTPScreen';
 import { PlaceholderScreen } from '../components/ui/PlaceholderScreen/PlaceholderScreen';
 import { RequireAuth } from './RequireAuth';
 import { useAuthStore } from '../store/auth.store';
+import type { VerifyOtpResponse } from '../types/auth.types';
 
 /**
  * Wrapper that reads the OTP navigation state (phone + expiresAt) passed
- * by LoginScreen and renders the existing OTPScreen.
+ * by LoginScreen and renders the OTPScreen.
  *
- * TODO Phase 2: branch `onVerified` to the auth store + navigate to /farms.
+ * On successful verification, the auth result is stored and the user is
+ * redirected to their farms. `replace` is used so that pressing Back from
+ * /farms does not return to the OTP entry.
+ *
+ * Exported for dedicated wiring tests (verify-otp → setAuth → /farms).
  */
-function OtpRoute() {
+export function OtpRoute() {
   const location = useLocation();
+  const navigate = useNavigate();
   const state = location.state as { phone?: string; expiresAt?: string } | null;
 
   if (!state?.phone || !state?.expiresAt) {
     return <Navigate to="/login" replace />;
   }
 
-  return <OTPScreen phone={state.phone} expiresAt={state.expiresAt} />;
+  const handleVerified = (response: VerifyOtpResponse) => {
+    useAuthStore.getState().setAuth(response);
+    navigate('/farms', { replace: true });
+  };
+
+  return (
+    <OTPScreen
+      phone={state.phone}
+      expiresAt={state.expiresAt}
+      onVerified={handleVerified}
+    />
+  );
 }
 
 /**
