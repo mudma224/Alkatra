@@ -21,9 +21,23 @@ export interface VerifyOtpPayload {
   otp: string;
 }
 
+/**
+ * User preferred language, aligned with auth-service's user entity
+ * (`preferred_language` column, defaults to 'darija').
+ * Returned on every authenticated response (verify-otp, refresh, profile).
+ */
+export type PreferredLanguage = 'french' | 'arabic' | 'darija';
+
+/**
+ * Public user shape returned by auth-service (`toUserResponse`).
+ * Mirrors the `UserEntity` columns exposed through the API.
+ */
 export interface AuthUser {
   id: string;
   phone: string;
+  /** Nullable until the user completes their profile. */
+  name: string | null;
+  preferredLanguage: PreferredLanguage;
   createdAt: string;
 }
 
