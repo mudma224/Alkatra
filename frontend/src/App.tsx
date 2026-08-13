@@ -1,39 +1,37 @@
-import { useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AppLayout } from './components/layout/Layout/Layout';
+import { AuthPage } from './screens/auth/AuthPage/AuthPage';
+import { DashboardScreen } from './screens/dashboard/DashboardScreen/DashboardScreen';
+import { ProtectedRoute } from './routes/ProtectedRoute';
+import { PublicOnlyRoute } from './routes/PublicOnlyRoute';
 
-import { LoginScreen } from './screens/auth/LoginScreen/LoginScreen';
-import { OTPScreen } from './screens/auth/OTPScreen/OTPScreen';
-
-type AuthScreen = 'login' | 'otp';
-
-function App() {
-  const [screen, setScreen] = useState<AuthScreen>('login');
-
-  const [otpData, setOtpData] = useState<{
-    phone: string;
-    expiresAt: string;
-  } | null>(null);
-
-  if (screen === 'otp' && otpData) {
-    return (
-      <OTPScreen
-        phone={otpData.phone}
-        expiresAt={otpData.expiresAt}
-      />
-    );
-  }
-
+export default function App() {
   return (
-    <LoginScreen
-      onOtpRequested={(phone, expiresAt) => {
-        setOtpData({
-          phone,
-          expiresAt,
-        });
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <PublicOnlyRoute>
+              <AuthPage />
+            </PublicOnlyRoute>
+          }
+        />
 
-        setScreen('otp');
-      }}
-    />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardScreen />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-export default App;
