@@ -76,6 +76,27 @@
   cursor: not-allowed;
 }
 
+.backLink {
+  align-self: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-error);
+  color: var(--color-neutral-grey);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.backLink:hover:not(:disabled) {
+  color: var(--color-primary-500);
+}
+
+.backLink:disabled {
+  cursor: not-allowed;
+}
+
 @media (min-width: 640px) {
   .page {
     align-items: center;
