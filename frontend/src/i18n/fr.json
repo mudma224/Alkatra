@@ -1,0 +1,20 @@
+{
+  "auth": {
+    "brandTitle": "Al katra bel qatra",
+    "brandSubtitle": "Nous vous enverrons un code de vérification",
+    "phoneLabel": "Numéro de téléphone",
+    "phonePlaceholder": "6XX XX XX XX",
+    "sendOtp": "Envoyer OTP",
+    "verifyOtp": "Vérifier OTP",
+    "invalidPhone": "Numéro de téléphone invalid.",
+    "sendError": "Impossible d'envoyer le code. ",
+    "retry": "Réessayez.",
+    "otpExpiresIn": "Le code expire dans {{time}}",
+    "otpExpired": "Code OTP expiré.",
+    "otpNotReceived": "Code OTP non reçu ?",
+    "resend": "Renvoyer",
+    "resendIn": "Renvoyer dans {{seconds}}s",
+    "backToPhone": "Modifier le numéro de téléphone",
+    "logout": "Déconnexion"
+  }
+}
