@@ -28,18 +28,45 @@ httpClient.interceptors.request.use((config) => {
 });
 
 /**
- * Response interceptor: on a 401, attempt to refresh the token pair.
- * If the refresh succeeds, retry the original request with the new token.
- * If it fails, clear the auth state and redirect to /login.
+ * Response interceptor: on a 401, attempt to refresh the token pair
+ * (single-flight: concurrent 401s share one refresh call). If the refresh
+ * succeeds, retry the original request with the new token. If it fails,
+ * clear the auth state and redirect to /login.
+ *
+ * A raw `axios.post` (not `httpClient`) is used for the refresh call itself
+ * so it never re-enters this same interceptor.
  */
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const { phone, refreshToken, setAuth, clearAuth } = useAuthStore.getState();
+
+  if (!phone || !refreshToken) {
+    clearAuth();
+    return null;
+  }
+
+  try {
+    const { data } = await axios.post<AuthResult>(`${baseURL}/auth/refresh`, {
+      phone,
+      refreshToken,
+    });
+
+    setAuth(data);
+
+    return data.accessToken;
+  } catch {
+    clearAuth();
+    return null;
+  }
+}
+
 httpClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as
       | (InternalAxiosRequestConfig & { _retry?: boolean })
       | undefined;
-
-    const { phone, refreshToken, clearAuth } = useAuthStore.getState();
 
     const isAuthEndpoint =
       originalRequest?.url?.includes('/auth/register') ||
@@ -51,29 +78,25 @@ httpClient.interceptors.response.use(
       error.response?.status === 401 &&
       originalRequest &&
       !originalRequest._retry &&
-      !isAuthEndpoint &&
-      phone &&
-      refreshToken;
+      !isAuthEndpoint;
 
     if (shouldAttemptRefresh) {
       originalRequest._retry = true;
 
-      try {
-        const { data } = await httpClient.post<AuthResult>('/auth/refresh', {
-          phone,
-          refreshToken,
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => {
+          refreshPromise = null;
         });
-
-        useAuthStore.getState().setAuth(data);
-
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
-
-        return httpClient(originalRequest);
-      } catch (refreshError) {
-        clearAuth();
-        router.navigate('/login');
-        return Promise.reject(refreshError);
       }
+
+      const newAccessToken = await refreshPromise;
+
+      if (newAccessToken) {
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return httpClient(originalRequest);
+      }
+
+      router.navigate('/login');
     }
 
     return Promise.reject(error);

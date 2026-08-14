@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate, useLocation, useNavigate } from 'react-r
 import { LoginScreen } from '../screens/auth/LoginScreen/LoginScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen/OTPScreen';
 import { PlaceholderScreen } from '../components/ui/PlaceholderScreen/PlaceholderScreen';
+import { AppLayout } from '../components/layout/Layout/Layout';
 import { RequireAuth } from './RequireAuth';
 import { useAuthStore } from '../store/auth.store';
 import type { VerifyOtpResponse } from '../types/auth.types';
@@ -35,6 +36,7 @@ export function OtpRoute() {
       phone={state.phone}
       expiresAt={state.expiresAt}
       onVerified={handleVerified}
+      onBack={() => navigate('/login', { replace: true })}
     />
   );
 }
@@ -60,6 +62,9 @@ export const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
+      {
+        element: <AppLayout />,
+        children: [
       {
         path: '/farms',
         element: (
@@ -109,6 +114,8 @@ export const router = createBrowserRouter([
             phase="Phase 6"
           />
         ),
+      },
+        ],
       },
     ],
   },

@@ -16,6 +16,7 @@ import type { ApiErrorResponse } from '../../../types/api.types';
 import styles from './OTPScreen.module.css';
 
 const OTP_LENGTH = 6;
+const OTP_PATTERN = /^\d{6}$/;
 const RESEND_COOLDOWN_SECONDS = 30;
 
 type FormStatus = 'idle' | 'submitting' | 'resending';
@@ -38,12 +39,14 @@ export interface OTPScreenProps {
    * result and navigate to the application.
    */
   onVerified?: (response: VerifyOtpResponse) => void;
+  onBack?: () => void;
 }
 
 export function OTPScreen({
   phone,
   expiresAt: initialExpiresAt,
   onVerified,
+  onBack,
 }: OTPScreenProps) {
   const [otp, setOtp] = useState('');
 
@@ -60,10 +63,10 @@ export function OTPScreen({
   const [error, setError] = useState<string | null>(null);
 
   /*
-   * OTP is complete only when the component contains
-   * exactly six digits.
+   * Match the backend contract exactly: a 6-digit numeric code.
+   * Backend DTO: /^\d{6}$/
    */
-  const isOtpComplete = otp.length === OTP_LENGTH;
+  const isOtpComplete = OTP_PATTERN.test(otp) && otp.length === OTP_LENGTH;
 
   /*
    * The OTP is considered expired when the countdown reaches zero.
@@ -138,7 +141,7 @@ export function OTPScreen({
   const verifyOtp = useCallback(async () => {
     setError(null);
 
-    if (!isOtpComplete) {
+    if (!OTP_PATTERN.test(otp)) {
       setError('Veuillez saisir les 6 chiffres du code OTP.');
       return;
     }
@@ -318,6 +321,18 @@ export function OTPScreen({
               message={error}
             />
           )}
+
+          {onBack && (
+            <button
+              type="button"
+              className={styles.backLink}
+              onClick={onBack}
+              disabled={status !== 'idle'}
+            >
+              Modifier le numéro de téléphone
+            </button>
+          )}
+          
         </form>
       </section>
     </main>
