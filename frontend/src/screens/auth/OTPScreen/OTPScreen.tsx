@@ -163,9 +163,11 @@ export function OTPScreen({
        * Authentication succeeded.
        *
        * The parent is responsible for the next step:
-       * authStore + navigation.
+       * authStore + navigation. Reset the status so the screen is not
+       * left locked in its loading state if the caller keeps it mounted.
        */
       onVerified?.(response);
+      setStatus('idle');
     } catch (caughtError) {
       setStatus('idle');
 
@@ -189,7 +191,7 @@ export function OTPScreen({
         setError('Impossible de vérifier le code. Réessayez.');
       }
     }
-  }, [isExpired, isOtpComplete, onVerified, otp, phone]);
+  }, [isExpired, onVerified, otp, phone]);
 
   /*
    * Submit handler.

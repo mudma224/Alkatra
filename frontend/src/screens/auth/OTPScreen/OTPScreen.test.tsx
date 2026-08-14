@@ -31,9 +31,8 @@
  *    next to `OTPScreen.tsx` (same relative import paths are reused for mocking).
  */
 
-import { act } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AxiosError } from 'axios';
 import '@testing-library/jest-dom/vitest';
@@ -136,6 +135,18 @@ async function fillOtp(user: ReturnType<typeof userEvent.setup>, code: string) {
   }
 }
 
+/**
+ * Same as `fillOtp` but synchronous and user-event-free: user-event
+ * deadlocks under fake timers, so timer-based tests fill the inputs
+ * with plain change events instead.
+ */
+function fillOtpSync(code: string) {
+  for (let index = 0; index < code.length; index += 1) {
+    const input = screen.getByLabelText(`Chiffre ${index + 1} du code OTP`);
+    fireEvent.change(input, { target: { value: code[index] } });
+  }
+}
+
 function getSubmitButton() {
   return screen.getByRole('button', { name: /vérifier otp/i });
 }
@@ -205,10 +216,10 @@ describe('OTPScreen', () => {
       expect(screen.getByText('Le code expire dans 03:59')).toBeInTheDocument();
     });
 
-    it('shows an expiration message and disables submission once the timer reaches zero', async () => {
+    it('shows an expiration message and disables submission once the timer reaches zero', () => {
       renderOtpScreen({ expiresAt: minutesFromNow(5) });
 
-      await fillOtp(user, VALID_OTP);
+      fillOtpSync(VALID_OTP);
 
       act(() => {
         vi.advanceTimersByTime(5 * 60_000);
@@ -311,6 +322,7 @@ describe('OTPScreen', () => {
       await user.click(getSubmitButton());
       expect(await screen.findByText(INVALID_OTP_MESSAGE)).toBeInTheDocument();
 
+      await user.clear(screen.getByLabelText('Chiffre 1 du code OTP'));
       await user.type(screen.getByLabelText('Chiffre 1 du code OTP'), '9');
 
       expect(screen.queryByText(INVALID_OTP_MESSAGE)).not.toBeInTheDocument();
@@ -357,11 +369,16 @@ describe('OTPScreen', () => {
         buildRequestOtpResponse(minutesFromNow(5)),
       );
 
-      renderOtpScreen();
-      await user.click(getResendButton());
-      expect(await screen.findByText('Renvoyer dans 30s')).toBeInTheDocument();
-
+      // Fake timers must be active BEFORE the cooldown interval is created,
+      // otherwise the interval keeps ticking on the real clock.
       vi.useFakeTimers();
+
+      renderOtpScreen();
+      fireEvent.click(getResendButton());
+      // Flush the mocked request promise so the cooldown actually starts.
+      await act(async () => {});
+
+      expect(screen.getByText('Renvoyer dans 30s')).toBeInTheDocument();
 
       act(() => {
         vi.advanceTimersByTime(1_000);

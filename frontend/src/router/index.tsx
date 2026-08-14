@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- router instance lives here, not a component-only file */
 import { createBrowserRouter, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { LoginScreen } from '../screens/auth/LoginScreen/LoginScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen/OTPScreen';

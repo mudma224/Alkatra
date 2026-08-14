@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AuthResult, AuthUser } from '../types/auth.types';
+import type { PersistOptions } from 'zustand/middleware';
 
 /**
  * Shape of the persisted authentication state.
@@ -19,6 +20,34 @@ interface AuthState {
 }
 
 const STORAGE_KEY = 'alkatra-auth';
+
+/**
+ * Custom merge for the `persist` middleware.
+ *
+ * The default shallow merge (`{ ...currentState, ...persistedState }`) can
+ * overwrite the store's functions (setAuth, clearAuth, isAuthenticated) if the
+ * persisted state in localStorage contains a key with the same name (e.g. a
+ * stale `isAuthenticated` boolean from an older version or corrupted data).
+ *
+ * This merge only restores the expected data fields and ALWAYS keeps the
+ * functions/actions defined by the store creator, making the store resilient
+ * to any unexpected content in localStorage.
+ */
+const persistOptions: PersistOptions<AuthState> = {
+  name: STORAGE_KEY,
+  merge: (persistedState, currentState) => {
+    const persisted = persistedState as Partial<AuthState> | undefined;
+
+    return {
+      ...currentState,
+      phone: persisted?.phone ?? currentState.phone,
+      accessToken: persisted?.accessToken ?? currentState.accessToken,
+      refreshToken: persisted?.refreshToken ?? currentState.refreshToken,
+      expiresAt: persisted?.expiresAt ?? currentState.expiresAt,
+      user: persisted?.user ?? currentState.user,
+    };
+  },
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -74,8 +103,6 @@ export const useAuthStore = create<AuthState>()(
         return new Date(expiresAt).getTime() > Date.now();
       },
     }),
-    {
-      name: STORAGE_KEY,
-    },
+    persistOptions,
   ),
 );
