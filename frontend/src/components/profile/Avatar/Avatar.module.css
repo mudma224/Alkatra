@@ -1,0 +1,36 @@
+.AvatarWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.imgframe {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.ColoredtempImg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: var(--color-secondary-100);
+}
+
+.initialsStyle {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--color-secondary-900);
+  line-height: 1;
+}
+
+.userIcon {
+  width: 40%;
+  height: 40%;
+  color: var(--color-secondary-900);
+}
