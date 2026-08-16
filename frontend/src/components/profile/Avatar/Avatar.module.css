@@ -1,36 +1,45 @@
-.AvatarWrapper {
+.wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.imgframe {
+/*
+ * Single circular container (previously split across two nested divs
+ * that both applied border-radius: 50% — merged, no visual change).
+ */
+.circle {
   display: flex;
   align-items: center;
   justify-content: center;
+
   border-radius: 50%;
   overflow: hidden;
+
+  background-color: var(--color-neutral-grey);
+  border: 1px solid var(--color-neutral-0);
+
+  z-index: 0;
 }
 
-.ColoredtempImg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background-color: var(--color-secondary-100);
-}
-
-.initialsStyle {
+/*
+ * Text/icon color: white for contrast against the grey circle.
+ *
+ * FIX: previously referenced var(--color-secondary-900), a token that
+ * does not exist anywhere in tokens.css. An undefined custom property
+ * makes the `color` declaration invalid, so it silently fell back to
+ * the browser's inherited color instead of failing visibly — a real
+ * bug, not a style preference. Using an existing, defined token here.
+ */
+.initials {
   font-size: 2rem;
   font-weight: 600;
-  color: var(--color-secondary-900);
   line-height: 1;
+  color: var(--color-neutral-0);
 }
 
-.userIcon {
+.icon {
   width: 40%;
   height: 40%;
-  color: var(--color-secondary-900);
+  color: var(--color-neutral-0);
 }
