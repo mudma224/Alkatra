@@ -1,26 +1,35 @@
-import {httpClient} from './client'
-import type {AuthUser} from '../types/auth.types'
+import { httpClient } from './client';
+import type { AuthUser } from '../types/auth.types';
 import type { UpdateProfilePayload } from '../types/user.types';
 
+/**
+ * Wraps user-service's profile endpoints:
+ *   GET   /api/v1/user/profile
+ *   PATCH /api/v1/user/profile
+ *
+ * Follows auth.api.ts's exact pattern: each function performs the HTTP
+ * call and returns the response body only — error handling belongs to
+ * whichever screen calls it, not here.
+ *
+ * Both endpoints are guarded by JwtAuthGuard on the backend and resolve
+ * the user from the JWT's `sub` claim (see user-service's
+ * UserController) — no user id is ever passed from the frontend, and
+ * none should be: the backend never trusts a client-supplied id for
+ * this kind of "my own resource" endpoint.
+ */
+export const userApi = {
+  /** Returns the authenticated user's current profile. */
+  getProfile: async (): Promise<AuthUser> => {
+    const { data } = await httpClient.get<AuthUser>('/user/profile');
+    return data;
+  },
 
-export const userApi={
-    /**
-   * Calls the real user-service endpoint: GET /api/v1/user/profile.
-   * Requests to get the user's profile`.
+  /**
+   * Updates `name` and/or `preferredLanguage`. Returns the full updated
+   * profile, in the same shape as `getProfile`.
    */
-
-   getProfile: async (): Promise <AuthUser> => {
-     const {data} = await httpClient.get('/user/profile');
-     return data;
-   },
-
-   /**
-   * Calls the real user-service endpoint: POST /api/v1/user/profile.
-   * Requests to update the user's profile`.
-   */
-
-   updateProfile: async (payload:UpdateProfilePayload): Promise <AuthUser> => {
-     const {data} = await httpClient.post('user/profile', payload);
-     return data;
-   }
-}
+  updateProfile: async (payload: UpdateProfilePayload): Promise<AuthUser> => {
+    const { data } = await httpClient.patch<AuthUser>('/user/profile', payload);
+    return data;
+  },
+};
