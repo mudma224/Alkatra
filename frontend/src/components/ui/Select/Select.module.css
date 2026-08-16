@@ -1,0 +1,90 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.label {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  color: var(--color-neutral-black);
+}
+
+/* Mirrors Input.module.css's .field exactly, for visual consistency. */
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  height: 49px;
+  padding: 0 var(--spacing-md);
+
+  border-radius: var(--radius-input);
+  border: 1px solid var(--color-neutral-grey);
+  background: var(--color-neutral-0);
+
+  transition: border-color var(--transition-fast);
+}
+
+.field:focus-within {
+  border-color: var(--color-primary-500);
+  border-width: 1.5px;
+}
+
+.default {
+  border-color: var(--color-neutral-grey);
+}
+
+.filled {
+  border-color: var(--color-primary-500);
+}
+
+.error {
+  border-color: var(--color-destructive-500);
+}
+
+.field[data-disabled] {
+  background-color: var(--color-neutral-200);
+  cursor: not-allowed;
+}
+
+/*
+ * appearance: none removes the browser's native dropdown arrow so the
+ * custom ChevronDown icon below can take its place, matching Figma.
+ */
+.select {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding-right: var(--spacing-lg);
+
+  border: none;
+  outline: none;
+  background: transparent;
+  appearance: none;
+
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-black);
+
+  cursor: pointer;
+}
+
+.select:disabled {
+  color: var(--color-neutral-grey);
+  cursor: not-allowed;
+}
+
+.chevron {
+  position: absolute;
+  right: var(--spacing-md);
+
+  width: 18px;
+  height: 18px;
+
+  color: var(--color-neutral-grey);
+  pointer-events: none;
+}
