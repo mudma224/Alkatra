@@ -1,0 +1,135 @@
+.page {
+  min-height: 100%;
+  width: 100%;
+  background-color: var(--color-neutral-white);
+  overflow-x: hidden;
+}
+
+.herosection {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md) var(--spacing-md);
+}
+
+.headerRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+}
+
+.title {
+  margin: 0;
+  width: 100%;
+
+  color: var(--color-neutral-white);
+
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-title);
+  text-align: center;
+}
+
+.backButton {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 40px;
+
+  padding: 0;
+
+  border: none;
+  background: transparent;
+
+
+  cursor: pointer;
+}
+
+.backButton svg {
+  width: 24px;
+  height: 24px;
+}
+
+.backButton:focus-visible {
+  outline: 2px solid var(--color-neutral-white);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+.content {
+  width: 100%;
+  max-width: 480px;
+
+  margin: 0 auto;
+}
+
+/*
+ * Pulls ProfileIdentity up so the avatar straddles the hero/white
+ * boundary, matching the Figma overlap. This offset belongs to
+ * ProfileScreen's own layout, not to ProfileIdentity itself —
+ * EditProfileScreen uses ProfileIdentity without any overlap.
+ * (Previously named .profileHeader, when the avatar/name/phone markup
+ * lived directly in this file — moved to ProfileIdentity.module.css.)
+ */
+.identityOverlap {
+  margin-top: -60px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+
+  width: 100%;
+
+  margin-top: 52px;
+}
+
+.loadingState {
+  min-height: 100vh;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.errorState {
+  min-height: 100vh;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: var(--spacing-lg);
+}
+
+@media (min-width: 640px) {
+
+  .content {
+    padding-left: var(--spacing-lg);
+    padding-right: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 375px) {
+  
+
+  .backButton {
+    top: 56px;
+  }
+
+  .menu {
+    margin-top: 40px;
+  }
+}

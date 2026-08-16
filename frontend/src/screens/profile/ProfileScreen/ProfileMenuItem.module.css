@@ -26,7 +26,7 @@
     box-shadow 0.15s ease;
 }
 
-.profileMenuItem:hover {
+.profileMenuItem:not(:disabled):hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
@@ -35,8 +35,17 @@
   outline-offset: 2px;
 }
 
-.profileMenuItem:active {
+.profileMenuItem:not(:disabled):active {
   transform: translateY(1px);
+}
+
+/*
+ * Real disabled state (new) instead of an interactive-looking button
+ * wired to an empty onClick — see ProfileMenuItemProps.disabled above.
+ */
+.profileMenuItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .content {
@@ -81,10 +90,6 @@
   color: var(--color-secondary-600);
 }
 
-/*
- * Keep the menu item comfortable to use on small screens.
- * The component naturally fills the width given by its parent.
- */
 @media (max-width: 375px) {
   .profileMenuItem {
     min-height: 52px;
