@@ -1,0 +1,91 @@
+/* =========================================================================
+   ConfirmDialog — maquette « FarmDetail - Delete Modal » (83:93, 390×844)
+   Overlay plein écran + card centrée 340×280, radius card, icône d'alerte.
+   ========================================================================= */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 340px;
+  max-width: 100%;
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+  background-color: var(--color-neutral-0);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.card:focus {
+  outline: none;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.iconWrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--color-destructive-100);
+  margin-bottom: var(--spacing-md);
+}
+
+.icon {
+  width: 28px;
+  height: 28px;
+  color: var(--color-destructive-500);
+}
+
+.title {
+  margin: 0 0 var(--spacing-xs);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-heading-sm);
+  color: var(--color-neutral-black);
+  text-align: center;
+}
+
+.description {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-grey);
+  text-align: center;
+}
+
+.error {
+  margin: var(--spacing-sm) 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  color: var(--color-destructive-500);
+  text-align: center;
+}
+
+/* Deux boutons de 140px côte à côte (maquette : 140 + 8 + 140 = 288). */
+.actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  width: 100%;
+  margin-top: var(--spacing-lg);
+}
+
+.dialogButton {
+  flex: 1;
+}
