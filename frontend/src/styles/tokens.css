@@ -25,6 +25,7 @@
      ========================================================================= */
   --color-destructive-500: #D32F2F;  /* bordure input error, texte erreur */
   --color-destructive-700: #B71C1C;  /* pressed destructive */
+  --color-destructive-100: #FDECEA;  /* fond très clair pour icône d'alerte destructive (modale de suppression) */
 
   /* =========================================================================
      Couleurs — Neutral (neutres, fonds, textes courants)
@@ -64,6 +65,8 @@
   --font-weight-button: 600;
   --font-size-error: 13px;
   --font-size-footer: 14px;
+  --font-size-heading-sm: 18px;   /* titres de card / modale (maquettes Fermes) */
+  --font-weight-heading-sm: 600;
 
   /* =========================================================================
      Radius — alignés sur le design system Figma
@@ -71,6 +74,7 @@
   --radius-card: 20px;     /* cartes (Login card) */
   --radius-input: 8px;     /* champs de formulaire */
   --radius-button: 8px;    /* boutons */
+  --radius-badge: 14px;    /* pills/badges (hauteur 28px — maquette FarmList) */
 
   /* =========================================================================
      Spacing — échelle à 5 taquets

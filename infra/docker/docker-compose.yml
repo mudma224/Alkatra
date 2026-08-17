@@ -506,6 +506,8 @@ services:
       AUTH_SERVICE_PORT: 3001
       # --- JWT (doit matcher auth-service) ---
       JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      # CORS : origines du frontend autorisées (dev Vite + fallback historique)
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
     depends_on:
       auth-service:
         condition: service_healthy
@@ -588,6 +590,8 @@ services:
       DATABASE_URL: postgresql://farm_user:${FARM_DB_PASSWORD:-farm_dev_pass}@postgres:5432/farm_db
       JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
       AUTH_SERVICE_URL: http://auth-service:3001
+      # CORS : origines du frontend autorisées (dev Vite + fallback historique)
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy
