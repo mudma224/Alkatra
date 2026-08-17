@@ -32,6 +32,10 @@ http {
     proxy_connect_timeout 30s;
     proxy_send_timeout 60s;
     proxy_read_timeout 60s;
+    proxy_buffering on;
+    proxy_buffer_size 128k;
+    proxy_buffers 4 128k;
+    proxy_busy_buffers_size 256k;
 
     # =========================================================================
     # Resolution DNS runtime — resolver interne Docker (RFC 6891 compliant)
@@ -66,6 +70,17 @@ http {
     # =========================================================================
     limit_req_zone $binary_remote_addr zone=api_limit:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/s;
+
+    # =========================================================================
+    # CORS - Origines autorisees (liste blanche explicite)
+    # `$cors_origin` vaut l'origine autorisee, ou chaine vide si l'origine n'est
+    # pas dans la liste. NE PAS remplacer par un echo direct de `$http_origin`
+    # (reflexion d'origine = faille CORS).
+    # =========================================================================
+    map $http_origin $cors_origin {
+        default "";
+        "http://localhost:5173" "http://localhost:5173";
+    }
 
     # =========================================================================
     # Serveur principal
@@ -104,60 +119,92 @@ http {
         }
 
         # =====================================================================
-        # ROUTES API — regex support pour slash final optionnel
+        # ROUTES API — Transparent Proxy Pass
+        # CORS is handled at the GATEWAY (single source of truth) via the
+        # included snippet /etc/nginx/snippets/cors-headers.conf. Backends do
+        # NOT handle browser CORS themselves — they are internal services.
         # =====================================================================
 
         # ---- Auth Service ----
         location /api/v1/auth/ {
             limit_req zone=auth_limit burst=20 nodelay;
 
+            include /etc/nginx/snippets/cors-headers.conf;
+
             set $auth_upstream http://${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT};
+            
             proxy_pass $auth_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_buffering off;
+            proxy_redirect off;
         }
 
         # ---- User Service ----
         location /api/v1/user/ {
+            include /etc/nginx/snippets/cors-headers.conf;
+
             set $user_upstream http://${USER_SERVICE_HOST}:${USER_SERVICE_PORT};
+            
             proxy_pass $user_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_redirect off;
         }
 
-        # ---- Farm Service — accepte /farms, /farms/, /farms/:id, etc. ----
+        # ---- Farm Service ----
         location ~ ^/api/v1/farms(?:/.*)?$ {
+            include /etc/nginx/snippets/cors-headers.conf;
+
             set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
+            
             proxy_pass $farm_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_redirect off;
             limit_req zone=api_limit burst=20 nodelay;
         }
 
         location ~ ^/api/v1/parcels(?:/.*)?$ {
+            include /etc/nginx/snippets/cors-headers.conf;
+
             set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
+            
             proxy_pass $farm_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_redirect off;
             limit_req zone=api_limit burst=20 nodelay;
         }
 
         location ~ ^/api/v1/sensors(?:/.*)?$ {
+            include /etc/nginx/snippets/cors-headers.conf;
+
             set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
+            
             proxy_pass $farm_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_redirect off;
             limit_req zone=api_limit burst=20 nodelay;
         }
 
