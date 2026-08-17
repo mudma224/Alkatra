@@ -3,6 +3,10 @@ import { createBrowserRouter, Navigate, useLocation, useNavigate } from 'react-r
 import { LoginScreen } from '../screens/auth/LoginScreen/LoginScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen/OTPScreen';
 import { PlaceholderScreen } from '../components/ui/PlaceholderScreen/PlaceholderScreen';
+import { FarmListScreen } from '../screens/farm/FarmListScreen/FarmListScreen';
+import { FarmCreateScreen } from '../screens/farm/FarmCreateScreen/FarmCreateScreen';
+import { FarmDetailScreen } from '../screens/farm/FarmDetailScreen/FarmDetailScreen';
+import { FarmEditScreen } from '../screens/farm/FarmEditScreen/FarmEditScreen';
 import { AppLayout } from '../components/layout/Layout/Layout';
 import { RequireAuth } from './RequireAuth';
 import { useAuthStore } from '../store/auth.store';
@@ -68,23 +72,19 @@ export const router = createBrowserRouter([
         children: [
       {
         path: '/farms',
-        element: (
-          <PlaceholderScreen
-            title="Fermes"
-            description="Liste des fermes de l'utilisateur."
-            phase="Phase 3"
-          />
-        ),
+        element: <FarmListScreen />,
+      },
+      {
+        path: '/farms/new',
+        element: <FarmCreateScreen />,
       },
       {
         path: '/farms/:farmId',
-        element: (
-          <PlaceholderScreen
-            title="Détail de la ferme"
-            description="Détail d'une ferme et ses parcelles."
-            phase="Phase 3"
-          />
-        ),
+        element: <FarmDetailScreen />,
+      },
+      {
+        path: '/farms/:farmId/edit',
+        element: <FarmEditScreen />,
       },
       {
         path: '/farms/:farmId/parcels/:parcelId',
