@@ -16,6 +16,9 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copier le template de configuration
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
 
+# Copier le snippet CORS / en-tetes de securite (inclus par chaque location API)
+COPY snippets/cors-headers.conf /etc/nginx/snippets/cors-headers.conf
+
 # Copier et rendre exécutable le script d'entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
