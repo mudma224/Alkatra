@@ -335,7 +335,7 @@ npm run test
 ### Les requêtes API échouent localement
 
 - Vérifiez que le backend s'exécute : `docker ps | grep auth-service`
-- Vérifiez le VITE_API_BASE_URL dans .env (par défaut : `http://localhost:3001/api/v1`)
+- Vérifiez le VITE_API_BASE_URL dans .env (par défaut : `http://localhost:8080/api/v1` — la gateway, pas un service individuel)
 - Vérifiez les logs du navigateur (F12) pour les erreurs CORS ou de réseau
 
 ### Les tokens expirent rapidement

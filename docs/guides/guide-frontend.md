@@ -27,10 +27,12 @@ cp .env.example .env
 `.env.example` contient une seule variable :
 
 ```bash
-VITE_API_BASE_URL=http://localhost:3001/api/v1
+VITE_API_BASE_URL=http://localhost:8080/api/v1
 ```
 
-Cette variable est **optionnelle** : une valeur de secours identique est déjà codée en dur dans `src/api/client.ts`. Copier le fichier reste recommandé pour la clarté.
+Cette variable est **optionnelle** : une valeur de secours identique est déjà codée en dur dans `src/api/client.ts`.
+
+> ⚠️ **Toujours pointer vers la gateway (port 8080)**, jamais directement vers un service (ex. `http://localhost:3001` = auth-service seul : le Login/OTP fonctionnerait, mais toutes les autres routes — fermes, parcelles… — renverraient 404). Attention : une variable d'environnement exportée dans le shell **écrase** la valeur du fichier `.env`.
 
 ## Commande de lancement
 

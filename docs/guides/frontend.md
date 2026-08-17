@@ -51,7 +51,9 @@ auth-service (POST /api/v1/auth/register) — appel direct, sans gateway
 
 ### Communication frontend / backend
 
-Le frontend appelle **directement** le service `auth-service` (`http://localhost:3001/api/v1`), sans transiter par la gateway Nginx. La base URL est configurable via la variable `VITE_API_BASE_URL`, avec une valeur codée en dur en secours (`http://localhost:3001/api/v1`). Le service `auth-service` autorise les requêtes cross-origin (CORS permissif : `origin: true, credentials: true`), ce qui rend l'appel direct fonctionnel sans configuration CORS supplémentaire côté frontend.
+Le frontend passe par **l'API Gateway Nginx** (`http://localhost:8080/api/v1`) pour toutes ses requêtes API (auth, user, farms, parcels, sensors). La base URL est configurable via la variable `VITE_API_BASE_URL`, avec la gateway comme valeur de secours codée en dur dans `src/api/client.ts`.
+
+> ⚠️ **Ne jamais pointer `VITE_API_BASE_URL` directement vers un service individuel** (ex. `http://localhost:3001` = auth-service seul) : le Login/OTP fonctionnerait, mais toutes les autres routes (fermes, parcelles…) renverraient 404. Attention : une variable exportée dans le shell **écrase** la valeur du fichier `.env`.
 
 L'écran `LoginScreen` ne déclenche aucun appel API au chargement de la page : il ne contient pas de `useEffect`. L'appel réseau se produit uniquement au clic sur le bouton « Envoyer OTP ». Le frontend est donc entièrement visualisable sans backend démarré.
 
@@ -176,11 +178,11 @@ cp .env.example .env
 Contenu de `.env.example` :
 
 ```bash
-# auth-service is called directly (see guide §18) instead of through the gateway.
-VITE_API_BASE_URL=http://localhost:3001/api/v1
+# Tous les appels API passent par la gateway Nginx (port 8080).
+VITE_API_BASE_URL=http://localhost:8080/api/v1
 ```
 
-Cette variable n'est pas obligatoire pour visualiser le Login Screen : une valeur de secours est codée en dur dans `src/api/client.ts`. La copier rend la configuration explicite.
+Cette variable n'est pas obligatoire : une valeur de secours identique est codée en dur dans `src/api/client.ts`. La copier rend la configuration explicite.
 
 ### Lancer le serveur de développement
 
@@ -206,7 +208,7 @@ L'écran `LoginScreen` se rend intégralement sans backend démarré : aucun `us
 
 | Variable | Obligatoire ? | Exemple (`.env.example`) | Utilisation |
 |---|---|---|---|
-| `VITE_API_BASE_URL` | Non — valeur de secours codée en dur dans `client.ts` | `VITE_API_BASE_URL=http://localhost:3001/api/v1` | Base URL de tous les appels Axios (`httpClient`) |
+| `VITE_API_BASE_URL` | Non — valeur de secours codée en dur dans `client.ts` | `VITE_API_BASE_URL=http://localhost:8080/api/v1` | Base URL de tous les appels Axios (`httpClient`) — toujours la gateway |
 
 Aucun secret n'est stocké côté frontend.
 
@@ -544,7 +546,7 @@ Définition dans `src/api/client.ts` :
 ```ts
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1';
+const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
 export const httpClient = axios.create({
   baseURL,
   timeout: 15000,
@@ -552,10 +554,9 @@ export const httpClient = axios.create({
 });
 ```
 
-- Base URL : `import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/api/v1'` (la variable n'est pas obligatoire).
+- Base URL : `import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1'` (la variable n'est pas obligatoire — toujours la gateway).
 - Timeout : `15000` ms.
 - Headers par défaut : `Content-Type: application/json`.
-- Aucun interceptor (ni requête ni réponse) — cohérent avec l'absence de gestion de token JWT côté frontend.
 
 ### authApi
 
