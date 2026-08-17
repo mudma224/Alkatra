@@ -1,0 +1,10 @@
+/* =========================================================================
+   FarmForm — formulaire partagé création/édition (maquette « FarmCreate » 83:55).
+   Colonne de champs avec espacement 24 (lg).
+   ========================================================================= */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
