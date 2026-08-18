@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, Index, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, Index, JoinColumn } from 'typeorm';
 import { Farm } from './farm.entity';
+import { Sensor } from './sensor.entity';
 import { GeoJsonPoint, GeoJsonPolygon } from '../../common/types/geojson';
 
 @Entity('parcels')
@@ -61,6 +62,9 @@ export class Parcel {
   @ManyToOne(() => Farm, farm => farm.parcels, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'farm_id' })
   farm: Farm;
+
+  @OneToMany(() => Sensor, sensor => sensor.parcel)
+  sensors?: Sensor[];
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
