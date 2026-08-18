@@ -1,0 +1,45 @@
+.wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * Single circular container (previously split across two nested divs
+ * that both applied border-radius: 50% — merged, no visual change).
+ */
+.circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  overflow: hidden;
+
+  background-color: var(--color-neutral-grey);
+  border: 1px solid var(--color-neutral-0);
+
+  z-index: 0;
+}
+
+/*
+ * Text/icon color: white for contrast against the grey circle.
+ *
+ * FIX: previously referenced var(--color-secondary-900), a token that
+ * does not exist anywhere in tokens.css. An undefined custom property
+ * makes the `color` declaration invalid, so it silently fell back to
+ * the browser's inherited color instead of failing visibly — a real
+ * bug, not a style preference. Using an existing, defined token here.
+ */
+.initials {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-neutral-0);
+}
+
+.icon {
+  width: 40%;
+  height: 40%;
+  color: var(--color-neutral-0);
+}

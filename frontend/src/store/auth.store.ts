@@ -14,7 +14,9 @@ interface AuthState {
   refreshToken: string | null;
   expiresAt: string | null;
   user: AuthUser | null;
+
   setAuth: (payload: AuthResult) => void;
+  updateUser: (user: AuthUser) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
@@ -25,13 +27,12 @@ const STORAGE_KEY = 'alkatra-auth';
  * Custom merge for the `persist` middleware.
  *
  * The default shallow merge (`{ ...currentState, ...persistedState }`) can
- * overwrite the store's functions (setAuth, clearAuth, isAuthenticated) if the
- * persisted state in localStorage contains a key with the same name (e.g. a
- * stale `isAuthenticated` boolean from an older version or corrupted data).
+ * overwrite the store's functions (setAuth, clearAuth, isAuthenticated) if
+ * the persisted state in localStorage contains a key with the same name
+ * (e.g. a stale `isAuthenticated` boolean from an older version or corrupted data).
  *
  * This merge only restores the expected data fields and ALWAYS keeps the
- * functions/actions defined by the store creator, making the store resilient
- * to any unexpected content in localStorage.
+ * functions/actions defined by the store creator.
  */
 const persistOptions: PersistOptions<AuthState> = {
   name: STORAGE_KEY,
@@ -74,6 +75,16 @@ export const useAuthStore = create<AuthState>()(
           refreshToken: payload.refreshToken,
           expiresAt,
           user: payload.user,
+        });
+      },
+
+      /**
+       * Updates the currently authenticated user's profile.
+       */
+      updateUser: (user: AuthUser) => {
+        set({
+          user,
+          phone: user.phone,
         });
       },
 

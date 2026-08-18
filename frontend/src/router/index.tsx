@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, useLocation, useNavigate } from 'react-r
 import { LoginScreen } from '../screens/auth/LoginScreen/LoginScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen/OTPScreen';
 import { PlaceholderScreen } from '../components/ui/PlaceholderScreen/PlaceholderScreen';
+import { ProfileScreen } from '../screens/profile/ProfileScreen/ProfileScreen';
 import { FarmListScreen } from '../screens/farm/FarmListScreen/FarmListScreen';
 import { FarmCreateScreen } from '../screens/farm/FarmCreateScreen/FarmCreateScreen';
 import { FarmDetailScreen } from '../screens/farm/FarmDetailScreen/FarmDetailScreen';
@@ -11,6 +12,7 @@ import { AppLayout } from '../components/layout/Layout/Layout';
 import { RequireAuth } from './RequireAuth';
 import { useAuthStore } from '../store/auth.store';
 import type { VerifyOtpResponse } from '../types/auth.types';
+import { EditProfileScreen } from '../screens/profile/EditProfileScreen/EditProfileScreen';
 
 /**
  * Wrapper that reads the OTP navigation state (phone + expiresAt) passed
@@ -108,13 +110,11 @@ export const router = createBrowserRouter([
       },
       {
         path: '/profile',
-        element: (
-          <PlaceholderScreen
-            title="Profil"
-            description="Gestion du profil et déconnexion."
-            phase="Phase 6"
-          />
-        ),
+        element: <ProfileScreen/>,
+      },
+      {
+        path: '/profile/edit',
+        element: <EditProfileScreen/>,
       },
         ],
       },
