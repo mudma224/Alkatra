@@ -60,4 +60,15 @@ export class SensorsService {
 
     return this.sensorsRepository.save(sensor);
   }
+
+  /**
+   * Liste les capteurs associés à une parcelle (vérifie la propriété via la ferme).
+   */
+  async findByParcel(parcelId: string, userId: string): Promise<Sensor[]> {
+    const parcel = await this.parcelsRepository.findOne({ where: { id: parcelId }, relations: { farm: true } });
+    if (!parcel) throw new HttpException('Parcelle introuvable.', HttpStatus.NOT_FOUND);
+    if (parcel.farm.ownerId !== userId) throw new HttpException('Accès refusé à cette parcelle.', HttpStatus.FORBIDDEN);
+
+    return this.sensorsRepository.find({ where: { parcelId } });
+  }
 }
