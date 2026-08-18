@@ -62,6 +62,7 @@ describe('SensorsService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
     find: jest.fn(),
+    remove: jest.fn(),
   };
 
   const mockParcelRepo = {
@@ -225,11 +226,70 @@ describe('SensorsService', () => {
     });
 
     it('❌ Devrait retourner 403 si la parcelle appartient à un autre utilisateur', async () => {
-      const otherParcel = { ...mockParcel, farm: { ...mockFarm, ownerId: 'other-user' } };
-      mockParcelRepo.findOne.mockResolvedValue(otherParcel as any);
+      mockParcelRepo.findOne.mockResolvedValue(null);
 
       await expect(service.findByParcel(mockParcel.id, mockUserId)).rejects.toThrow(HttpException);
       expect(sensorRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('dissociate()', () => {
+    it('✅ Devrait dissocier un capteur appartenant à l\'utilisateur', async () => {
+      mockSensorRepo.findOne.mockResolvedValue(mockSensor as any);
+      mockParcelRepo.findOne.mockResolvedValue(mockParcel as any);
+      mockSensorRepo.remove.mockResolvedValue(mockSensor as any);
+
+      await expect(service.dissociate(mockSensor.id, mockUserId)).resolves.toBeUndefined();
+
+      expect(sensorRepo.remove).toHaveBeenCalledWith(mockSensor);
+    });
+
+    it('❌ Devrait retourner 404 si le capteur n\'existe pas', async () => {
+      mockSensorRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.dissociate('non-existent', mockUserId)).rejects.toThrow(HttpException);
+      expect(sensorRepo.remove).not.toHaveBeenCalled();
+    });
+
+    it('❌ Devrait retourner 403 si le capteur appartient à un autre utilisateur', async () => {
+      const otherFarm = { ...mockFarm, ownerId: 'other-user' };
+      mockSensorRepo.findOne.mockResolvedValue(mockSensor as any);
+      mockParcelRepo.findOne.mockResolvedValue({ ...mockParcel, farm: otherFarm } as any);
+
+      await expect(service.dissociate(mockSensor.id, mockUserId)).rejects.toThrow(HttpException);
+      expect(sensorRepo.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordHeartbeat()', () => {
+    it('✅ Devrait rafraîchir last_seen_at, réactiver et enregistrer la batterie', async () => {
+      const silentSensor = { ...mockSensor, isActive: false, batteryPct: null };
+      mockSensorRepo.findOne.mockResolvedValue(silentSensor as any);
+      mockSensorRepo.save.mockImplementation(async (sensor) => sensor as any);
+
+      const result = await service.recordHeartbeat('SENSOR-OL-001', { batteryPct: 87 });
+
+      expect(result.isActive).toBe(true);
+      expect(result.batteryPct).toBe(87);
+      expect(result.lastSeenAt).toBeInstanceOf(Date);
+      expect(sensorRepo.save).toHaveBeenCalled();
+    });
+
+    it('✅ Devrait ignorer batterie et firmware si absents du heartbeat', async () => {
+      mockSensorRepo.findOne.mockResolvedValue({ ...mockSensor, firmwareVersion: '1.0.0' } as any);
+      mockSensorRepo.save.mockImplementation(async (sensor) => sensor as any);
+
+      const result = await service.recordHeartbeat('SENSOR-OL-001', {});
+
+      expect(result.batteryPct).toBeNull();
+      expect(result.firmwareVersion).toBe('1.0.0');
+    });
+
+    it('❌ Devrait retourner 404 si le deviceId est inconnu', async () => {
+      mockSensorRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.recordHeartbeat('UNKNOWN', {})).rejects.toThrow(HttpException);
+      expect(sensorRepo.save).not.toHaveBeenCalled();
     });
   });
 });
