@@ -506,3 +506,124 @@ Pas de support IE11 (ES6+ requis).
 ## 21. Résumé
 
 Le frontend est volontairement direct : il présente le flux d'authentification, valide les entrées pour une rétroaction plus rapide, et délègue les règles métier réelles au backend. Le code est organisé pour rester facile à maintenir tout en préservant une séparation claire entre le comportement de l'UI et l'application du backend.
+
+- **`styles/tokens.css`** : toutes les valeurs de design sont des variables CSS chargées dans `:root` (`main.tsx`) :
+  - couleurs : primary (`--color-primary-300/500/700`, vert foncé marque), secondary (`--color-secondary-100/500/600`), accent (`--color-accent-500`), destructive (`#D32F2F`/`#B71C1C`), neutres (`--color-neutral-0/200`, `--color-neutral-grey`, `--color-neutral-black`) + alias de compatibilité (`--color-error-500`, `--color-neutral-white`, `--color-neutral-grey-light`) ;
+  - typographie : famille Inter (`--font-family-base`), tailles/poids titres, sous-titres, labels, corps, bouton, erreur, footer ;
+  - radius (`--radius-card: 20px`, `--radius-input`, `--radius-button`), spacing (`--spacing-xs`→`xl`), shadow (`--shadow-card`), transitions (`--transition-fast`/`base`).
+- **`styles/global.css`** : `box-sizing`, hauteur `html/body/#root`, police Inter appliquée à `body`.
+- **CSS modules** partout (`*.module.css` colocalisés), sauf `tokens.css`/`global.css` importés globalement dans `main.tsx`.
+
+## 16. i18n
+
+- `i18next` + `react-i18next`, initialisés dans `src/i18n/index.ts` (importés par `main.tsx` **et** `setupTests.ts`) : langues `fr`, `ar`, `darija` (JSON dans `src/i18n/`), langue par défaut `fr`, `fallbackLng: 'fr'`, échappement d'interpolation désactivé.
+- **Usage réel** : seul le composant `Brand` consomme `useTranslation()` (`auth.brandTitle`, `auth.brandSubtitle`). Tout le reste des textes (LoginScreen, OTPScreen, Header, Navigation, écrans profil) est **codé en dur en français**. Aucun composant ne bascule encore la langue (le champ `preferredLanguage` est envoyé au backend mais n'actionne pas i18n).
+
+## 17. Variables d'environnement
+
+Variable unique utilisée par le frontend :
+
+- **`VITE_API_BASE_URL`** — base URL de toutes les requêtes API. Valeur par défaut dans le code : `http://localhost:8080/api/v1` (API Gateway Nginx). `frontend/.env` et `frontend/.env.example` la définissent tous deux à `http://localhost:8080/api/v1`.
+
+Rien d'autre n'est lu via `import.meta.env`. Pas de secret côté frontend dans `.env` / `.env.example`.
+
+## 18. Tests
+
+Stack : **Vitest** (`vite.config.ts` : `environment: 'jsdom'`, `globals: true`, `setupFiles: './setupTests.ts'` avec `@testing-library/jest-dom/vitest` + import i18n) + **Testing Library** (react/user-event/jest-dom) + **Axios** mocks (`vi.mock`).
+
+8 fichiers de test :
+
+| Fichier | Sujets couverts |
+|---|---|
+| `components/ui/Button/Button.test.tsx` | clic, état désactivé, spinner/loading, 6 variantes, tailles sm/md, icônes, `block`/`data-block` |
+| `components/ui/Card/Card.test.tsx` | rendu enfant, `block`, `elevated`, props HTML natives |
+| `components/ui/EmptyState/EmptyState.test.tsx` | titre, description, icône, action, `role="status"` |
+| `components/ui/Input/Input.test.tsx` | label, prefix, `aria-invalid`, `aria-describedby`, variante search (clear), états default/filled/error |
+| `src/screens/auth/LoginScreen/LoginScreen.test.tsx` | bouton désactivé si vide, activé dès une frappe, erreur de validation sans appel API, appel `requestOtp` avec `+212…`, message d'erreur retryable sans fuite, navigation `/otp` |
+| `src/screens/auth/OTPScreen/OTPScreen.test.tsx` | avertissements de format/expiration, vérification réussie → `onVerified`, 401 → « invalide ou expiré », erreurs génériques, cooldown renvoi 30 s (fake timers), clics ignorés pendant cooldown, accessibilité (`aria-label` par case, désactivation pendant soumission) |
+| `src/router/RequireAuth.test.tsx` | redirection `/login` si non authentifié, rendu si authentifié, redirection si token expiré |
+| `src/store/auth.store.test.ts` | `setAuth` (+ calcul `expiresAt`), `clearAuth`, `isAuthenticated` (présent/expiré), persistance localStorage clé `alkatra-auth` |
+
+## 19. Scripts npm et CI
+
+Scripts du `frontend/package.json` :
+
+| Script | Commande | Effet |
+|---|---|---|
+| `dev` | `vite` | serveur de dev Vite (défaut `http://localhost:5173`) |
+| `build` | `tsc -b && vite build` | check de types + build de production dans `dist/` |
+| `preview` | `vite preview` | serve le build (défaut `http://localhost:4173`) |
+| `lint` | `eslint .` | ESLint 9 (flat config) |
+| `test` | `vitest run` | exécution une fois de la suite |
+| `test:watch` | `vitest` | mode watch |
+
+Depuis la racine du monorepo, ces scripts passent par Turborepo (`npm run dev` / `test` / `build` / `lint` automatisent `turbo run …`, qui couvrent aussi `frontend/*`).
+
+**CI** : workflow GitHub Actions `.github/workflows/ci-frontend.yml` (racine du dépôt), déclenché sur `push` (branches `develop`, `main`) et `pull_request` avec chemins `frontend/**`. Étapes : Node 20 (`npm ci` avec cache sur `frontend/package-lock.json`), `npm run lint`, `npm run test`, `npm run build` (working-directory `frontend`).
+
+## 20. Build et déploiement
+
+- **Build local** : `npm run build` (`tsc -b && vite build`) → `frontend/dist/` (HTML + JS/CSS hashed + `public/` copié). Pas de PWA ni de manifeste.
+- **`frontend/DockerFile`** (multi-stage) :
+  1. `node:20-alpine` : copie `package*.json`, `npm ci`, copie du code, `npm run build` ;
+  2. `nginx:alpine` : copie de `dist/` vers `/usr/share/nginx/html`, `EXPOSE 80`. Aucune configuration nginx personnalisée (pas de gzip ni de cache-busting configurés dans ce fichier).
+- **CI** : le workflow `ci-frontend.yml` valide lint + tests + build sur chaque push/PR touchant `frontend/**` (voir §19).
+
+---
+
+## 21. Flux utilisateur (chemin complet)
+
+> Parcours « UI → logique → état → API → réponse → navigation » tels qu'implémentés dans le code.
+
+### 21.1 Connexion : demande d'OTP
+
+1. `/login` affiche `LoginScreen` (hero + carte `Brand` + formulaire).
+2. Saisie : `setFromInput` → `normalizePhoneDigits` (filtre non-chiffres, max 9) ; affichage `formattedValue` (`6XX XX XX XX`) préfixé `+212`.
+3. Submit (`handleSubmit`, submit du formulaire) : bloque si champ vide ou déjà `submitting` → `submit()` :
+   - si `!phone.isValid` (**regex `^\+212[67]\d{8}$`**) → erreur de validation « Numéro de téléphone invalid. », `Input state="error"`, **aucun appel réseau** ;
+   - sinon `status='submitting'` → `authApi.requestOtp({ phone: phone.fullPhone })` → `httpClient.post('/auth/register')` → **Gateway Nginx 8080** → `auth-service` → réponse `{ success: true, message, expiresAt }`.
+4. Succès : `status='success'`, notice « Code envoyé. Il expire à HH:mm. » puis `navigate('/otp', { state: { phone, expiresAt } })`.
+5. Échec : `status='idle'`, `console.error` (non exposé), `ErrorMessage` « Impossible d'envoyer le code. » + « Réessayez. » (relance `submit`).
+
+### 21.2 Vérification de l'OTP puis ouverture de session
+
+1. `/otp` : `OtpRoute` lit `location.state`. Si `phone` ou `expiresAt` manquant → `<Navigate to="/login" replace />`.
+2. `OTPScreen` : compte à rebours `MM:SS` depuis `expiresAt` (serveur), `OTPInput` 6 cases (focus auto, backspace, paste).
+3. Submit `verifyOtp` : contrôle `^\d{6}$` et non-expiration, puis `authApi.verifyOtp({ phone, otp })` → `POST /auth/verify-otp` → `auth-service` → `VerifyOtpResponse { accessToken, refreshToken, expiresIn, tokenType, user }`.
+4. `onVerified(response)` → `useAuthStore.getState().setAuth(response)` : `expiresAt` calculé (`now + expiresIn`) et état **persisté dans localStorage** (clé `alkatra-auth`), puis `navigate('/farms', { replace: true })`.
+5. Désormais `isAuthenticated()` est vraie : `RequireAuth` rend `<Outlet/>` dans `AppLayout`.
+6. Erreurs : 401 → « Code OTP invalide ou expiré. » ; sinon message générique.
+
+### 21.3 Renvoi d'OTP (sur `/otp`)
+
+- Bouton « Renvoyer » (ou « Renvoyer dans Ns ») : cooldown 30 s → `authApi.requestOtp({ phone })` → nouvelle `expiresAt` mémorisée, champ OTP vidé, timers relancés. Échec → « Impossible de renvoyer le code. Réessayez. ».
+
+### 21.4 Consultation et édition du profil
+
+1. `/profile` est accessible par URL directe (aucun lien visible dans la `Navigation`, qui ne contient que « Fermes ») — `ProfileScreen` affiche un `LoadingSpinner` puis `userApi.getProfile()` → `GET /user/profile` (Bearer injecté par l'intercepteur) → `user-service` → `AuthUser`.
+2. Résultat écrit dans le store via `updateUser` ; l'écran affiche `ProfileIdentity` + menu. En échec : « Impossible de charger votre profil. » + retry.
+3. « Editeur mon profil » → `/profile/edit` : lit `user` du store (sinon `<Navigate to="/profile" />`), formulaire `name` + langue → `userApi.updateProfile` `PATCH /user/profile` → `AuthUser` mis à jour → `updateUser` → `navigate('/profile', { replace: true })`.
+4. Déconnexion (Header, si `user`) : `useAuth().logout()` → `clearAuth()` (store remis à zéro, localStorage purgé) → `navigate('/login', { replace: true })`.
+
+## 22. Limites et points de vigilance
+
+Faits vérifiables dans le code actuel, à ne pas confondre avec une feuille de route :
+
+- **Routes métier en placeholder** : `/farms`, `/farms/:farmId`, `/farms/:farmId/parcels/:parcelId`, `/recommendations` rendent `PlaceholderScreen` (descriptions et phases indiquées dans `router/index.tsx`). Seuls l'auth et le profil sont réellement implémentés.
+- **Aucun lazy-loading** : toutes les routes et écrans sont chargés dans le bundle initial (`App.tsx` → `router`) ; `React.lazy`/`Suspense` ne sont utilisés nulle part.
+- **Déconnexion locale uniquement** : `clearAuth()` ne fait aucun appel backend ; le stockage local est simplement purgé.
+- **Tokens en `localStorage`** (clé `alkatra-auth`) : choix du code actuel et non des cookies `httpOnly`.
+- **i18n partielle** : trois langues initialisées, mais seul `Brand` consomme `t()` ; le reste est en dur en français.
+- **`authApi.refresh` défini mais non utilisé par l'intercepteur** : le refresh est réalisé par un `axios.post` direct dans `client.ts`.
+- **Pas d'intercepteur côté « login »** : le refresh ne s'applique pas aux endpoints `/auth/register`, `/auth/verify-otp`, `/auth/refresh`, `/auth/login` (protection contre la boucle infinie).
+- **Pas de monitoring/télémétrie client configuré** (pas de Sentry, LogRocket, etc.) ; les erreurs API sont seulement `console.error`.
+
+## Documents liés
+
+- Contrats backend : [`docs/guides/auth-service.md`](auth-service.md), [`docs/guides/user-service.md`](user-service.md), [`docs/guides/api-gateway.md`](api-gateway.md).
+- Références : [`docs/reference/ports-and-services.md`](../reference/ports-and-services.md) (gateway 8080, services 3001–3004), [`docs/architecture/project-overview.md`](../architecture/project-overview.md).
+- La structure d'arborescence du monorepo est décrite dans [`docs/architecture/repository-map.md`](../architecture/repository-map.md).
+
+---
+
+*Document tenu à jour au 16/08/2026 à partir du code réel du dépôt (branche `dev1-frontend`).*
