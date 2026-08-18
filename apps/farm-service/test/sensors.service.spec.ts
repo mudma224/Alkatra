@@ -98,7 +98,7 @@ describe('SensorsService', () => {
       expect(result).toEqual(mockSensor);
       expect(parcelRepo.findOne).toHaveBeenCalledWith({
         where: { id: mockParcel.id },
-        relations: ['farm'],
+        relations: { farm: true },
       });
       expect(sensorRepo.create).toHaveBeenCalled();
       expect(sensorRepo.save).toHaveBeenCalled();
@@ -190,6 +190,46 @@ describe('SensorsService', () => {
       );
 
       await expect(service.associate(dto, mockUserId)).rejects.toThrow();
+    });
+  });
+
+  describe('findByParcel()', () => {
+    it('✅ Devrait retourner les capteurs de la parcelle', async () => {
+      mockParcelRepo.findOne.mockResolvedValue(mockParcel as any);
+      mockSensorRepo.find.mockResolvedValue([mockSensor] as any);
+
+      const result = await service.findByParcel(mockParcel.id, mockUserId);
+
+      expect(result).toEqual([mockSensor]);
+      expect(parcelRepo.findOne).toHaveBeenCalledWith({
+        where: { id: mockParcel.id },
+        relations: { farm: true },
+      });
+      expect(sensorRepo.find).toHaveBeenCalledWith({ where: { parcelId: mockParcel.id } });
+    });
+
+    it('✅ Devrait retourner une liste vide si aucun capteur', async () => {
+      mockParcelRepo.findOne.mockResolvedValue(mockParcel as any);
+      mockSensorRepo.find.mockResolvedValue([] as any);
+
+      const result = await service.findByParcel(mockParcel.id, mockUserId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('❌ Devrait retourner 404 si la parcelle n\'existe pas', async () => {
+      mockParcelRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.findByParcel('non-existent', mockUserId)).rejects.toThrow(HttpException);
+      expect(sensorRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('❌ Devrait retourner 403 si la parcelle appartient à un autre utilisateur', async () => {
+      const otherParcel = { ...mockParcel, farm: { ...mockFarm, ownerId: 'other-user' } };
+      mockParcelRepo.findOne.mockResolvedValue(otherParcel as any);
+
+      await expect(service.findByParcel(mockParcel.id, mockUserId)).rejects.toThrow(HttpException);
+      expect(sensorRepo.find).not.toHaveBeenCalled();
     });
   });
 });
