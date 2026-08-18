@@ -1,0 +1,10 @@
+/* =========================================================================
+   ParcelForm — maquettes « ParcelCreate » et « ParcelCreate - Validation
+   Errors ». Colonne pleine largeur, mêmes espacements que FarmForm.
+   ========================================================================= */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}

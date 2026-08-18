@@ -1,0 +1,110 @@
+/* =========================================================================
+   ParcelCard — maquette « FarmDetail - Parcels Populated ».
+   Card blanche radius 20, bordure neutral-200, nom 18/600, sous-titre gris,
+   badge surface à gauche + pill capteur à droite, chevron à droite.
+   ========================================================================= */
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: var(--spacing-md);
+  text-align: left;
+  background-color: var(--color-neutral-0);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.card:hover {
+  border-color: var(--color-primary-300);
+  box-shadow: var(--shadow-card);
+}
+
+.name {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-heading-sm);
+  color: var(--color-neutral-black);
+}
+
+.subtitle {
+  margin-top: var(--spacing-xs);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-grey);
+}
+
+.badgesRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  width: calc(100% - var(--spacing-lg));
+  margin-top: var(--spacing-sm);
+}
+
+/* Badge pill « 2.5 ha » — fond vert clair, texte vert foncé (comme FarmCard). */
+.badge {
+  padding: 6px 14px;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-label);
+  color: var(--color-primary-700);
+  background-color: var(--color-secondary-100);
+  border-radius: var(--radius-badge);
+}
+
+/* Pill « ● Capteur » / « ● 2 capteurs » — compteur, même base que le badge surface. */
+.sensorBadge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-label);
+  color: var(--color-primary-700);
+  background-color: var(--color-secondary-100);
+  border-radius: var(--radius-badge);
+}
+
+.sensorDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-accent-500);
+}
+
+.noSensorBadge {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-label);
+  color: var(--color-neutral-grey);
+  background-color: var(--color-neutral-200);
+  border-radius: var(--radius-badge);
+}
+
+.chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--spacing-md);
+  width: 20px;
+  height: 20px;
+  transform: translateY(-50%);
+  color: var(--color-neutral-grey);
+}

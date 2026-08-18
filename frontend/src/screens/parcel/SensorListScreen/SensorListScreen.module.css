@@ -1,0 +1,122 @@
+/* =========================================================================
+   SensorListScreen — maquette « SensorList - Populated » (188:103) :
+   recherche + chips de filtre + cards capteurs, mêmes espacements que les
+   autres listes (FarmListScreen).
+   ========================================================================= */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+  min-height: 36px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-title);
+  color: var(--color-primary-500);
+}
+
+.subtitle {
+  margin: calc(-1 * var(--spacing-xs)) 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-grey);
+}
+
+/* Chips de filtre « Tous / Actifs / Non actifs » — pill cliquable. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.chip,
+.chipActive {
+  padding: 7px 14px;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-badge);
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  font-weight: var(--font-weight-label);
+  color: var(--color-neutral-grey);
+  background-color: var(--color-neutral-0);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.chip:hover {
+  border-color: var(--color-primary-300);
+}
+
+.chip:focus-visible,
+.chipActive:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.chipActive {
+  color: var(--color-primary-700);
+  background-color: var(--color-secondary-100);
+  border-color: var(--color-secondary-100);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sensorCard {
+  padding: var(--spacing-xs) var(--spacing-md);
+}
+
+.emptyCard {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+/* Squelettes de l'état loading. */
+.skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.skeletonSearch {
+  height: 45px;
+  border-radius: var(--radius-input);
+}
+
+.skeletonButton {
+  height: 48px;
+  border-radius: var(--radius-button);
+}
+
+.skeletonCard {
+  height: 90px;
+  border-radius: var(--radius-card);
+}
+
+.retryButton {
+  width: 280px;
+  max-width: 100%;
+}
