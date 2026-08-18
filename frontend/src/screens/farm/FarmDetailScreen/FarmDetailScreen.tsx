@@ -7,7 +7,9 @@ import { Card } from '../../../components/ui/Card/Card';
 import { EmptyState } from '../../../components/ui/EmptyState/EmptyState';
 import { Skeleton } from '../../../components/ui/Skeleton/Skeleton';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog/ConfirmDialog';
+import { ParcelCard } from '../../../components/parcel/ParcelCard/ParcelCard';
 import { useDeleteFarm, useFarm } from '../../../hooks/useFarms';
+import { useParcels } from '../../../hooks/useParcels';
 import { formatAreaHa, formatDateFr } from '../../../utils/format';
 
 import styles from './FarmDetailScreen.module.css';
@@ -17,8 +19,10 @@ import styles from './FarmDetailScreen.module.css';
  *
  * Maquettes Figma validées :
  * - « FarmDetail » (83:71) : barre retour + nom, Info Card
- *   (Région / Surface totale / Créée le), Modifier + Supprimer,
- *   section Parcelles à l'état vide (Phase 4).
+ *   (Région / Surface totale / Créée le), Modifier + Supprimer.
+ * - « FarmDetail - Parcels Populated / Empty / Loading / Error » (Phase 4) :
+ *   section Parcelles — cards ParcelCard + bouton « Ajouter une parcelle »,
+ *   état vide avec CTA, squelettes ou erreur avec Réessayer.
  * - « FarmDetail - Delete Modal » (83:93) : confirmation destructive.
  *
  * La suppression appelle DELETE /farms/:id ; le farm-service renvoie 409
@@ -31,6 +35,7 @@ export function FarmDetailScreen() {
 
   const { farm, status, refetch } = useFarm(farmId);
   const { remove, isDeleting, error: deleteError, clearError } = useDeleteFarm();
+  const { parcels, status: parcelsStatus, refetch: refetchParcels } = useParcels(farmId);
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -136,17 +141,71 @@ export function FarmDetailScreen() {
           </div>
 
           <h2 className={styles.sectionTitle}>Parcelles</h2>
-          {/*
-           * Les parcelles ne sont pas encore gérées (Phase 4) : la maquette
-           * FarmDetail ne définit que cet état vide.
-           */}
-          <Card className={styles.parcelsCard}>
-            <EmptyState
-              icon={Plus}
-              title="Aucune parcelle"
-              description="Bientôt disponible (Phase 4)"
-            />
-          </Card>
+
+          {parcelsStatus === 'loading' && (
+            <div className={styles.parcelsSkeletons}>
+              <Skeleton className={styles.skeletonParcelsButton} />
+              <Skeleton className={styles.skeletonParcelsCard} />
+              <Skeleton className={styles.skeletonParcelsCard} />
+            </div>
+          )}
+
+          {parcelsStatus === 'error' && (
+            <Card className={styles.parcelsCard}>
+              <EmptyState
+                icon={AlertCircle}
+                title="Oups !"
+                description="Impossible de charger les parcelles."
+                action={
+                  <Button variant="primary" onClick={refetchParcels}>
+                    Réessayer
+                  </Button>
+                }
+              />
+            </Card>
+          )}
+
+          {parcelsStatus === 'success' && parcels.length === 0 && (
+            <Card className={styles.parcelsCard}>
+              <EmptyState
+                icon={Plus}
+                title="Aucune parcelle"
+                description="Créez votre première parcelle pour suivre l'irrigation."
+                action={
+                  <Button
+                    variant="primary"
+                    onClick={() => navigate(`/farms/${farmId}/parcels/new`)}
+                  >
+                    Ajouter une parcelle
+                  </Button>
+                }
+              />
+            </Card>
+          )}
+
+          {parcelsStatus === 'success' && parcels.length > 0 && (
+            <>
+              <Button
+                variant="outline"
+                block
+                iconLeft={<Plus aria-hidden="true" />}
+                onClick={() => navigate(`/farms/${farmId}/parcels/new`)}
+              >
+                Ajouter une parcelle
+              </Button>
+
+              <ul className={styles.parcelsList}>
+                {parcels.map((parcel) => (
+                  <li key={parcel.id}>
+                    <ParcelCard
+                      parcel={parcel}
+                      onClick={() => navigate(`/farms/${farmId}/parcels/${parcel.id}`)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
 
           <ConfirmDialog
             open={isDeleteModalOpen}

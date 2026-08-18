@@ -8,6 +8,10 @@ import { FarmListScreen } from '../screens/farm/FarmListScreen/FarmListScreen';
 import { FarmCreateScreen } from '../screens/farm/FarmCreateScreen/FarmCreateScreen';
 import { FarmDetailScreen } from '../screens/farm/FarmDetailScreen/FarmDetailScreen';
 import { FarmEditScreen } from '../screens/farm/FarmEditScreen/FarmEditScreen';
+import { ParcelCreateScreen } from '../screens/parcel/ParcelCreateScreen/ParcelCreateScreen';
+import { ParcelDetailScreen } from '../screens/parcel/ParcelDetailScreen/ParcelDetailScreen';
+import { ParcelEditScreen } from '../screens/parcel/ParcelEditScreen/ParcelEditScreen';
+import { SensorListScreen } from '../screens/parcel/SensorListScreen/SensorListScreen';
 import { AppLayout } from '../components/layout/Layout/Layout';
 import { RequireAuth } from './RequireAuth';
 import { useAuthStore } from '../store/auth.store';
@@ -89,12 +93,28 @@ export const router = createBrowserRouter([
         element: <FarmEditScreen />,
       },
       {
+        path: '/farms/:farmId/parcels/new',
+        element: <ParcelCreateScreen />,
+      },
+      {
         path: '/farms/:farmId/parcels/:parcelId',
+        element: <ParcelDetailScreen />,
+      },
+      {
+        path: '/farms/:farmId/parcels/:parcelId/edit',
+        element: <ParcelEditScreen />,
+      },
+      {
+        path: '/farms/:farmId/parcels/:parcelId/sensors',
+        element: <SensorListScreen />,
+      },
+      {
+        path: '/farms/:farmId/parcels/:parcelId/recommendation',
         element: (
           <PlaceholderScreen
-            title="Détail de la parcelle"
-            description="Détail d'une parcelle et sa recommandation du jour."
-            phase="Phase 4"
+            title="Recommandation du jour"
+            description="Recommandation d'irrigation du jour pour cette parcelle."
+            phase="Phase 5"
           />
         ),
       },

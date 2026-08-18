@@ -90,6 +90,32 @@
   padding: var(--spacing-sm) var(--spacing-md);
 }
 
+/* Liste des ParcelCards — maquette « FarmDetail - Parcels Populated ». */
+.parcelsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parcelsSkeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.skeletonParcelsButton {
+  height: 48px;
+  border-radius: var(--radius-button);
+}
+
+.skeletonParcelsCard {
+  height: 100px;
+  border-radius: var(--radius-card);
+}
+
 /* Squelettes de l'état loading. */
 .skeletons {
   display: flex;

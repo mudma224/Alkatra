@@ -4,14 +4,22 @@ import { AxiosError } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FarmDetailScreen } from './FarmDetailScreen';
 import { farmApi } from '../../../api/farm.api';
+import { parcelApi } from '../../../api/parcel.api';
 import type { Farm } from '../../../types/farm.types';
+import type { Parcel, Sensor } from '../../../types/parcel.types';
 
 vi.mock('../../../api/farm.api', () => ({
   farmApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }));
 
+vi.mock('../../../api/parcel.api', () => ({
+  parcelApi: { listByFarm: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
+  sensorApi: { associate: vi.fn(), listByParcel: vi.fn() },
+}));
+
 const mockedGet = vi.mocked(farmApi.get);
 const mockedRemove = vi.mocked(farmApi.remove);
+const mockedListByFarm = vi.mocked(parcelApi.listByFarm);
 
 const farm: Farm = {
   id: 'farm-1',
@@ -25,6 +33,38 @@ const farm: Farm = {
   parcels: [],
 };
 
+const sensor: Sensor = {
+  id: 'sensor-1',
+  parcelId: 'parcel-1',
+  deviceId: 'ESP32-OL-001',
+  deviceType: 'esp32-wroom-32',
+  isActive: true,
+  lastSeenAt: null,
+  batteryPct: null,
+  firmwareVersion: null,
+  createdAt: '2026-08-12T12:00:00.000Z',
+  updatedAt: '2026-08-12T12:00:00.000Z',
+};
+
+const baseParcel: Omit<Parcel, 'sensors'> = {
+  id: 'parcel-1',
+  farmId: 'farm-1',
+  name: 'Parcelle Nord',
+  areaHa: '2.50',
+  cropType: 'olive',
+  soilType: 'clay',
+  irrigationMethod: 'drip',
+  cropVariety: null,
+  flowRateM3h: null,
+  treeAgeYears: null,
+  treeDensityPerHa: null,
+  polygon: null,
+  centroid: null,
+  isActive: true,
+  createdAt: '2026-08-12T12:00:00.000Z',
+  updatedAt: '2026-08-12T12:00:00.000Z',
+};
+
 function renderDetailScreen() {
   return render(
     <MemoryRouter initialEntries={['/farms/farm-1']}>
@@ -32,6 +72,8 @@ function renderDetailScreen() {
         <Route path="/farms" element={<div>Farms page</div>} />
         <Route path="/farms/:farmId" element={<FarmDetailScreen />} />
         <Route path="/farms/:farmId/edit" element={<div>Edit page</div>} />
+        <Route path="/farms/:farmId/parcels/new" element={<div>New parcel page</div>} />
+        <Route path="/farms/:farmId/parcels/:parcelId" element={<div>Parcel page</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -60,6 +102,8 @@ describe('FarmDetailScreen', () => {
   beforeEach(() => {
     mockedGet.mockReset();
     mockedRemove.mockReset();
+    mockedListByFarm.mockReset();
+    mockedListByFarm.mockResolvedValue([]);
   });
 
   it('renders skeletons while the farm is loading', () => {
@@ -84,6 +128,7 @@ describe('FarmDetailScreen', () => {
 
   it('navigates to the edit screen on Modifier and shows the parcels empty state', async () => {
     mockedGet.mockResolvedValueOnce(farm);
+    mockedListByFarm.mockResolvedValueOnce([]);
 
     renderDetailScreen();
 
@@ -91,11 +136,75 @@ describe('FarmDetailScreen', () => {
     expect(screen.getByRole('button', { name: 'Modifier' })).toBeEnabled();
     expect(screen.getByText('Parcelles')).toBeInTheDocument();
     expect(screen.getByText('Aucune parcelle')).toBeInTheDocument();
-    expect(screen.getByText('Bientôt disponible (Phase 4)')).toBeInTheDocument();
+    expect(
+      screen.getByText('Créez votre première parcelle pour suivre l\'irrigation.'),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Modifier' }));
 
     await waitFor(() => expect(screen.getByText('Edit page')).toBeInTheDocument());
+  });
+
+  it('navigates to parcel creation from the empty state CTA', async () => {
+    mockedGet.mockResolvedValueOnce(farm);
+    mockedListByFarm.mockResolvedValueOnce([]);
+
+    renderDetailScreen();
+
+    await waitFor(() => expect(screen.getByText('Aucune parcelle')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter une parcelle' }));
+
+    await waitFor(() => expect(screen.getByText('New parcel page')).toBeInTheDocument());
+  });
+
+  it('lists the parcels with their sensor indicator and navigates on card click', async () => {
+    mockedGet.mockResolvedValueOnce(farm);
+    mockedListByFarm.mockResolvedValueOnce([
+      { ...baseParcel, sensors: [sensor] },
+      {
+        ...baseParcel,
+        id: 'parcel-2',
+        name: 'Parcelle Sud',
+        areaHa: '4.00',
+        cropType: 'citrus',
+        irrigationMethod: 'sprinkler',
+        sensors: [],
+      },
+    ]);
+
+    renderDetailScreen();
+
+    await waitFor(() => expect(screen.getByText('Parcelle Nord')).toBeInTheDocument());
+    expect(screen.getByText('Oliviers · Goutte à goutte')).toBeInTheDocument();
+    expect(screen.getByText('2.5 ha')).toBeInTheDocument();
+    expect(screen.getByText('Capteur')).toBeInTheDocument();
+    expect(screen.getByText('Parcelle Sud')).toBeInTheDocument();
+    expect(screen.getByText('Agrumes · Aspersion')).toBeInTheDocument();
+    expect(screen.getByText('Sans capteur')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Ajouter une parcelle/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Parcelle Nord/ }));
+
+    await waitFor(() => expect(screen.getByText('Parcel page')).toBeInTheDocument());
+  });
+
+  it('shows the parcels error state with Réessayer and refetches', async () => {
+    mockedGet.mockResolvedValueOnce(farm);
+    mockedListByFarm.mockRejectedValueOnce(new Error('network down'));
+    mockedListByFarm.mockResolvedValueOnce([]);
+
+    renderDetailScreen();
+
+    await waitFor(() => expect(screen.getByText('Impossible de charger les parcelles.')).toBeInTheDocument());
+    expect(screen.queryByText('network down')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await waitFor(() => expect(screen.getByText('Aucune parcelle')).toBeInTheDocument());
+    expect(mockedListByFarm).toHaveBeenCalledTimes(2);
   });
 
   it('opens the delete confirmation modal on Supprimer and closes it on Annuler', async () => {
