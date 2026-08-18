@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
 import { SensorsService } from './sensors.service';
 import { AssociateSensorDto } from './dto/associate-sensor.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -12,5 +12,10 @@ export class SensorsController {
   @Post('associate')
   associate(@Body() associateSensorDto: AssociateSensorDto, @CurrentUser('userId') userId: string) {
     return this.sensorsService.associate(associateSensorDto, userId);
+  }
+
+  @Get('parcel/:parcelId')
+  findByParcel(@Param('parcelId') parcelId: string, @CurrentUser('userId') userId: string) {
+    return this.sensorsService.findByParcel(parcelId, userId);
   }
 }
