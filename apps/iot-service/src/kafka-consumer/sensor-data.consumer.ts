@@ -111,15 +111,63 @@ export class SensorDataConsumer
           }
 
           await this.sensorReadingRepo.saveFeature(payload);
+
+          // Heartbeat vers farm-service (best-effort : ne jamais bloquer
+          // l'ingestion si farm-service est indisponible).
+          await this.notifySensorSeen(payload);
         } catch (err: unknown) {
             const error = err as Error;
             this.logger.error(
                 `Failed to process message from ${topic}[${partition}]: ${error.message}`,
-            error.stack,
-          );
+              error.stack,
+            );
 }
       },
     });
+  }
+
+  /**
+   * Signale au farm-service que le capteur vient d'émettre (met à jour
+   * last_seen_at / is_active / batterie). Appel interne PATCH
+   * /internal/sensors/:deviceId/seen — non exposé par la gateway.
+   */
+  private async notifySensorSeen(payload: Record<string, unknown>): Promise<void> {
+    const farmServiceUrl = this.config.get<string>(
+      'FARM_SERVICE_URL',
+      'http://farm-service:3003',
+    );
+    const internalToken = this.config.get<string>('INTERNAL_TOKEN');
+
+    const body: { batteryPct?: number; firmwareVersion?: string } = {};
+    if (typeof payload.battery_pct === 'number') {
+      body.batteryPct = payload.battery_pct;
+    }
+    if (typeof payload.firmware_version === 'string') {
+      body.firmwareVersion = payload.firmware_version;
+    }
+
+    try {
+      const response = await fetch(
+        `${farmServiceUrl}/internal/sensors/${encodeURIComponent(String(payload.device_id))}/seen`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(internalToken ? { 'X-Internal-Token': internalToken } : {}),
+          },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (!response.ok && response.status !== 404) {
+        this.logger.warn(
+          `Heartbeat refusé par farm-service (${response.status}) pour ${payload.device_id}`,
+        );
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      this.logger.warn(`Heartbeat impossible vers farm-service : ${error.message}`);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
