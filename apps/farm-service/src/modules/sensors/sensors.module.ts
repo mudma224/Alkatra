@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SensorsController } from './sensors.controller';
+import { InternalSensorsController } from './internal-sensors.controller';
 import { SensorsService } from './sensors.service';
+import { SensorActivityService } from './sensor-activity.service';
 import { Sensor } from '../../database/entities/sensor.entity';
 import { Parcel } from '../../database/entities/parcel.entity';
 
@@ -9,8 +11,8 @@ import { Parcel } from '../../database/entities/parcel.entity';
   imports: [
     TypeOrmModule.forFeature([Sensor, Parcel]),
   ],
-  controllers: [SensorsController],
-  providers: [SensorsService],
+  controllers: [SensorsController, InternalSensorsController],
+  providers: [SensorsService, SensorActivityService],
   exports: [SensorsService],
 })
 export class SensorsModule {}
