@@ -65,3 +65,35 @@ export function formatRegionLabel(region: string): string {
   const preposition = ELISION_VOWELS.has(first) ? "d'" : 'de ';
   return `Région ${preposition}${region}`;
 }
+
+/**
+ * Dernière activité d'un capteur en relatif français — maquette SensorList :
+ * "Vu à l'instant", "Vu il y a 12 min", "Vu il y a 2 h", "Vu il y a 3 j".
+ * Retourne null si jamais vu (l'état « En attente » prend le relais) ou date
+ * invalide.
+ */
+export function formatLastSeen(isoDate: string | null): string | null {
+  if (!isoDate) {
+    return null;
+  }
+
+  const timestamp = Date.parse(isoDate);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+
+  const minutes = Math.floor((Date.now() - timestamp) / 60000);
+  if (minutes < 1) {
+    return "Vu à l'instant";
+  }
+  if (minutes < 60) {
+    return `Vu il y a ${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `Vu il y a ${hours} h`;
+  }
+
+  return `Vu il y a ${Math.floor(hours / 24)} j`;
+}

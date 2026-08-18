@@ -3,6 +3,8 @@
  * (apps/farm-service/src/database/entities/farm.entity.ts + DTOs).
  */
 
+import type { Parcel } from './parcel.types';
+
 /** Point GeoJSON tel que stocké par PostGIS (SRID 4326). Non éditable en Phase 3. */
 export interface GeoJsonPoint {
   type: 'Point';
@@ -26,8 +28,9 @@ export interface Farm {
   location: GeoJsonPoint | null;
   createdAt: string;
   updatedAt: string;
-  /** Relation chargée par GET /farms et GET /farms/:id ; consommée à partir de la Phase 4. */
-  parcels?: unknown[];
+  /** Relation chargée par GET /farms et GET /farms/:id (sans `sensors` — la liste
+   *  de la Phase 4 passe par GET /parcels/farm/:farmId qui inclut les capteurs). */
+  parcels?: Parcel[];
 }
 
 /** Payload de POST /api/v1/farms — CreateFarmDto (whitelist + forbidNonWhitelisted). */
