@@ -358,6 +358,8 @@ services:
       KAFKA_BROKERS: kafka:9092
       MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
       ML_INFERENCE_URL: http://ml-inference-service:8000
+      # Heartbeat capteurs → endpoint interne du farm-service (last_seen_at / is_active)
+      FARM_SERVICE_URL: http://farm-service:3003
     ports:
       - "3005:3005"
     volumes:
