@@ -20,7 +20,7 @@
 .leadingGroup {
   /* Regroupe le hamburger et le nom de l’application. */
   display: flex;
-  justify-content: baseline;
+  justify-content: center;
   align-items: center;
   gap: var(--spacing-sm);
   min-width: 0;

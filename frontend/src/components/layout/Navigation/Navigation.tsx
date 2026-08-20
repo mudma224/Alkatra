@@ -60,9 +60,8 @@ export function Navigation({ open, onClose }: NavigationProps) {
             size="sm"
             aria-label="Fermer la navigation"
             onClick={onClose}
-            iconLeft={<X aria-hidden="true" style={{ transform: 'translateY(-2.5px)' }}/>}
+            iconLeft={<X aria-hidden="true"/>}
           >
-            <span>Fermer</span>
           </Button>
         </div>
 

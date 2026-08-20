@@ -41,8 +41,8 @@ export function Header({
           onClick={onNavigationToggle}
           iconLeft={
             navigationOpen
-              ? <X aria-hidden="true" style={{ transform: 'translateY(-2.5px)' }}/>
-              : <Menu aria-hidden="true" style={{ transform: 'translateY(-2.5px)' }}/>
+              ? <X aria-hidden="true" />
+              : <Menu aria-hidden="true"/>
           }
         >
         </Button>
