@@ -1,6 +1,6 @@
 # Frontend — Documentation de l'état actuel
 
-> Cette documentation reflète **uniquement** l'état réel du code frontend (`frontend/`, branche `dev1-frontend`). Chaque affirmation est vérifiable dans le code source : fichiers, fonctions, endpoints, configuration et scripts. Elle ne décrit aucune fonctionnalité future, prévue ou supposée.
+> Cette documentation reflète **uniquement** l'état réel du code frontend (`frontend/`, branches `dev1-frontend` + `dev2-p1-s4` mergées). Chaque affirmation est vérifiable dans le code source : fichiers, fonctions, endpoints, configuration et scripts. Elle ne décrit aucune fonctionnalité future, prévue ou supposée.
 
 ## Table des matières
 
@@ -38,10 +38,13 @@ Périmètre réellement implémenté :
 - **Authentification par numéro de téléphone + OTP** : `/login` demande un code (`POST /api/v1/auth/register`), `/otp` le vérifie (`POST /api/v1/auth/verify-otp`), avec renvoi de code (cooldown 30 s) et compte à rebours d'expiration.
 - **Session persistée** : un store Zustand (`useAuthStore`) persiste tokens et utilisateur dans `localStorage` (clé `alkatra-auth`).
 - **Espace authentifié** : routes protégées par `RequireAuth`, rendues dans un layout commun (`AppLayout` : `Header` + contenu + `Navigation`).
+- **Fermes (CRUD complet)** : liste avec recherche (`/farms`), création (`/farms/new`), détail (`/farms/:farmId`), édition (`/farms/:farmId/edit`), suppression avec confirmation.
+- **Parcelles (CRUD complet)** : liste intégrée au détail de ferme, création (`/farms/:farmId/parcels/new`), détail (`/farms/:farmId/parcels/:parcelId`), édition (`…/edit`), suppression avec confirmation.
+- **Capteurs** : association (modale de saisie de `deviceId`), liste inline (≤ 3) ou page dédiée avec recherche + filtres (`/farms/:farmId/parcels/:parcelId/sensors`), dissociation avec confirmation, statut dérivé Actif / En attente / Inactif.
 - **Profil** : consultation (`/profile`, re-fetch du profil via `GET /api/v1/user/profile`) et édition (`/profile/edit`, `PATCH /api/v1/user/profile`).
-- **Routes placeholder** : `/farms`, `/farms/:farmId`, `/farms/:farmId/parcels/:parcelId` et `/recommendations` rendent un composant `PlaceholderScreen` (pas d'écran métier réel).
+- **Routes placeholder** : `/recommendations` et `/farms/:farmId/parcels/:parcelId/recommendation` rendent un composant `PlaceholderScreen` (Phase 5).
 
-Toutes les requêtes HTTP sont émises vers l'API Gateway Nginx sur `http://localhost:8080/api/v1` (variable `VITE_API_BASE_URL`), qui route `/api/v1/auth/*` vers l'`auth-service` et `/api/v1/user/*` vers l'`user-service` (config Nginx `infra/nginx/nginx.conf.template`).
+Toutes les requêtes HTTP sont émises vers l'API Gateway Nginx sur `http://localhost:8080/api/v1` (variable `VITE_API_BASE_URL`), qui route `/api/v1/auth/*` vers l'`auth-service`, `/api/v1/user/*` vers l'`user-service`, et `/api/v1/farms|parcels|sensors` vers le `farm-service` (config Nginx `infra/nginx/nginx.conf.template`).
 
 L'architecture suit une séparation simple des responsabilités :
 
@@ -99,29 +102,45 @@ frontend/
     ├── api/
     │   ├── client.ts                    httpClient Axios (baseURL, timeout) + interceptors
     │   ├── auth.api.ts                  authApi : register (OTP), verify-otp, refresh
+    │   ├── farm.api.ts                  farmApi : list, get, create, update, remove
+    │   ├── parcel.api.ts                parcelApi + sensorApi (CRUD parcelles, capteurs)
     │   └── user.api.ts                  userApi : getProfile, updateProfile
     ├── components/
     │   ├── auth/
     │   │   └── Brand/                   Marquage de marque (titre + sous-titre)
+    │   ├── farm/
+    │   │   ├── FarmCard/                Card résumé ferme (nom, région, badge surface) (+ test)
+    │   │   └── FarmForm/                Formulaire ferme partagé création/édition
     │   ├── layout/
     │   │   ├── Header/                  Header (titre + bouton « Déconnexion »)
     │   │   ├── Layout/                  AppLayout (Header + <Outlet/> + Navigation)
     │   │   └── Navigation/              Lien « Fermes » (NavLink)
+    │   ├── parcel/
+    │   │   ├── AssociateSensorDialog/   Modale d'association capteur (deviceId)
+    │   │   ├── ParcelCard/              Card résumé parcelle + pill compteur capteurs (+ test)
+    │   │   ├── ParcelForm/              Formulaire parcelle partagé création/édition
+    │   │   ├── SensorListItem/          Ligne capteur (deviceId, Dissocier, pill, batterie, vu il y a)
+    │   │   ├── SensorSection/           Bloc capteurs du détail parcelle (inline ≤ 3 / compact + lien) (+ test)
+    │   │   └── SensorStatusPill/        Pill Actif / En attente / Inactif
     │   ├── profile/
     │   │   ├── Avatar/                  Cercle initiales ou icône utilisateur
     │   │   └── ProfileIdentity/         Avatar + nom + numéro de téléphone
     │   └── ui/
     │       ├── Button/                  Bouton design system (+ test)
     │       ├── Card/                    Carte générique (+ test)
+    │       ├── ConfirmDialog/           Modale de confirmation générique (annulation Échap, busy) (+ test)
     │       ├── EmptyState/              État vide de liste (+ test)
     │       ├── ErrorMessage/            Message d'erreur (role="alert", action de réessai)
     │       ├── Input/                   Champ de formulaire (+ test)
     │       ├── LoadingSpinner/          Spinner (role="status")
     │       ├── OTPInput/                Saisie OTP à 6 cases (coller/revenir/clavier)
     │       ├── PlaceholderScreen/       Écran temporaire marqué par phase
-    │       └── Select/                  Liste déroulante (native <select>)
+    │       ├── Select/                  Liste déroulante (native <select>)
+    │       └── Skeleton/                Bloc squelette animé (états loading)
     ├── hooks/
     │   ├── useAuth.ts                   Accès pratique au store d'authentification
+    │   ├── useFarms.ts                  useFarms, useFarm, useCreateFarm, useUpdateFarm, useDeleteFarm
+    │   ├── useParcels.ts                useParcels, useParcel, mutations parcelles + capteurs
     │   └── usePhoneNumber.ts            Saisie, formatage, validation téléphone marocain
     ├── i18n/
     │   ├── index.ts                     Initialisation i18next (fr, ar, darija, défaut fr)
@@ -133,6 +152,16 @@ frontend/
     │   ├── auth/
     │   │   ├── LoginScreen/             Saisie du téléphone + demande d'OTP (+ test)
     │   │   └── OTPScreen/               Saisie et vérification de l'OTP (+ test)
+    │   ├── farm/
+    │   │   ├── FarmCreateScreen/        Création de ferme (+ test)
+    │   │   ├── FarmDetailScreen/        Détail ferme + section Parcelles (+ test)
+    │   │   ├── FarmEditScreen/          Édition de ferme (+ test)
+    │   │   └── FarmListScreen/          Liste + recherche (+ test)
+    │   ├── parcel/
+    │   │   ├── ParcelCreateScreen/      Création de parcelle (+ test)
+    │   │   ├── ParcelDetailScreen/      Détail parcelle + capteurs + suppression (+ test)
+    │   │   ├── ParcelEditScreen/        Édition de parcelle (+ test)
+    │   │   └── SensorListScreen/        Liste dédiée capteurs (recherche + filtres) (+ test)
     │   └── profile/
     │       ├── EditProfileScreen/       Édition nom + langue
     │       └── ProfileScreen/           Consulter le profil (+ ProfileMenuItem)
@@ -144,9 +173,13 @@ frontend/
     ├── types/
     │   ├── api.types.ts                 ApiErrorResponse (corps d'erreur NestJS)
     │   ├── auth.types.ts                Payloads OTP, AuthUser, AuthResult, refresh
+    │   ├── farm.types.ts                Farm, CreateFarmPayload, UpdateFarmPayload, GeoJsonPoint
+    │   ├── parcel.types.ts              Parcel, Sensor, enums + labels FR, statut capteur dérivé
     │   ├── ui.types.ts                  Variantes/taille Button, états/variantes Input
     │   └── user.types.ts                UpdateProfilePayload
     └── utils/
+        ├── apiError.ts                  getApiErrorMessage (message string | string[] du backend)
+        ├── format.ts                    formatAreaHa, formatDateFr, normalizeSearch, formatRegionLabel, formatLastSeen
         └── phone.ts                     Normalisation, formatage, validation téléphone
 ```
 
@@ -166,13 +199,21 @@ Fichier `src/router/index.tsx` — `createBrowserRouter`. Toutes les routes :
 | --- | --- | --- |
 | `/login` | `LoginScreen` | Publique |
 | `/otp` | `OtpRoute` → `OTPScreen` | État de navigation `{ phone, expiresAt }` requis |
-| `/farms` | `PlaceholderScreen` — « Fermes » (Phase 3) | `RequireAuth` + `AppLayout` |
-| `/farms/:farmId` | `PlaceholderScreen` — « Détail de la ferme » (Phase 3) | `RequireAuth` + `AppLayout` |
-| `/farms/:farmId/parcels/:parcelId` | `PlaceholderScreen` — « Détail de la parcelle » (Phase 4) | `RequireAuth` + `AppLayout` |
+| `/farms` | `FarmListScreen` | `RequireAuth` + `AppLayout` |
+| `/farms/new` | `FarmCreateScreen` | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId` | `FarmDetailScreen` (détail + section Parcelles) | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/edit` | `FarmEditScreen` | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/parcels/new` | `ParcelCreateScreen` | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/parcels/:parcelId` | `ParcelDetailScreen` | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/parcels/:parcelId/edit` | `ParcelEditScreen` | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/parcels/:parcelId/sensors` | `SensorListScreen` (recherche + filtres) | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/parcels/:parcelId/recommendation` | `PlaceholderScreen` — « Recommandation du jour » (Phase 5) | `RequireAuth` + `AppLayout` |
 | `/recommendations` | `PlaceholderScreen` — « Recommandations » (Phase 5) | `RequireAuth` + `AppLayout` |
 | `/profile` | `ProfileScreen` | `RequireAuth` + `AppLayout` |
 | `/profile/edit` | `EditProfileScreen` | `RequireAuth` + `AppLayout` |
 | `*` | `DefaultRoute` — redirection | `/farms` si `isAuthenticated()`, sinon `/login` |
+
+> Les segments statiques (`new`, `edit`, `sensors`, `recommendation`) sont déclarés avant les segments dynamiques (`:farmId`, `:parcelId`) pour ne pas être capturés par eux.
 
 Éléments du fichier de routes :
 
@@ -205,6 +246,42 @@ Vérification du code à 6 chiffres :
 - messages : format invalide → « Veuillez saisir les 6 chiffres du code OTP. » ; expiré → « Code OTP expiré. Veuillez demander un nouveau code. » ; HTTP 401 → « Code OTP invalide ou expiré. » ; autre erreur → « Impossible de vérifier le code. Réessayez. » ; échec de renvoi → « Impossible de renvoyer le code. Réessayez. » ;
 - lien « Modifier le numéro de téléphone » (`onBack`) visible uniquement si `onBack` est fourni.
 
+### FarmListScreen (`src/screens/farm/FarmListScreen/`, route `/farms`)
+
+- `useFarms()` (états `loading` / `error` / `success`) + recherche locale `query` sur nom + région via `normalizeSearch` (insensible casse/diacritiques) ;
+- `loading` → squelettes `Skeleton` (recherche, bouton, cards) ; `error` → `EmptyState` « Oups ! » + Réessayer (`refetch`) ; vide → `EmptyState` « Aucune ferme » + CTA « Créer ma première ferme » ;
+- peuplé : `Input variant="search"` (clear), `Button` « Créer une ferme », liste de `FarmCard` (clic → `/farms/:id`) ; aucun résultat de recherche → `EmptyState` « Aucune ferme trouvée ».
+
+### FarmCreateScreen / FarmEditScreen (`src/screens/farm/`)
+
+- Partagent `FarmForm` (initial values vides ou pré-remplies) ; validation au blur puis en direct, bouton Enregistrer désactivé si invalide, virgule décimale acceptée (`parseDecimal`) ;
+- erreurs exactes : « Le nom de la ferme est obligatoire. », « La surface doit être supérieure à 0. » ; erreur serveur (ex. 409) affichée sous Enregistrer ;
+- création → `POST /farms` puis `navigate('/farms', { replace: true })` ; édition → `PATCH /farms/:id` puis retour au détail (`replace`).
+
+### FarmDetailScreen (`src/screens/farm/FarmDetailScreen/`, route `/farms/:farmId`)
+
+- `useFarm(farmId)` + `useDeleteFarm()` ; Info Card (Région / Surface totale `formatAreaHa` / Créée le `formatDateFr`), boutons Modifier (→ `/edit`) et Supprimer (→ `ConfirmDialog`) ;
+- suppression : `DELETE /farms/:id` ; 409 backend (parcelles restantes) affiché **dans la modale** qui reste ouverte ; succès → `/farms` (`replace`) ;
+- **section Parcelles** (Phase 4) via `useParcels(farmId)` : squelettes / erreur + Réessayer / vide + CTA « Ajouter une parcelle » / liste de `ParcelCard` + bouton « Ajouter une parcelle ».
+
+### ParcelCreateScreen / ParcelEditScreen (`src/screens/parcel/`)
+
+- Partagent `ParcelForm` ; création : 5 champs requis (nom, surface, culture, type de sol, méthode d'irrigation — 3 `Select` sur les enums backend) ; édition : + 4 champs optionnels (variété, débit m³/h, âge arbres, densité) ;
+- erreurs exactes de la maquette (« Le nom de la parcelle est obligatoire. », « La surface doit être supérieure à 0. », etc.) ; **erreur 422 de dépassement de surface** du backend affichée sous Enregistrer ;
+- création → `POST /parcels` (payload CreateParcelDto exact) puis retour au détail de ferme (`replace`) ; édition → `PATCH /parcels/:id` puis retour au détail.
+
+### ParcelDetailScreen (`src/screens/parcel/ParcelDetailScreen/`, route `/farms/:farmId/parcels/:parcelId`)
+
+- `useParcel(parcelId)` (relations `farm` + `sensors` incluses) ; titre + sous-titre nom de ferme, Info Card 5 lignes (Culture / Surface / Type de sol / Irrigation / Créée le — labels FR des enums) ;
+- CTA primary « Voir la recommandation du jour » → placeholder Phase 5 ;
+- `SensorSection` (voir §7) ; boutons Modifier / Supprimer (ConfirmDialog : « Les capteurs associés seront supprimés. » — cascade SQL) ; succès suppression → retour à la ferme (`replace`).
+
+### SensorListScreen (`src/screens/parcel/SensorListScreen/`, route `/farms/:farmId/parcels/:parcelId/sensors`)
+
+- Sous-titre « <parcelle> · N capteurs » ; recherche par deviceId (`normalizeSearch`) + chips de filtre **Tous / Actifs / Non actifs** ; tri : actifs d'abord puis en attente puis inactifs, deviceId alphabétique à statut égal (`sensorFilters.ts`) ;
+- cards `SensorListItem` (Dissocier → ConfirmDialog), bouton « Associer un capteur » → `AssociateSensorDialog` ; états : squelettes, erreur + Réessayer, « Aucun capteur », « Aucun capteur trouvé » ;
+- chaque mutation réussie déclenche `refetch()` du `useParcel`.
+
 ### ProfileScreen (`src/screens/profile/ProfileScreen/`)
 
 - au montage, recharge toujours le profil (`userApi.getProfile()`) puis écrit le résultat dans le store via `updateUser` — aucune copie locale du profil ;
@@ -235,7 +312,23 @@ Tous les composants sont colocalisés avec leur CSS module (`<Nom>.module.css`) 
 - **`ErrorMessage`** : `<p role="alert">` avec `message` et action optionnelle (`actionLabel`/`onAction`, ex. « Réessayez. »).
 - **`LoadingSpinner`** : `<span role="status">` avec `label` (par défaut « Chargement »).
 - **`EmptyState`** : icône lucide optionnelle + titre + description + action (CTA), `role="status"`.
+- **`ConfirmDialog`** : modale de confirmation générique (overlay, `role="dialog"`, Échap, focus initial, verrouillage `busy`, `errorMessage` métier `role="alert"`).
+- **`Skeleton`** : bloc gris animé (`aria-hidden`), dimensionné par le CSS du consommateur.
 - **`PlaceholderScreen`** : titre / description / phase (voir §6).
+
+### `components/farm/`
+
+- **`FarmCard`** : card cliquable (nom 18/600, région avec élision via `formatRegionLabel` ou « Région non renseignée », badge pill surface `formatAreaHa`, chevron).
+- **`FarmForm`** : formulaire partagé création/édition — `Input` nom/surface/région, erreurs au blur puis en direct, payload `CreateFarmPayload` (`region: undefined` si vide).
+
+### `components/parcel/`
+
+- **`ParcelCard`** : card cliquable (nom, « Culture · Irrigation » en labels FR, badge surface, pill « ● Capteur » / « ● N capteurs » / « Sans capteur », chevron).
+- **`ParcelForm`** : formulaire partagé création (5 champs requis) / édition (+ 4 optionnels) ; selects sur `CROP_TYPE_OPTIONS` / `SOIL_TYPE_OPTIONS` / `IRRIGATION_METHOD_OPTIONS`.
+- **`SensorStatusPill`** : pill dérivée de `getSensorStatus(sensor)` — ● Actif (vert) / ○ En attente (creux, jamais vu) / ● Inactif (gris, silence > 48 h).
+- **`SensorListItem`** : ligne complète (deviceId, lien « Dissocier » rouge, `SensorStatusPill`, « Batterie N % », « Vu il y a … » via `formatLastSeen`).
+- **`SensorSection`** : bloc capteurs du détail — bouton « + Associer » au-dessus de la card ; ≤ 3 capteurs : liste complète avec Dissocier ; > 3 : card compacte (3 max) + lien « Voir tous les capteurs (N) › » ; modales d'association et de dissociation (messages rassurants : mesures conservées, réassociation possible).
+- **`AssociateSensorDialog`** : modale de saisie du `deviceId` (placeholder `ex. ESP32-OL-001`), bouton Associer désactivé si vide, erreur 403 anti-vol affichée dans la modale, Échap/Annuler.
 
 ### `components/layout/`
 
@@ -256,8 +349,14 @@ Tous les composants sont colocalisés avec leur CSS module (`<Nom>.module.css`) 
 
 - **`usePhoneNumber`** (`src/hooks/usePhoneNumber.ts`) : état local `digits` (9 chiffres max, non-chiffres filtrés). Expose `digits`, `formattedValue` (groupes `XXX XX XX XX`), `fullPhone` (`+212` + digits), `isEmpty`, `isValid`, `countryCode` (`+212`), `setFromInput`. S'appuie sur `utils/phone.ts`.
 - **`useAuth`** (`src/hooks/useAuth.ts`) : surcouche du store, expose `{ accessToken, user, isAuthenticated, completeLogin, logout }`. Utilisé par le `Header` (`user`, `logout`).
+- **`useFarms`** (`src/hooks/useFarms.ts`) : hooks maison (pas de react-query), même pattern partout — `LoadStatus` ('loading' | 'success' | 'error'), flag `cancelled` dans l'effet, `refetch` via compteur. `useFarms()` liste + refetch ; `useFarm(id)` détail ; `useCreateFarm` / `useUpdateFarm` → `Promise<boolean>` ; `useDeleteFarm` → expose en plus `error` (message backend via `getApiErrorMessage`, ex. 409 parcelles restantes).
+- **`useParcels`** (`src/hooks/useParcels.ts`) : même pattern. `useParcels(farmId)`, `useParcel(parcelId)` ; `useCreateParcel` / `useUpdateParcel` / `useDeleteParcel` (message 422 de dépassement de surface exposé) ; `useAssociateSensor` (retourne le `Sensor` créé ou `null`) ; `useDissociateSensor` (`Promise<boolean>`).
 
 `utils/phone.ts` : `COUNTRY_CODE='+212'`, `LOCAL_DIGITS_LENGTH=9`, `MOROCCAN_PHONE_REGEX=/^\+212[67]\d{8}$/`, `normalizePhoneDigits`, `formatLocalDigits`, `toMoroccanE164`, `isValidMoroccanPhone`, `displayPhoneLabel`.
+
+`utils/format.ts` : `parseDecimal` (tolère la virgule), `formatAreaHa` (« 12.50 » → « 12.5 »), `formatDateFr`, `normalizeSearch` (NFD sans diacritiques), `formatRegionLabel` (élision « de/d' »), `formatLastSeen` (« Vu il y a 2 h », null si jamais vu).
+
+`utils/apiError.ts` : `getApiErrorMessage(error, fallback)` — extrait `message` (string ou string[]) du corps `AllExceptionsFilter` d'une `AxiosError`, sinon fallback français.
 
 ## 9. État global : auth store
 
@@ -303,7 +402,7 @@ Instance Axios partagée :
 
 ### Wrappers d'API
 
-`src/api/auth.api.ts` (`authApi`) et `src/api/user.api.ts` (`userApi`). Chaque fonction fait l'appel HTTP et retourne seulement le corps de la réponse ; la gestion d'erreur appartient à l'écran appelant.
+`src/api/auth.api.ts` (`authApi`), `src/api/user.api.ts` (`userApi`), `src/api/farm.api.ts` (`farmApi`) et `src/api/parcel.api.ts` (`parcelApi` + `sensorApi`). Chaque fonction fait l'appel HTTP et retourne seulement le corps de la réponse ; la gestion d'erreur appartient à l'écran appelant.
 
 | Fonction | Méthode / URL | Body | Réponse typée |
 |---|---|---|---|
@@ -312,8 +411,21 @@ Instance Axios partagée :
 | `authApi.refresh` | `POST /auth/refresh` | `RefreshTokenPayload { phone; refreshToken }` | `AuthResult` |
 | `userApi.getProfile` | `GET /user/profile` | — | `AuthUser` |
 | `userApi.updateProfile` | `PATCH /user/profile` | `UpdateProfilePayload { name?; preferredLanguage? }` | `AuthUser` |
+| `farmApi.list` | `GET /farms` | — | `Farm[]` (relation `parcels`) |
+| `farmApi.get` | `GET /farms/:id` | — | `Farm` |
+| `farmApi.create` | `POST /farms` | `CreateFarmPayload` | `Farm` |
+| `farmApi.update` | `PATCH /farms/:id` | `UpdateFarmPayload` | `Farm` |
+| `farmApi.remove` | `DELETE /farms/:id` | — | `void` (409 si parcelles restantes) |
+| `parcelApi.listByFarm` | `GET /parcels/farm/:farmId` | — | `Parcel[]` (relation `sensors`) |
+| `parcelApi.get` | `GET /parcels/:id` | — | `Parcel` (relations `farm` + `sensors`) |
+| `parcelApi.create` | `POST /parcels` | `CreateParcelPayload` | `Parcel` (422 si dépassement surface) |
+| `parcelApi.update` | `PATCH /parcels/:id` | `UpdateParcelPayload` | `Parcel` |
+| `parcelApi.remove` | `DELETE /parcels/:id` | — | `void` |
+| `sensorApi.associate` | `POST /sensors/associate` | `AssociateSensorPayload { deviceId; parcelId }` | `Sensor` (idempotent, 403 anti-vol) |
+| `sensorApi.listByParcel` | `GET /sensors/parcel/:parcelId` | — | `Sensor[]` |
+| `sensorApi.dissociate` | `DELETE /sensors/:sensorId` | — | `void` (mesures MongoDB conservées) |
 
-Base URL effective : `http://localhost:8080/api/v1` (Gateway Nginx) + préfixe des wrappers (ex. `POST http://localhost:8080/api/v1/auth/register`). Côté backends, les routes proviennent de `apps/auth-service/src/auth/auth.controller.ts` (`@Controller('api/v1/auth')`, `register`/`verify-otp`/`refresh`) et `apps/user-service/src/user/user.controller.ts` (`@Controller('user')` → routes `/api/v1/user/(getProfile|updateProfile)`).
+Base URL effective : `http://localhost:8080/api/v1` (Gateway Nginx) + préfixe des wrappers (ex. `POST http://localhost:8080/api/v1/auth/register`). Côté backends, les routes proviennent de `apps/auth-service/src/auth/auth.controller.ts` (`@Controller('api/v1/auth')`), `apps/user-service/src/user/user.controller.ts` (`@Controller('user')`) et `apps/farm-service/src/modules/*` (`@Controller('api/v1/farms' | 'api/v1/parcels' | 'api/v1/sensors')`).
 
 Note : `authApi.refresh` est défini dans le wrapper mais **l'intercepteur** effectue lui-même le refresh via un `axios.post` brut (pour ne pas entrer dans son propre intercepteur) — il n'utilise donc pas `authApi.refresh`.
 
@@ -355,6 +467,53 @@ type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructiv
 type ButtonSize = 'sm' | 'md';
 type InputState = 'default' | 'filled' | 'error';
 type InputVariant = 'text' | 'search';
+```
+
+```ts
+// farm.types.ts — aligné sur farm.entity.ts + DTOs du farm-service
+interface Farm {
+  id: string;
+  ownerId: string;
+  name: string;
+  totalAreaHa: number | string;     // DECIMAL(10,2) sérialisé en chaîne par TypeORM
+  region: string | null;
+  location: GeoJsonPoint | null;
+  createdAt: string;
+  updatedAt: string;
+  parcels?: Parcel[];               // relation chargée par GET /farms(/:id)
+}
+interface CreateFarmPayload { name: string; totalAreaHa: number; region?: string }
+interface UpdateFarmPayload { name?: string; totalAreaHa?: number; region?: string | null }
+
+// parcel.types.ts — enums Postgres exactes + labels FR d'affichage
+type CropType = 'olive' | 'citrus' | 'cereal' | 'vegetable' | 'other';
+type SoilType = 'clay' | 'silt' | 'sandy' | 'calcareous' | 'mixed';
+type IrrigationMethod = 'drip' | 'sprinkler' | 'gravity';
+interface Parcel {
+  id: string;
+  farmId: string;
+  name: string;
+  areaHa: number | string;          // DECIMAL — toujours via formatAreaHa/parseDecimal
+  cropType: CropType; soilType: SoilType; irrigationMethod: IrrigationMethod;
+  cropVariety: string | null;
+  flowRateM3h: number | string | null;
+  treeAgeYears: number | null;
+  treeDensityPerHa: number | null;
+  polygon: GeoJsonPolygon | null;
+  centroid: GeoJsonPoint | null;
+  isActive: boolean;
+  sensors?: Sensor[];               // incluses par GET /parcels/farm/:id et GET /parcels/:id
+  farm?: Farm;                      // incluse par GET /parcels/:id
+  createdAt: string; updatedAt: string;
+}
+interface Sensor {
+  id: string; parcelId: string; deviceId: string; deviceType: string;
+  isActive: boolean; lastSeenAt: string | null; batteryPct: number | null;
+  firmwareVersion: string | null; createdAt: string; updatedAt: string;
+}
+type SensorStatus = 'active' | 'pending' | 'inactive';
+function getSensorStatus(sensor: Sensor): SensorStatus;
+// + CROP_TYPE_LABELS / SOIL_TYPE_LABELS / IRRIGATION_METHOD_LABELS et *_OPTIONS (Select)
 ```
 
 ## 13. Validations
@@ -529,20 +688,27 @@ Rien d'autre n'est lu via `import.meta.env`. Pas de secret côté frontend dans 
 
 ## 18. Tests
 
-Stack : **Vitest** (`vite.config.ts` : `environment: 'jsdom'`, `globals: true`, `setupFiles: './setupTests.ts'` avec `@testing-library/jest-dom/vitest` + import i18n) + **Testing Library** (react/user-event/jest-dom) + **Axios** mocks (`vi.mock`).
-
-8 fichiers de test :
+Stack : **Vitest** (`vite.config.ts` : `environment: 'jsdom'`, `globals: true`, `setupFiles: './setupTests.ts'` avec `@testing-library/jest-dom/vitest` + import i18n) + **Testing Library** (react/user-event/jest-dom) + **Axios** mocks (`vi.mock`). **157 tests, 20 fichiers, tous verts.**
 
 | Fichier | Sujets couverts |
 |---|---|
 | `components/ui/Button/Button.test.tsx` | clic, état désactivé, spinner/loading, 6 variantes, tailles sm/md, icônes, `block`/`data-block` |
 | `components/ui/Card/Card.test.tsx` | rendu enfant, `block`, `elevated`, props HTML natives |
+| `components/ui/ConfirmDialog/ConfirmDialog.test.tsx` | rendu conditionnel, callbacks, Échap, verrouillage `busy`, message d'erreur |
 | `components/ui/EmptyState/EmptyState.test.tsx` | titre, description, icône, action, `role="status"` |
 | `components/ui/Input/Input.test.tsx` | label, prefix, `aria-invalid`, `aria-describedby`, variante search (clear), états default/filled/error |
-| `src/screens/auth/LoginScreen/LoginScreen.test.tsx` | bouton désactivé si vide, activé dès une frappe, erreur de validation sans appel API, appel `requestOtp` avec `+212…`, message d'erreur retryable sans fuite, navigation `/otp` |
-| `src/screens/auth/OTPScreen/OTPScreen.test.tsx` | avertissements de format/expiration, vérification réussie → `onVerified`, 401 → « invalide ou expiré », erreurs génériques, cooldown renvoi 30 s (fake timers), clics ignorés pendant cooldown, accessibilité (`aria-label` par case, désactivation pendant soumission) |
-| `src/router/RequireAuth.test.tsx` | redirection `/login` si non authentifié, rendu si authentifié, redirection si token expiré |
-| `src/store/auth.store.test.ts` | `setAuth` (+ calcul `expiresAt`), `clearAuth`, `isAuthenticated` (présent/expiré), persistance localStorage clé `alkatra-auth` |
+| `components/farm/FarmCard/FarmCard.test.tsx` | nom, région avec élision, fallback, surface formatée, clic |
+| `components/parcel/ParcelCard/ParcelCard.test.tsx` | nom, sous-titre FR, surface formatée, pills Capteur/N capteurs/Sans capteur, clic |
+| `components/parcel/SensorSection/SensorSection.test.tsx` | état vide, liste ≤ 3 avec Dissocier, mode compact + lien > 3, dissociation confirmée + refetch, association via modale, 403 anti-vol |
+| `screens/auth/LoginScreen/LoginScreen.test.tsx` | bouton désactivé si vide, erreur de validation sans appel API, appel `requestOtp`, navigation `/otp` |
+| `screens/auth/OTPScreen/OTPScreen.test.tsx` | format/expiration, vérification → `onVerified`, 401, cooldown renvoi (fake timers), accessibilité |
+| `screens/farm/FarmListScreen` (+Create +Edit +Detail) `.test.tsx` | squelettes, vide + CTA, recherche diacritiques, payload exact, 409 dans la modale, navigation |
+| `screens/parcel/ParcelCreateScreen.test.tsx` | disabled + erreurs blur (textes maquette), champs optionnels absents, payload CreateParcelDto (virgule), 422 affiché, Annuler |
+| `screens/parcel/ParcelEditScreen.test.tsx` | squelettes, erreur + Réessayer, pré-remplissage (décimaux re-formatés), payload Update, Annuler |
+| `screens/parcel/ParcelDetailScreen.test.tsx` | squelettes, Info Card labels FR, capteur + pill Actif, CTA recommandation, suppression + navigation, Réessayer |
+| `screens/parcel/SensorListScreen.test.tsx` | squelettes, erreur + Réessayer, tri actifs d'abord, recherche deviceId, chips de filtre, dissociation + refetch, Retour |
+| `router/RequireAuth.test.tsx` | redirection `/login` si non authentifié, rendu si authentifié, token expiré |
+| `store/auth.store.test.ts` | `setAuth` (+ `expiresAt`), `clearAuth`, `isAuthenticated`, persistance localStorage |
 
 ## 19. Scripts npm et CI
 
@@ -609,7 +775,7 @@ Depuis la racine du monorepo, ces scripts passent par Turborepo (`npm run dev` /
 
 Faits vérifiables dans le code actuel, à ne pas confondre avec une feuille de route :
 
-- **Routes métier en placeholder** : `/farms`, `/farms/:farmId`, `/farms/:farmId/parcels/:parcelId`, `/recommendations` rendent `PlaceholderScreen` (descriptions et phases indiquées dans `router/index.tsx`). Seuls l'auth et le profil sont réellement implémentés.
+- **Recommandations en placeholder** : `/recommendations` et `/farms/:farmId/parcels/:parcelId/recommendation` rendent `PlaceholderScreen` (Phase 5). Auth, profil, fermes, parcelles et capteurs sont implémentés.
 - **Aucun lazy-loading** : toutes les routes et écrans sont chargés dans le bundle initial (`App.tsx` → `router`) ; `React.lazy`/`Suspense` ne sont utilisés nulle part.
 - **Déconnexion locale uniquement** : `clearAuth()` ne fait aucun appel backend ; le stockage local est simplement purgé.
 - **Tokens en `localStorage`** (clé `alkatra-auth`) : choix du code actuel et non des cookies `httpOnly`.
@@ -624,6 +790,8 @@ Faits vérifiables dans le code actuel, à ne pas confondre avec une feuille de 
 - Références : [`docs/reference/ports-and-services.md`](../reference/ports-and-services.md) (gateway 8080, services 3001–3004), [`docs/architecture/project-overview.md`](../architecture/project-overview.md).
 - La structure d'arborescence du monorepo est décrite dans [`docs/architecture/repository-map.md`](../architecture/repository-map.md).
 
+- **Documents liés** : la planification par phases (Figma avant code, décisions d'architecture, historique) vit dans [`design_frontend.md`](../../design_frontend.md) à la racine du dépôt.
+
 ---
 
-*Document tenu à jour au 16/08/2026 à partir du code réel du dépôt (branche `dev1-frontend`).*
+*Document tenu à jour au 19/08/2026 à partir du code réel du dépôt (branche `dev2-p1-s4`, incluant le merge de `dev1-frontend`).*

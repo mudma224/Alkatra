@@ -32,8 +32,9 @@
 `iot-service` est un microservice NestJS (port 3005) qui assure l'ingestion temps réel des mesures capteurs agricoles (ESP32) et leur projection vers la couche de feature engineering. Il joue trois rôles complémentaires dans le pipeline d'irrigation intelligente :
 
 1. **Bridge MQTT → Kafka** — souscrit au broker Mosquitto, valide le contrat IA des payload capteurs, détecte les anomalies, puis publie les lectures enrichies sur le topic Kafka `raw-sensor-data`.
-2. **Consumer Kafka → MongoDB** — consomme le topic `raw-sensor-data` et persiste chaque lecture dans la collection MongoDB `ai_sensor_features` (rétention 90 jours).
-3. **Surface d'observabilité** — expose deux endpoints non protégés : `GET /health` (statistiques runtime) et `GET /metrics` (métriques au format Prometheus).
+2. **Consumer Kafka → MongoDB** — consomme le topic `raw-sensor-data`, persiste chaque lecture dans la collection MongoDB `ai_sensor_features` (rétention 90 jours), puis notifie `farm-service` du passage du capteur (heartbeat).
+3. **Heartbeat capteurs vers farm-service** — après chaque persistance, appelle `PATCH /internal/sensors/:deviceId/seen` (best-effort) pour rafraîchir `last_seen_at`, `is_active` et éventuellement batterie/firmware dans `farm_db`.
+4. **Surface d'observabilité** — expose deux endpoints non protégés : `GET /health` (statistiques runtime) et `GET /metrics` (métriques au format Prometheus).
 
 **Ce qu'il fait :**
 
@@ -43,6 +44,7 @@
 - Il enrichit chaque lecture avec `farm_id`, `parcel_id`, `device_id` extraits du topic
 - Il publie vers Kafka avec une clé `{farm_id}:{parcel_id}` (partitionnement par parcelle)
 - Il persiste les lectures enrichies dans MongoDB
+- Il notifie farm-service de chaque message reçu (heartbeat capteur, best-effort)
 - Il expose des compteurs Prometheus (messages reçus, transférés, anomalies)
 
 **Ce qu'il ne fait PAS :**
@@ -51,6 +53,7 @@
 - Il ne consomme pas le topic `recommendations-generated`
 - Il n'appelle pas le `ml-inference-service` (la variable `ML_INFERENCE_URL` est déclarée dans docker-compose mais non lue par le code)
 - Il ne détient aucun endpoint d'authentification
+- Le heartbeat n'écrit jamais directement dans `farm_db` : il passe par l'endpoint interne du farm-service (et un échec heartbeat n'empêche jamais la persistance MongoDB)
 
 ---
 
@@ -78,10 +81,12 @@ iot-service — MqttService
               ▼
 iot-service — SensorDataConsumer (group iot-service-mongodb-persister)
    ├→ JSON.parse + contrôle device_id / farm_id / parcel_id
-   └→ AiSensorFeatureRepository.saveFeature()
+   ├→ AiSensorFeatureRepository.saveFeature()
+   └→ Heartbeat farm-service : PATCH /internal/sensors/:device_id/seen (best-effort)
               │
               ▼
         MongoDB — collection ai_sensor_features (TTL 90 jours)
+        farm-service — table sensors (last_seen_at, is_active, batterie, firmware)
 ```
 
 ### Architecture des dépendances
@@ -96,8 +101,11 @@ iot-service (port 3005)
 │   ├── Producer : topic "raw-sensor-data" (allowAutoTopicCreation, GZIP)
 │   └── Consumer : topic "raw-sensor-data" (group iot-service-mongodb-persister)
 │
-└── MongoDB (via @nestjs/mongoose)
-    └── Collection : ai_sensor_features (TTL 90 jours)
+├── MongoDB (via @nestjs/mongoose)
+│   └── Collection : ai_sensor_features (TTL 90 jours)
+│
+└── farm-service (via fetch natif Node 20, sortant)
+    └── PATCH /internal/sensors/:deviceId/seen — heartbeat capteur (best-effort)
 ```
 
 Le producer et le consumer Kafka sont des clients distincts (clientId `alkatra-iot-service` côté producer, `iot-service-consumer` côté consumer) — la consommation ne transite pas par le `KafkaService`.
@@ -206,6 +214,8 @@ La configuration n'utilise pas de fonction `registerAs`. Elle s'appuie sur `Conf
 | `MQTT_PASSWORD` | `undefined` (optionnel) | `${MQTT_PASSWORD:-}` | Mot de passe MQTT (optionnel) |
 | `KAFKA_BROKERS` | `localhost:9094` (producer) / `kafka:9092` (consumer) | `kafka:9092` | Brokers Kafka (séparés par virgules) |
 | `MONGODB_URI` | — | `mongodb://<user>:<pass>@mongodb:27017/alkatra_iot?authSource=admin` | URI MongoDB |
+| `FARM_SERVICE_URL` | `http://farm-service:3003` | `http://farm-service:3003` | URL du farm-service pour le heartbeat capteurs (`PATCH /internal/sensors/:deviceId/seen`) |
+| `INTERNAL_TOKEN` | `undefined` (optionnel) | — | Si définie, envoyée comme header `X-Internal-Token` sur le heartbeat (exigée côté farm-service si `INTERNAL_TOKEN` y est aussi définie) |
 | `ML_INFERENCE_URL` | non lu par le code | `http://ml-inference-service:8000` | Déclarée dans docker-compose mais non consommée |
 
 ### Exemple de `.env` local
@@ -221,6 +231,8 @@ MQTT_PASSWORD=
 KAFKA_BROKERS=localhost:9092
 
 MONGODB_URI=mongodb://localhost:27017/alkatra_iot
+
+FARM_SERVICE_URL=http://localhost:3003
 ```
 
 > ⚠️ Le défaut `KAFKA_BROKERS` diffère entre le producer (`localhost:9094`) et le consumer (`kafka:9092`) : en local, il faut fixer explicitement `KAFKA_BROKERS=localhost:9092` (ou le port du broker exposé) pour aligner les deux clients.
@@ -253,7 +265,7 @@ Il n'existe aucune route métier sous `/api/v1/*` (aucun controller n'est monté
 | `src/kafka/kafka.module.ts` | Déclare et exporte `KafkaService`. |
 | `src/kafka/kafka.service.ts` | Producer Kafka. `onModuleInit` : client (`clientId: alkatra-iot-service`, `logLevel: WARN`, retry 10x), producer (`allowAutoTopicCreation: true`, `transactionTimeout: 30000`). `send(topic, key, value)` : compression GZIP, timestamp, log en `warn` si non connecté. `subscribe()` : code mort (jamais appelé, voir [section 17](#17-comportements-notables)). |
 | `src/kafka-consumer/kafka-consumer.module.ts` | Importe `MongodbModule`. Déclare `SensorDataConsumer` comme `@Controller()`. |
-| `src/kafka-consumer/sensor-data.consumer.ts` | Consumer Kafka. `onModuleInit` : client (`clientId: iot-service-consumer`), consumer (`groupId: iot-service-mongodb-persister`, `sessionTimeout: 30000`, `heartbeatInterval: 3000`). Subscribe `raw-sensor-data` (`fromBeginning: false`). Validation minimale puis `saveFeature`. Voir [section 9](#9-consumer-kafka--mongodb). |
+| `src/kafka-consumer/sensor-data.consumer.ts` | Consumer Kafka. `onModuleInit` : client (`clientId: iot-service-consumer`), consumer (`groupId: iot-service-mongodb-persister`, `sessionTimeout: 30000`, `heartbeatInterval: 3000`). Subscribe `raw-sensor-data` (`fromBeginning: false`). Validation minimale, `saveFeature`, puis `notifySensorSeen(payload)` : heartbeat HTTP vers farm-service (`fetch` natif, best-effort — `battery_pct`/`firmware_version` du payload transmis si présents, échec loggé en `warn` sans interrompre l'ingestion). Voir [section 9](#9-consumer-kafka--mongodb). |
 | `src/mongodb/mongodb.module.ts` | `forRootAsync` (URI + pool `maxPoolSize: 10`, `serverSelectionTimeoutMS: 5000`, `socketTimeoutMS: 45000`). `forFeature([{ name: AiSensorFeature.name, schema }]`)). Déclare et exporte `AiSensorFeatureRepository`. |
 | `src/mongodb/repositories/ai-sensor-reading.repository.ts` | Repository. `saveFeature(payload)` : instancie un document `AiSensorFeature` à partir du payload et le persiste. `getLatestByParcel(parcelId, limit=48)` : tri `ts: -1`, `.lean()`. `getLastByDevice(deviceId)` : `findOne` trié `ts: -1`. |
 | `src/mongodb/schemas/ai-sensor-feature.schema.ts` | Schéma de la collection `ai_sensor_features`. Voir [section 10](#10-persistance-mongodb-collection-ai_sensor_features). |
@@ -372,11 +384,17 @@ SensorDataConsumer.consume() → consumer.run({ eachMessage })
    ├── 3. Validation minimale : device_id, farm_id, parcel_id présents
    │      └── invalide → log warn + skip
    │
-   └── 4. AiSensorFeatureRepository.saveFeature(payload) → MongoDB
-          └── échec → log error (stack) + skip
+   ├── 4. AiSensorFeatureRepository.saveFeature(payload) → MongoDB
+   │      └── échec → log error (stack) + skip
+   │
+   └── 5. notifySensorSeen(payload) → farm-service (heartbeat, best-effort)
+          ├── PATCH {FARM_SERVICE_URL}/internal/sensors/{device_id}/seen
+          ├── body : { batteryPct?, firmwareVersion? } si présents dans le payload
+          ├── 404 (device inconnu) → silencieux : capteur jamais associé côté fermier
+          └── autre statut / réseau down → log warn, la lecture reste persistée
 ```
 
-La validation se limite à la présence de `device_id`, `farm_id` et `parcel_id` : les 7 variables IA ne sont **pas** re-validées par le consumer (elles l'ont été en amont par le bridge MQTT). En cas d'exception à quelque étape que ce soit, le message est loggé puis ignoré — il n'y a pas de Dead Letter Queue côté consumer.
+La validation se limite à la présence de `device_id`, `farm_id` et `parcel_id` : les 7 variables IA ne sont **pas** re-validées par le consumer (elles l'ont été en amont par le bridge MQTT). En cas d'exception à quelque étape que ce soit, le message est loggé puis ignoré — il n'y a pas de Dead Letter Queue côté consumer. Le heartbeat de l'étape 5 est volontairement **après** la persistance : une indisponibilité de farm-service ne fait jamais perdre une mesure.
 
 ---
 

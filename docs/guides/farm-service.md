@@ -36,18 +36,19 @@
 
 - Il gère le CRUD complet des fermes (création, lecture, modification, suppression)
 - Il gère le CRUD complet des parcelles (création, lecture par ferme, modification, suppression)
-- Il gère l'association de capteurs IoT à des parcelles (endpoint unique `POST /associate`)
+- Il gère l'association de capteurs IoT à des parcelles (`POST /associate`) ainsi que leur dissociation (`DELETE /:sensorId`) et leur listing par parcelle (`GET /parcel/:parcelId`)
+- Il reçoit les heartbeats des capteurs depuis `iot-service` (endpoint interne `PATCH /internal/sensors/:deviceId/seen` : `last_seen_at`, `is_active`, batterie, firmware)
+- Il désactive automatiquement les capteurs silencieux depuis plus de 48 h (`SensorActivityService`, vérification horaire)
 - Il vérifie l'existence d'un utilisateur auprès de `auth-service` avant la création d'une ferme
 - Il valide la cohérence des surfaces : la somme des parcelles ne peut pas dépasser la surface de la ferme
 - Il empêche la suppression d'une ferme qui possède des parcelles
-- Il empêche le « vol » de capteur entre utilisateurs
+- Il empêche le « vol » de capteur entre utilisateurs (association, réassociation et dissociation)
 - Il expose deux endpoints de santé (liveness + readiness avec test DB)
-- Il authentifie toutes les requêtes métier via JWT (sauf health)
+- Il authentifie toutes les requêtes métier via JWT (sauf health et endpoints internes)
 
 **Ce qu'il ne fait PAS :**
 
-- ❌ Il n'ingère pas de données de mesures capteurs (température, humidité, etc.)
-- ❌ Il n'expose pas d'endpoint de liste, mise à jour ou suppression pour les capteurs (seul `POST /associate` existe)
+- ❌ Il n'ingère pas de données de mesures capteurs (température, humidité, etc.) — il ne conserve que l'état d'activité du capteur (heartbeat)
 - ❌ Il n'a pas de pagination sur les listes
 - ❌ Il n'a pas de métriques Prometheus
 - ❌ Il n'a pas de tests d'intégration (uniquement des tests unitaires avec mocks)
@@ -146,6 +147,7 @@ apps/farm-service/
 │   │   │   ├── all-exceptions.filter.ts  # Filtre d'erreurs global (format JSON français)
 │   │   │   └── index.ts                  # Barrel export
 │   │   ├── guards/
+│   │   │   ├── internal-token.guard.ts  # Guard endpoints internes (token optionnel X-Internal-Token)
 │   │   │   └── jwt-auth.guard.ts         # Guard JWT (extends AuthGuard('jwt'))
 │   │   ├── strategies/
 │   │   │   └── jwt.strategy.ts           # Stratégie Passport JWT (extraction Bearer)
@@ -171,11 +173,14 @@ apps/farm-service/
 │       │       └── update-parcel.dto.ts  # DTO modification parcelle
 │       │
 │       ├── sensors/
-│       │   ├── sensors.controller.ts     # Controller /api/v1/sensors (POST /associate)
+│       │   ├── internal-sensors.controller.ts  # Controller /internal/sensors (heartbeat iot-service)
+│       │   ├── sensors.controller.ts     # Controller /api/v1/sensors (associate, list, dissociate)
 │       │   ├── sensors.module.ts         # Module sensors
-│       │   ├── sensors.service.ts        # Service sensors (association/réassociation)
+│       │   ├── sensors.service.ts        # Service sensors (association/dissociation/heartbeat)
+│       │   ├── sensor-activity.service.ts # Désactivation auto des capteurs silencieux (48 h, horaire)
 │       │   └── dto/
-│       │       └── associate-sensor.dto.ts  # DTO association capteur
+│       │       ├── associate-sensor.dto.ts  # DTO association capteur
+│       │       └── sensor-heartbeat.dto.ts  # DTO heartbeat capteur (interne)
 │       │
 │       └── health/
 │           └── health.controller.ts      # Controller health (live + ready)
@@ -183,6 +188,7 @@ apps/farm-service/
 └── test/
     ├── farms.controller.spec.ts          # Tests unitaires du FarmsController
     ├── parcels.service.spec.ts           # Tests unitaires du ParcelsService
+    ├── sensor-activity.service.spec.ts   # Tests unitaires du SensorActivityService
     └── sensors.service.spec.ts           # Tests unitaires du SensorsService
 ```
 
@@ -268,6 +274,7 @@ Le code implémente un **double mode de configuration** de la base de données :
 | `AUTH_SERVICE_URL` | `http://auth-service:3001` | URL du service d'authentification |
 | `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION` | Secret JWT (doit être identique à auth-service) |
 | `CORS_ORIGINS` | `http://localhost:3000` | Origines CORS autorisées (séparées par virgules) |
+| `INTERNAL_TOKEN` | (vide) | Si définie, exigée par les endpoints `/internal/*` via le header `X-Internal-Token` (heartbeat iot-service). Absente → isolation par le réseau Docker uniquement. |
 
 ### Fichier `.env.example`
 
@@ -308,16 +315,24 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | Méthode | Route | DTO | Comportement |
 |---------|-------|-----|-------------|
 | `POST` | `/` | `CreateParcelDto` | Crée une parcelle. Vérifie : (1) la ferme appartient à l'utilisateur, (2) **la somme des surfaces des parcelles + la nouvelle ne dépasse pas `totalAreaHa`** de la ferme (sinon 422). |
-| `GET` | `/farm/:farmId` | — | Liste les parcelles d'une ferme (vérifie propriété de la ferme → 404 si non autorisé). |
-| `GET` | `/:id` | — | Récupère une parcelle avec relation `farm`. **404** si introuvable, **403** si `farm.ownerId !== userId`. |
+| `GET` | `/farm/:farmId` | — | Liste les parcelles d'une ferme (vérifie propriété de la ferme → 404 si non autorisé). **Relation `sensors` incluse** dans chaque parcelle. |
+| `GET` | `/:id` | — | Récupère une parcelle avec relations `farm` **et `sensors`**. **404** si introuvable, **403** si `farm.ownerId !== userId`. |
 | `PATCH` | `/:id` | `UpdateParcelDto` | Modifie une parcelle. Si `areaHa` change, **re-vérifie la cohérence des surfaces** (422 si dépassement). |
-| `DELETE` | `/:id` | — | Supprime une parcelle (après vérification de propriété). |
+| `DELETE` | `/:id` | — | Supprime une parcelle (après vérification de propriété). Les capteurs liés sont supprimés en cascade par la base. |
 
 ### Sensors — `/api/v1/sensors` (protégé JWT)
 
 | Méthode | Route | DTO | Comportement |
 |---------|-------|-----|-------------|
 | `POST` | `/associate` | `AssociateSensorDto` | Associe ou réassocie un capteur (`deviceId`) à une parcelle (`parcelId`). Voir [logique détaillée](#logique-dassociation-sensorsserviceassociate). |
+| `GET` | `/parcel/:parcelId` | — | Liste les capteurs d'une parcelle (vérifie propriété via `parcel.farm.ownerId` → 404 / 403). |
+| `DELETE` | `/:sensorId` | — | Dissocie un capteur : supprime la ligne SQL (les mesures MongoDB, clé `device_id`, sont conservées). Vérifie que la parcelle porteuse appartient à l'utilisateur (404 / 403). |
+
+### Internal sensors — `/internal/sensors` (non routé par la gateway, `InternalTokenGuard`)
+
+| Méthode | Route | DTO | Comportement |
+|---------|-------|-----|-------------|
+| `PATCH` | `/:deviceId/seen` | `SensorHeartbeatDto` | Heartbeat appelé par `iot-service` à chaque message `raw-sensor-data`. Met à jour `last_seen_at = now()`, `is_active = true`, et `batteryPct` / `firmwareVersion` si fournis. **404** si le `deviceId` est inconnu. |
 
 ### Health — non protégé
 
@@ -339,7 +354,6 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | `src/config/configuration.ts` | Configuration centralisée via `registerAs('app')`. Parse `DATABASE_URL` avec `new URL()` si présente. Expose `port`, `nodeEnv`, `database` (host, port, username, password, name), `authServiceUrl`, `jwtSecret`, `corsOrigins`. |
 | `src/database/database.module.ts` | Module TypeORM. Configure `TypeOrmModule.forRootAsync` avec `type: 'postgres'`, host/port/user/password/database depuis la config. Entités : `[Farm, Parcel, Sensor]`. `synchronize: false`. Logging SQL si `nodeEnv !== 'production'`. Exporte `TypeOrmModule`. |
 | `src/database/entities/farm.entity.ts` | Entité `Farm` mappée à la table `farms`. Voir [modèle de données](#9-modèle-de-données-postgresql). |
-| `src/database/entities/parcel.entity.ts` | Entité `Parcel` mappée à la table `parcels`. Contrainte unique sur `(farmId, name)`. Voir [modèle de données](#9-modèle-de-données-postgresql). |
 | `src/database/entities/sensor.entity.ts` | Entité `Sensor` mappée à la table `sensors`. `deviceId` unique. Voir [modèle de données](#9-modèle-de-données-postgresql). |
 | `src/auth/auth-client.module.ts` | Module client auth. Importe `ConfigModule`, `PassportModule` (stratégie `jwt`), `HttpModule` (timeout 5000ms). Déclare `AuthClientService` et `JwtStrategy`. Exporte `AuthClientService` et `PassportModule`. |
 | `src/auth/auth-client.service.ts` | Service d'appel HTTP vers `auth-service`. `verifyUserExists(userId)` : GET `/internal/user/:userId` → `true` si 200, `false` si 404, throw 503 sinon. `getUserInfo(userId)` : retourne `AuthUserInfo` ou `null`. Interface `AuthUserInfo` : `{ id, phone, name, preferredLanguage }`. |
@@ -355,13 +369,18 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | `src/modules/farms/dto/update-farm.dto.ts` | DTO modification ferme. Tous les champs sont optionnels : `name?`, `totalAreaHa?`, `region?`, `location?`. |
 | `src/modules/parcels/parcels.module.ts` | Module parcels. Importe `TypeOrmModule.forFeature([Parcel, Farm])`. Déclare `ParcelsController` et `ParcelsService`. Exporte `ParcelsService`. |
 | `src/modules/parcels/parcels.controller.ts` | Controller `/api/v1/parcels`. `@UseGuards(JwtAuthGuard)`. 5 endpoints : POST (create), GET/farm/:farmId (findByFarm), GET/:id (findOne), PATCH/:id (update), DELETE/:id (remove). |
-| `src/modules/parcels/parcels.service.ts` | Service parcels. `create()` : vérifie propriété ferme, vérifie cohérence des surfaces (somme + nouvelle ≤ totalAreaHa), crée avec mapping explicite. `findAllByFarm()` : vérifie propriété ferme, retourne les parcelles. `findOne()` : 404 si introuvable, 403 si pas propriétaire via `parcel.farm.ownerId`. `update()` : si `areaHa` change, re-vérifie cohérence. `remove()` : supprime après vérification. |
+| `src/modules/parcels/parcels.service.ts` | Service parcels. `create()` : vérifie propriété ferme, vérifie cohérence des surfaces (somme + nouvelle ≤ totalAreaHa), crée avec mapping explicite. `findAllByFarm()` : vérifie propriété ferme, retourne les parcelles **avec relation `sensors`**. `findOne()` : 404 si introuvable, 403 si pas propriétaire via `parcel.farm.ownerId`, relations `farm` + `sensors`. `update()` : si `areaHa` change, re-vérifie cohérence. `remove()` : supprime après vérification. |
 | `src/modules/parcels/dto/create-parcel.dto.ts` | DTO création parcelle. Valide `farmId` (UUID), `name` (string, max 150), `areaHa` (number, min 0.01), `cropType` (enum), `soilType` (enum), `irrigationMethod` (enum), + champs optionnels. |
 | `src/modules/parcels/dto/update-parcel.dto.ts` | DTO modification parcelle. Tous les champs optionnels (pas de `farmId` — la parcelle ne change pas de ferme). |
-| `src/modules/sensors/sensors.module.ts` | Module sensors. Importe `TypeOrmModule.forFeature([Sensor, Parcel])`. Déclare `SensorsController` et `SensorsService`. Exporte `SensorsService`. |
-| `src/modules/sensors/sensors.controller.ts` | Controller `/api/v1/sensors`. `@UseGuards(JwtAuthGuard)`. 1 endpoint : POST `/associate`. |
-| `src/modules/sensors/sensors.service.ts` | Service sensors. `associate()` : vérifie propriété parcelle, cherche capteur par `deviceId`, gère création/réassociation/idempotence. Voir [logique détaillée](#logique-dassociation-sensorsserviceassociate). |
+| `src/modules/sensors/sensors.module.ts` | Module sensors. Importe `TypeOrmModule.forFeature([Sensor, Parcel])`. Déclare `SensorsController`, `InternalSensorsController`, `SensorsService` et `SensorActivityService`. Exporte `SensorsService`. |
+| `src/modules/sensors/sensors.controller.ts` | Controller `/api/v1/sensors`. `@UseGuards(JwtAuthGuard)`. 3 endpoints : POST `/associate`, GET `/parcel/:parcelId`, DELETE `/:sensorId`. |
+| `src/modules/sensors/internal-sensors.controller.ts` | Controller `/internal/sensors`. `@UseGuards(InternalTokenGuard)` (pas de JWT — réservé au réseau interne des services). 1 endpoint : PATCH `/:deviceId/seen` (heartbeat iot-service). |
+| `src/modules/sensors/sensors.service.ts` | Service sensors. `associate()` : vérifie propriété parcelle, cherche capteur par `deviceId`, gère création/réassociation/idempotence. `findByParcel()` : liste avec vérification de propriété. `dissociate()` : supprime la ligne après garde anti-vol. `recordHeartbeat()` : `last_seen_at` + `is_active = true` + batterie/firmware si fournis. |
+| `src/modules/sensors/sensor-activity.service.ts` | Désactivation automatique. `setInterval` horaire (`CHECK_INTERVAL_MS`) + premier passage au démarrage (`onApplicationBootstrap`). `deactivateStaleSensors()` : `UPDATE sensors SET is_active = false WHERE is_active = true AND last_seen_at IS NOT NULL AND last_seen_at < now() - 48 h` (`SILENCE_MS`). Les capteurs jamais vus (`last_seen_at NULL`) restent actifs (« En attente » côté frontend). |
 | `src/modules/sensors/dto/associate-sensor.dto.ts` | DTO association capteur. Valide `deviceId` (string) et `parcelId` (UUID). |
+| `src/modules/sensors/dto/sensor-heartbeat.dto.ts` | DTO heartbeat capteur. Tous champs optionnels : `batteryPct` (int, 0–100), `firmwareVersion` (string, max 20). |
+| `src/common/guards/internal-token.guard.ts` | Guard des endpoints `/internal/*`. Si `INTERNAL_TOKEN` est définie, exige le header `X-Internal-Token` correspondant (sinon 401). Absente → accès autorisé (isolation par le réseau Docker, préfixe non routé par la gateway). |
+| `src/database/entities/parcel.entity.ts` | Entité `Parcel` mappée à la table `parcels`. Contrainte unique sur `(farmId, name)`. Relation inverse `@OneToMany` vers `Sensor` (chargée par `GET /parcels/farm/:farmId` et `GET /parcels/:id`). Voir [modèle de données](#9-modèle-de-données-postgresql). |
 | `src/modules/health/health.controller.ts` | Controller health. `GET /api/v1/health/live` : statique. `GET /api/v1/health/ready` : exécute `SELECT 1` via `DataSource.query()`. |
 
 ---
@@ -386,9 +405,15 @@ Client → Authorization: Bearer <JWT> → JwtStrategy.validate() → { userId, 
 ### JwtAuthGuard
 
 - Appliqué sur **tous** les controllers métier (`FarmsController`, `ParcelsController`, `SensorsController`)
-- **Non appliqué** sur `HealthController`
+- **Non appliqué** sur `HealthController` ni `InternalSensorsController`
 - Log la tentative d'accès (méthode, URL, IP)
 - Rejette avec 401 si token absent, expiré ou invalide
+
+### Endpoints internes (`/internal/*`)
+
+- `InternalSensorsController` (heartbeat capteurs) est protégé par `InternalTokenGuard`, **pas** par JWT
+- Le préfixe `/internal` **n'est pas routé par la gateway Nginx** : ces endpoints ne sont joignables que depuis le réseau Docker des services (appelant actuel : `iot-service`)
+- Si la variable `INTERNAL_TOKEN` est définie, le header `X-Internal-Token` correspondant est exigé (double protection); sinon, l'isolation réseau suffit en développement
 
 ### Isolation par propriétaire
 
@@ -404,10 +429,12 @@ Chaque ferme a un `ownerId`. Toutes les opérations vérifient que l'utilisateur
 | `GET /parcels/farm/:farmId` | `farm.ownerId === userId` (sinon 404) |
 | `GET /parcels/:id` | `parcel.farm.ownerId === userId` (sinon 403) |
 | `POST /sensors/associate` | `parcel.farm.ownerId === userId` (sinon 403) |
+| `GET /sensors/parcel/:parcelId` | `parcel.farm.ownerId === userId` (sinon 404/403) |
+| `DELETE /sensors/:sensorId` | `sensor.parcel → farm.ownerId === userId` (sinon 403) |
 
 ### Communication inter-services
 
-`AuthClientService` appelle `auth-service` via HTTP :
+`AuthClientService` appelle `auth-service` via HTTP (sortant) :
 
 ```
 GET http://auth-service:3001/internal/user/:userId
@@ -417,6 +444,16 @@ GET http://auth-service:3001/internal/user/:userId
 - 200 → utilisateur existe, création autorisée
 - 404 → utilisateur introuvable, création bloquée (404)
 - Autre erreur → 503 SERVICE_UNAVAILABLE
+
+`iot-service` appelle farm-service via HTTP (entrant) pour les heartbeats capteurs :
+
+```
+PATCH http://farm-service:3003/internal/sensors/:deviceId/seen
+```
+
+- Appelé à chaque message `raw-sensor-data` consommé (best-effort côté iot-service)
+- Body : `SensorHeartbeatDto` (`batteryPct?`, `firmwareVersion?` — tous optionnels)
+- 404 si le `deviceId` est inconnu (capteur jamais associé)
 
 ---
 
@@ -481,15 +518,14 @@ CREATE TABLE sensors (
 ### Relations entre entités
 
 ```
-Farm (1) ──OneToMany──▶ (N) Parcel
-  │                         │
-  │ onDelete: CASCADE       │ onDelete: CASCADE
-  │                         │
-  └── owner_id (UUID)       └── parcel_id (UUID)
-                              │
-                              ▼
-                         Sensor (N) ◀──ManyToOne── (1) Parcel
+Farm (1) ──OneToMany──▶ (N) Parcel ──OneToMany──▶ (N) Sensor
+  │                         │                          │
+  │ onDelete: CASCADE       │ onDelete: CASCADE        │ onDelete: CASCADE
+  │                         │                          │
+  └── owner_id (UUID)       └── parcel_id (UUID)       └── parcel_id (UUID)
 ```
+
+> La relation inverse `Parcel.sensors` (`@OneToMany`) est déclarée sur l'entité `Parcel` : elle est chargée par `GET /parcels/farm/:farmId` et `GET /parcels/:id` (le frontend en déduit l'indicateur « capteur associé » sans requête supplémentaire). Les réponses des capteurs n'embarquent jamais la parcelle.
 
 ### Types GeoJSON
 
@@ -566,6 +602,37 @@ if (parcelCount > 0) → 409 CONFLICT
    → Save
 ```
 
+### Logique de dissociation (`SensorsService.dissociate`)
+
+```
+1. Charger le capteur par id → 404 si introuvable
+2. Charger sa parcelle (relations: { farm: true })
+   → 403 si la parcelle n'existe plus ou si farm.ownerId !== userId (anti-vol)
+3. Supprimer la ligne SQL (remove)
+```
+
+- Les **mesures MongoDB** (iot-service) sont indexées par `device_id` : elles **survivent à la dissociation**
+- Réassocier le même `deviceId` plus tard recrée la ligne (l'unicité `device_id` ne gêne plus après suppression)
+
+### Cycle d'activité d'un capteur (heartbeat + désactivation auto)
+
+```
+Association (POST /associate)          Heartbeat (PATCH /internal/.../seen)
+        │                                       │
+        ▼                                       ▼
+  isActive = true                       last_seen_at = now()
+  last_seen_at = NULL                   isActive = true
+        │                                       │
+        └──────────────┬────────────────────────┘
+                       ▼
+         SensorActivityService (setInterval horaire)
+         is_active = false si last_seen_at < now() - 48 h
+```
+
+- **Jamais vu** (`last_seen_at NULL`) : reste `is_active = true` → affiché « En attente » par le frontend
+- **Silence > 48 h** (`SILENCE_MS`) : `is_active = false` → « Inactif » ; le prochain heartbeat le réactive
+- Le premier passage s'exécute au démarrage (`onApplicationBootstrap`) pour rattraper les silences accumulés pendant un arrêt
+
 ### Unicité
 
 | Contrainte | Table | Colonnes |
@@ -634,6 +701,15 @@ Identique à `CreateParcelDto` mais :
 |-------|------|------------|
 | `deviceId` | string | `@IsString()` |
 | `parcelId` | UUID | `@IsUUID()` |
+
+### `SensorHeartbeatDto` (interne — heartbeat iot-service)
+
+| Champ | Type | Validation |
+|-------|------|------------|
+| `batteryPct` | number? | `@IsOptional()`, `@IsInt()`, `@Min(0)`, `@Max(100)` |
+| `firmwareVersion` | string? | `@IsOptional()`, `@IsString()`, `@MaxLength(20)` |
+
+Tous les champs sont optionnels : seul `last_seen_at` est toujours mis à jour par le heartbeat.
 
 ### DTOs GeoJSON imbriqués
 
@@ -709,6 +785,12 @@ Toutes les exceptions sont capturées et formatées en JSON :
 | 404 | `Parcelle introuvable pour association capteur.` | Association capteur, parcelle inexistante |
 | 403 | `Action interdite : la parcelle ne vous appartient pas.` | Association capteur, parcelle d'un autre user |
 | 403 | `Action interdite : le capteur appartient à une parcelle d'un autre utilisateur.` | Anti-vol de capteur |
+| 404 | `Parcelle introuvable.` | Listing/dissociation capteur, parcelle inexistante |
+| 403 | `Accès refusé à cette parcelle.` | Listing capteurs, parcelle d'un autre user |
+| 404 | `Capteur introuvable.` | Dissociation, capteur inexistant |
+| 403 | `Action interdite : le capteur ne vous appartient pas.` | Dissociation, capteur sur une parcelle d'un autre user |
+| 404 | `Capteur inconnu : <deviceId>.` | Heartbeat interne, device jamais associé |
+| 401 | `Accès interne non autorisé.` | Endpoint interne sans `X-Internal-Token` valide (si `INTERNAL_TOKEN` définie) |
 | 503 | `Service d'authentification temporairement indisponible. Veuillez réessayer.` | auth-service injoignable |
 | 401 | `Non autorise - Le token JWT est absent, expire ou invalide.` | Token JWT invalide |
 
@@ -791,9 +873,10 @@ module.exports = {
 
 | Fichier de test | Ce qu'il teste | Nombre de cas |
 |-----------------|----------------|---------------|
-| `test/farms.controller.spec.ts` | `FarmsController` — create, findAll, findOne, remove. Mock `FarmsService` et `AuthClientService`. Override `JwtAuthGuard`. | 8 cas |
-| `test/parcels.service.spec.ts` | `ParcelsService` — create (succès, ferme inexistante, autre user, dépassement surface, doublon nom), findOne (succès, 404). Mock repositories. | 6 cas |
-| `test/sensors.service.spec.ts` | `SensorsService` — associate (nouveau capteur, réassociation, idempotence, 403 autre user, 404 parcelle, anti-vol capteur, doublon deviceId). Mock repositories. | 7 cas |
+| `test/farms.controller.spec.ts` | `FarmsController` — create, findAll, findOne, remove. Mock `FarmsService` et `AuthClientService`. Override `JwtAuthGuard`. | 10 cas |
+| `test/parcels.service.spec.ts` | `ParcelsService` — create (succès, ferme inexistante, autre user, dépassement surface, doublon nom), findOne (succès, 404). Mock repositories. | 7 cas |
+| `test/sensors.service.spec.ts` | `SensorsService` — associate (nouveau capteur, réassociation, idempotence, 403 autre user, 404 parcelle, anti-vol capteur, doublon deviceId), findByParcel (succès, vide, 404, 403), dissociate (succès, 404, 403), recordHeartbeat (succès, champs absents, 404). Mock repositories. | 17 cas |
+| `test/sensor-activity.service.spec.ts` | `SensorActivityService` — `deactivateStaleSensors` (seuil 48 h vérifié, retour 0 si rien à désactiver). Mock QueryBuilder. | 2 cas |
 
 ### Commandes
 
@@ -926,12 +1009,11 @@ CMD ["node", "dist/main.js"]
 
 ## 17. Ce que le service NE fait PAS
 
-### Endpoints manquants pour les sensors
+### Endpoints capteurs restant à couvrir
 
-- ❌ Aucun endpoint `GET` pour lister les capteurs (d'une parcelle, d'une ferme, ou globaux)
 - ❌ Aucun endpoint `GET /:id` pour récupérer un capteur par ID
-- ❌ Aucun endpoint `PATCH /:id` pour mettre à jour un capteur (firmware, batterie, lastSeenAt)
-- ❌ Aucun endpoint `DELETE /:id` pour supprimer/désactiver un capteur
+- ❌ Aucun endpoint public `PATCH /:id` pour renommer/mettre à jour manuellement un capteur (la mise à jour passe uniquement par le heartbeat interne : `last_seen_at`, `is_active`, batterie, firmware)
+- ❌ Aucun endpoint de liste globale des capteurs d'un utilisateur (au-delà d'une parcelle)
 
 ### Ingestion de données
 
@@ -994,11 +1076,12 @@ CMD ["node", "dist/main.js"]
 | **Base de données** | PostgreSQL `farm_db` (TypeORM, tables `farms`, `parcels`, `sensors`) |
 | **ORM** | TypeORM 0.3.20 (`synchronize: false`) |
 | **Authentification** | JWT (HS256, secret partagé avec auth-service) |
-| **Communication inter-service** | HTTP GET vers `auth-service` `/internal/user/:userId` |
+| **Communication inter-service** | Sortant : HTTP GET vers `auth-service` `/internal/user/:userId`. Entrant : HTTP PATCH depuis `iot-service` `/internal/sensors/:deviceId/seen` (heartbeat, non routé par la gateway). |
+| **Tâche planifiée** | `SensorActivityService` — `setInterval` horaire, désactivation après 48 h de silence |
 | **Validation** | class-validator + class-transformer (ValidationPipe global) |
 | **Health checks** | `/api/v1/health/live` + `/api/v1/health/ready` (SELECT 1) |
 | **Métriques** | Aucune |
-| **Tests** | Jest (21 cas unitaires, mocks uniquement) |
+| **Tests** | Jest (36 cas unitaires, mocks uniquement) |
 | **Langage** | TypeScript 5.7 |
 | **Node.js** | 20 (Alpine) |
 | **Docker** | Multi-stage, utilisateur non-root, healthcheck sur `/ready` |
@@ -1037,3 +1120,16 @@ curl -X POST http://localhost:3003/api/v1/sensors/associate \
   -H "Authorization: Bearer <JWT>" \
   -H "Content-Type: application/json" \
   -d '{"deviceId": "SENSOR-OL-001", "parcelId": "<parcel-uuid>"}'
+
+# Lister les capteurs d'une parcelle
+curl -H "Authorization: Bearer <JWT>" \
+  http://localhost:3003/api/v1/sensors/parcel/<parcel-uuid>
+
+# Dissocier un capteur (les mesures collectées sont conservées)
+curl -X DELETE http://localhost:3003/api/v1/sensors/<sensor-uuid> \
+  -H "Authorization: Bearer <JWT>"
+
+# Heartbeat interne (réservé à iot-service, non routé par la gateway)
+curl -X PATCH http://farm-service:3003/internal/sensors/SENSOR-OL-001/seen \
+  -H "Content-Type: application/json" \
+  -d '{"batteryPct": 87}'

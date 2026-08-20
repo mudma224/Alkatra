@@ -415,8 +415,8 @@ CREATE TABLE sensors (
 | `parcel_id` | UUID | FK → parcels(id) CASCADE | Parcelle associée |
 | `device_id` | VARCHAR(100) | UNIQUE, NOT NULL | Identifiant matériel du capteur |
 | `device_type` | VARCHAR(50) | défaut `'esp32-wroom-32'` | Type de capteur |
-| `is_active` | BOOLEAN | défaut TRUE | Capteur actif |
-| `last_seen_at` | TIMESTAMP | nullable | Dernière communication |
+| `is_active` | BOOLEAN | défaut TRUE | Passé à FALSE par la vérification horaire du farm-service après 48 h de silence (`last_seen_at`), remis à TRUE par chaque heartbeat |
+| `last_seen_at` | TIMESTAMP | nullable | Dernière communication — mise à jour par le heartbeat iot-service (`PATCH /internal/sensors/:deviceId/seen`) ; NULL = jamais vu |
 | `battery_pct` | INT | 0-100 | Niveau de batterie |
 | `firmware_version` | VARCHAR(20) | nullable | Version du firmware |
 | `created_at` | TIMESTAMP | auto | Date de création |

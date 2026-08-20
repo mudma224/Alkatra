@@ -20,6 +20,8 @@ Le fichier `.env` local ne doit pas etre committe.
 | `KEYCLOAK_ADMIN` | admin Keycloak |
 | `KEYCLOAK_ADMIN_PASSWORD` | mot de passe Keycloak |
 | `MLFLOW_TRACKING_URI` | URI MLflow locale (`http://localhost:5001`) |
+| `JWT_SECRET` | secret JWT partagé (auth-service / user-service / farm-service / recommendation-service) |
+| `INTERNAL_TOKEN` | (optionnel) token d'authentification mutuelle entre services pour les endpoints `/internal/*` — header `X-Internal-Token`. Utilisé par le heartbeat capteurs iot-service → farm-service. Si absent, l'isolation réseau Docker suffit en développement |
 
 ## Mots de passe multi-bases PostgreSQL
 

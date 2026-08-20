@@ -198,7 +198,10 @@ iot-service (NestJS, port 3005)
 Kafka topic "raw-sensor-data" (6 partitions, rétention 7 j)
   │
   ├──▶ iot-service (consumer, group iot-service-mongodb-persister)
-  │      └─▶ MongoDB collection "ai_sensor_features" (persistance brute, TTL 90 j)
+  │      ├─▶ MongoDB collection "ai_sensor_features" (persistance brute, TTL 90 j)
+  │      └─▶ farm-service PATCH /internal/sensors/:device_id/seen
+  │           (heartbeat best-effort : last_seen_at, is_active, batterie ; les capteurs
+  │            silencieux > 48 h sont désactivés par une vérification horaire)
   │
   └──▶ spark-jobs (Structured Streaming, trigger 30 s)
          │ - Calcule ETo (Penman-Monteith FAO-56)
@@ -312,9 +315,12 @@ Tableau récapitulatif. Pour le détail, suivre le lien vers le guide de chaque 
 - `PATCH /api/v1/user/profile` — proxy vers auth-service
 - `GET /api/v1/farms` — renvoie `501 NotImplementedException` (route réservée)
 
-**farm-service** (`/api/v1/farms`, `/api/v1/parcels`, `/api/v1/sensors`, `/api/v1/health`)
+**farm-service** (`/api/v1/farms`, `/api/v1/parcels`, `/api/v1/sensors`, `/api/v1/health` + endpoints internes `/internal/sensors`)
 - CRUD complet sur `farms` et `parcels` (JWT, isolation par `ownerId`)
-- `POST /api/v1/sensors/associate` — association capteur → parcelle
+- `POST /api/v1/sensors/associate` — association capteur → parcelle (idempotente, anti-vol)
+- `GET /api/v1/sensors/parcel/:parcelId` — capteurs d'une parcelle
+- `DELETE /api/v1/sensors/:sensorId` — dissociation (mesures MongoDB conservées)
+- `PATCH /internal/sensors/:deviceId/seen` — heartbeat appelé par iot-service (non routé par la gateway) ; désactivation automatique des capteurs silencieux > 48 h
 
 **recommendation-service** (`/api/v1/recommendations`, `/health`, `/metrics`)
 - `GET /parcel/:parcelId/today` — recommandation du jour
@@ -323,7 +329,7 @@ Tableau récapitulatif. Pour le détail, suivre le lien vers le guide de chaque 
 - `PATCH /:id/execute` — marquer comme exécutée
 
 **iot-service** (`/api/v1/health`, `/metrics`)
-- Pas d'API métier REST. Le service consomme MQTT et publie Kafka.
+- Pas d'API métier REST. Le service consomme MQTT, publie Kafka, persiste dans MongoDB et envoie le heartbeat capteurs à farm-service (`PATCH /internal/sensors/:deviceId/seen`, best-effort).
 
 **ml-inference-service** (`/health`, `/predict`, `/metrics`)
 - `POST /predict` — inférence à la demande (22 features en entrée)

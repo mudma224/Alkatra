@@ -278,6 +278,65 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /sensors/parcel/{parcelId}:
+    get:
+      operationId: listSensorsByParcel
+      tags: [Sensors]
+      summary: Lister les capteurs d'une parcelle
+      description: >
+        Retourne tous les capteurs associés à la parcelle (deviceId, statut
+        d'activité, batterie, firmware). Vérifie que la parcelle appartient à
+        l'utilisateur (404 si inconnue, 403 si propriétaire différent).
+      parameters:
+        - name: parcelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Capteurs de la parcelle
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Sensor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sensors/{sensorId}:
+    delete:
+      operationId: dissociateSensor
+      tags: [Sensors]
+      summary: Dissocier un capteur de sa parcelle
+      description: >
+        Supprime la ligne d'association capteur/parcelle. Les mesures déjà
+        collectées (MongoDB, clé device_id) sont conservées ; le même deviceId
+        peut être réassocié plus tard. Refusé (403) si le capteur appartient à
+        une parcelle d'un autre utilisateur.
+      parameters:
+        - name: sensorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Capteur dissocié
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -663,6 +722,50 @@ components:
           type: string
           format: uuid
           example: "123e4567-e89b-12d3-a456-426614174000"
+        deviceType:
+          type: string
+          example: "esp32-wroom-32"
+        isActive:
+          type: boolean
+          example: true
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        batteryPct:
+          type: integer
+          nullable: true
+          example: 87
+        firmwareVersion:
+          type: string
+          nullable: true
+          example: "1.0.4"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Sensor:
+      type: object
+      description: >-
+        Entité capteur telle que sérialisée par le farm-service. Le statut
+        d'affichage se dérive de lastSeenAt (null = jamais vu, « En attente »)
+        et isActive (false après 48 h de silence, « Inactif » ; un heartbeat
+        le repasse à true).
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        parcelId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        deviceId:
+          type: string
+          example: "esp32-sim-001"
         deviceType:
           type: string
           example: "esp32-wroom-32"
