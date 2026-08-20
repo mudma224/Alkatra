@@ -140,6 +140,7 @@
   background-color: transparent;
   border-color: transparent;
   color: var(--color-primary-500);
+  
 }
 
 .ghost:not(:disabled):not([aria-busy='true']):hover {
