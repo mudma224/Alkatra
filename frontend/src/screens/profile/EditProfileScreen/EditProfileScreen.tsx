@@ -124,7 +124,6 @@ export function EditProfileScreen() {
         <button
           type="button"
           className={styles.backButton}
-          onClick={() => navigate(-1)}
           aria-label="Retour"
         >
           <BackNavigation />
