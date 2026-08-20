@@ -1,19 +1,20 @@
 import { Menu, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-import { Button } from '../../ui/Button/Button';
 import { useAuth } from '../../../hooks/useAuth';
+import { Button } from '../../ui/Button/Button';
 
 import styles from './Header.module.css';
 
-interface HeaderProps {
-  /** Controls the shared navigation drawer from the application layout. */
+export interface HeaderProps {
+  /** Reflète l’état réel de l’unique drawer partagé. */
   navigationOpen: boolean;
 
-  /** Opens or closes the shared navigation drawer. */
+  /** Ouvre ou ferme la navigation contrôlée par AppLayout. */
   onNavigationToggle: () => void;
 }
 
+/** Header commun à toutes les routes authentifiées. */
 export function Header({
   navigationOpen,
   onNavigationToggle,
@@ -22,36 +23,29 @@ export function Header({
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    // Logout only clears the current authenticated session.
+    // Le store en mémoire est vidé avant de quitter les routes protégées.
     logout();
-
-    // Replace history so the authenticated page cannot be returned to with Back.
     navigate('/login', { replace: true });
   };
 
   return (
     <header className={styles.header}>
-      <div className={styles.left}>
-        {user && (
-          <button
-            type="button"
-            className={styles.menuButton}
-            aria-label={
-              navigationOpen
-                ? 'Fermer la navigation'
-                : 'Ouvrir la navigation'
-            }
-            aria-expanded={navigationOpen}
-            aria-controls="main-navigation"
-            onClick={onNavigationToggle}
-          >
-            {navigationOpen ? (
-              <X aria-hidden="true" />
-            ) : (
-              <Menu aria-hidden="true" />
-            )}
-          </button>
-        )}
+      <div className={styles.leadingGroup}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={styles.menuButton}
+          aria-label={navigationOpen ? 'Fermer la navigation' : 'Ouvrir la navigation'}
+          aria-expanded={navigationOpen}
+          aria-controls="main-navigation"
+          onClick={onNavigationToggle}
+          iconLeft={
+            navigationOpen
+              ? <X aria-hidden="true" style={{ transform: 'translateY(-2.5px)' }}/>
+              : <Menu aria-hidden="true" style={{ transform: 'translateY(-2.5px)' }}/>
+          }
+        >
+        </Button>
 
         <span className={styles.title}>Al katra bel qatra</span>
       </div>
@@ -60,6 +54,7 @@ export function Header({
         <Button
           variant="ghost"
           size="sm"
+          className={styles.logoutButton}
           onClick={handleLogout}
         >
           Déconnexion

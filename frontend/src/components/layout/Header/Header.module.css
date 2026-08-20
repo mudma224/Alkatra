@@ -1,91 +1,86 @@
 .header {
-  /* Keep the header aligned with the existing design-system spacing. */
+  /* Le Header reste visible au-dessus du contenu pendant le scroll. */
+  position: sticky;
+  top: 0;
+  z-index: 20;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-md);
+
+  width: 100%;
+  min-height: 68px;
   padding: var(--spacing-md) var(--spacing-lg);
 
   background-color: var(--color-neutral-0);
   border-bottom: 1px solid var(--color-neutral-200);
-
-  /* Keep the header visible above the navigation drawer. */
-  position: relative;
-  z-index: 20;
 }
 
-.left {
-  /* Keep the menu control and application title aligned together. */
+.leadingGroup {
+  /* Regroupe le hamburger et le nom de l’application. */
   display: flex;
+  justify-content: baseline;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
   min-width: 0;
 }
 
-.menuButton {
-  /* Use a native button for keyboard and accessibility support. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 40px;
-  height: 40px;
-  padding: 0;
-
-  border: 0;
-  border-radius: var(--radius-button);
-  background: transparent;
-  color: var(--color-primary-500);
-
-  cursor: pointer;
+.menuButton,
+.logoutButton {
   flex-shrink: 0;
-
-  transition:
-    background-color var(--transition-fast),
-    color var(--transition-fast);
 }
 
-.menuButton:hover {
-  /* Reuse existing neutral colors instead of introducing a new color. */
-  background-color: var(--color-neutral-100);
-}
-
-.menuButton:focus-visible {
-  /* Keep keyboard focus visible. */
-  outline: 2px solid var(--color-primary-500);
-  outline-offset: 2px;
-}
-
-.menuButton svg {
-  /* Keep the hamburger/close icon visually consistent. */
-  width: 22px;
-  height: 22px;
+.menuLabel {
+  display: inline;
 }
 
 .title {
-  /* Preserve the existing application branding. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
   font-family: var(--font-family-base);
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-title);
   color: var(--color-primary-500);
-
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 @media (max-width: 639px) {
   .header {
-    /* Reduce horizontal padding on small screens. */
-    padding-inline: var(--spacing-md);
+    /* Même padding horizontal que le contenu mobile de Layout. */
+    min-height: 60px;
+    padding: var(--spacing-sm) var(--spacing-md);
   }
 
-  .left {
-    gap: var(--spacing-sm);
+  .menuLabel {
+    /* Le aria-label garde le nom accessible du bouton sur mobile. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
+  .title,
+  .logoutButton {
+    font-size: var(--font-size-footer);
+  }
+
+  .logoutButton {
+    padding-left: var(--spacing-sm);
+    padding-right: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 375px) {
   .title {
-    /* Prevent the title from competing with the logout button. */
-    font-size: var(--font-size-body);
+    /* Priorise les actions interactives sur les écrans très étroits. */
+    max-width: 104px;
   }
 }

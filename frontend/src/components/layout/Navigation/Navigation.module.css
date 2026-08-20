@@ -1,25 +1,17 @@
 .nav {
-  /* Make navigation a shared drawer instead of a duplicated bottom navigation. */
+  /* Même drawer partagé sur mobile et laptop. */
   position: fixed;
   top: 0;
   left: 0;
+  z-index: 30;
 
-  width: min(280px, 82vw);
+  width: min(320px, 86vw);
   height: 100vh;
-
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-
-  padding: 88px var(--spacing-md) var(--spacing-md);
+  padding: var(--spacing-md);
 
   background-color: var(--color-neutral-0);
   border-right: 1px solid var(--color-neutral-200);
 
-  /* Keep the drawer above the application content. */
-  z-index: 10;
-
-  /* Hidden state is kept outside the viewport. */
   transform: translateX(-100%);
   visibility: hidden;
 
@@ -29,17 +21,35 @@
 }
 
 .open {
-  /* Reveal the same navigation implementation on every screen size. */
   transform: translateX(0);
   visibility: visible;
 }
 
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  min-height: 44px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.drawerTitle {
+  color: var(--color-primary-500);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-heading-sm);
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
 .link {
-  /* Navigation links remain consistent with the existing typography. */
   display: block;
-
   padding: var(--spacing-md);
-
   border-radius: var(--radius-button);
 
   font-family: var(--font-family-base);
@@ -53,42 +63,38 @@
 }
 
 .link:hover {
-  /* Use existing neutral tokens for hover feedback. */
-  background-color: var(--color-neutral-100);
+  /* Utilise un token réellement défini dans tokens.css. */
+  background-color: var(--color-secondary-100);
   color: var(--color-primary-500);
 }
 
 .active {
-  /* Preserve the existing active-state treatment. */
-  background-color: var(--color-neutral-100);
+  background-color: var(--color-secondary-100);
   color: var(--color-primary-500);
   font-weight: var(--font-weight-button);
 }
 
 .link:focus-visible {
-  /* Keep keyboard navigation visible. */
   outline: 2px solid var(--color-primary-500);
   outline-offset: 2px;
 }
 
 .overlay {
-  /* Overlay prevents interaction with the page while the drawer is open. */
+  /* Bloque les interactions avec le contenu derrière le drawer. */
   position: fixed;
   inset: 0;
+  z-index: 25;
 
-  border: 0;
   padding: 0;
-
+  border: 0;
   background: rgba(0, 0, 0, 0.18);
-
   cursor: pointer;
-
-  z-index: 5;
 }
+
+
 
 @media (min-width: 640px) {
   .nav {
-    /* Keep the drawer width comfortable on laptop/desktop. */
-    width: 280px;
+    width: 320px;
   }
 }
