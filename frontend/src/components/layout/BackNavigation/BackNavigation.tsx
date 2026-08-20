@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate, type To } from 'react-router-dom';
 
-import styles from './BackNavigation.module.css';
+import styles from './BackNaviagtion.module.css';
 
 export interface BackNavigationProps {
   /** Accessible label for the back action. */
