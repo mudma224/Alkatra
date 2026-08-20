@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User as UserIcon } from 'lucide-react';
+import { User as UserIcon } from 'lucide-react';
+
+import { BackNavigation } from '../../../components/layout/BackNavigation/BackNavigation';
 import { isAxiosError } from 'axios';
 
 import { ProfileIdentity } from '../../../components/profile/ProfileIdentity/ProfileIdentity';
@@ -125,7 +127,7 @@ export function EditProfileScreen() {
           onClick={() => navigate(-1)}
           aria-label="Retour"
         >
-          <ArrowLeft aria-hidden="true" />
+          <BackNavigation />
         </button>
 
         <h1 className={styles.title}>Editer mon profil</h1>

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bell, Tractor, UserRoundPen } from 'lucide-react';
+import { Bell, Tractor, UserRoundPen } from 'lucide-react';
 
+import { BackNavigation } from '../../../components/layout/BackNavigation/BackNavigation';
 import { ProfileIdentity } from '../../../components/profile/ProfileIdentity/ProfileIdentity';
 import { ProfileMenuItem } from './ProfileMenuItem';
 import { ErrorMessage } from '../../../components/ui/ErrorMessage/ErrorMessage';
@@ -91,7 +92,7 @@ export function ProfileScreen() {
           onClick={() => navigate(-1)}
           aria-label="Retour"
         >
-          <ArrowLeft aria-hidden="true" />
+          <BackNavigation />
         </button>
 
         <h1 className={styles.title}>Mon Profil</h1>
