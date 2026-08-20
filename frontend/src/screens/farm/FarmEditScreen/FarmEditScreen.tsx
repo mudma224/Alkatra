@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 
+import { BackNavigation } from '../../../components/layout/BackNavigation/BackNavigation';
 import { Button } from '../../../components/ui/Button/Button';
 import { EmptyState } from '../../../components/ui/EmptyState/EmptyState';
 import { Skeleton } from '../../../components/ui/Skeleton/Skeleton';
@@ -12,16 +13,7 @@ import type { CreateFarmPayload } from '../../../types/farm.types';
 
 import styles from './FarmEditScreen.module.css';
 
-/**
- * Modification d'une ferme (route /farms/:farmId/edit).
- *
- * Option (a) validée par l'utilisateur : la maquette « FarmCreate » (83:55)
- * est réutilisée en mode édition — même formulaire (FarmForm partagé),
- * pré-rempli avec la ferme existante, titre « Modifier la ferme ».
- *
- * Enregistrer → PATCH /farms/:id → retour au détail de la ferme (rafraîchi) ;
- * Annuler / Retour → détail sans modification.
- */
+/** Lets the user update an existing farm. */
 export function FarmEditScreen() {
   const { farmId } = useParams<{ farmId: string }>();
   const navigate = useNavigate();
@@ -30,7 +22,9 @@ export function FarmEditScreen() {
   const { update, isUpdating } = useUpdateFarm();
   const [submitError, setSubmitError] = useState(false);
 
-  const backToDetail = () => navigate(`/farms/${farmId}`, { replace: true });
+  // Avoid creating a malformed `/farms/undefined` fallback route.
+  const farmDetailPath = farmId ? `/farms/${farmId}` : '/farms';
+  const backToDetail = () => navigate(farmDetailPath, { replace: true });
 
   const handleSubmit = async (payload: CreateFarmPayload) => {
     if (!farmId) {
@@ -42,7 +36,7 @@ export function FarmEditScreen() {
     const succeeded = await update(farmId, payload);
 
     if (succeeded) {
-      navigate(`/farms/${farmId}`, { replace: true });
+      navigate(farmDetailPath, { replace: true });
     } else {
       setSubmitError(true);
     }
@@ -51,15 +45,12 @@ export function FarmEditScreen() {
   return (
     <section className={styles.screen}>
       <div className={styles.topBar}>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Retour"
-          onClick={backToDetail}
+        {/* Reuse the shared control and keep the destination deterministic. */}
+        <BackNavigation
+          to={farmDetailPath}
+          replace
           disabled={isUpdating}
-        >
-          <ArrowLeft aria-hidden="true" />
-        </Button>
+        />
 
         <h1 className={styles.title}>Modifier la ferme</h1>
       </div>
@@ -79,7 +70,11 @@ export function FarmEditScreen() {
           title="Oups !"
           description="Impossible de charger cette ferme."
           action={
-            <Button variant="primary" className={styles.retryButton} onClick={refetch}>
+            <Button
+              variant="primary"
+              className={styles.retryButton}
+              onClick={refetch}
+            >
               Réessayer
             </Button>
           }
@@ -94,7 +89,9 @@ export function FarmEditScreen() {
             region: farm.region ?? '',
           }}
           submitting={isUpdating}
-          serverError={submitError ? 'Impossible de modifier la ferme. Réessayez.' : null}
+          serverError={
+            submitError ? 'Impossible de modifier la ferme. Réessayez.' : null
+          }
           onSubmit={(payload) => void handleSubmit(payload)}
           onCancel={backToDetail}
         />
