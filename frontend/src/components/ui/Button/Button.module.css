@@ -3,10 +3,9 @@
    L'attribut [data-block] gère la largeur pleine (fill).
    ========================================================================= */
 .button {
-  display: inline-flex;
+  display:block;
   align-items: center;
   justify-content: center;
-  gap: 10px;
 
   font-family: var(--font-family-base);
   font-weight: var(--font-weight-button);
