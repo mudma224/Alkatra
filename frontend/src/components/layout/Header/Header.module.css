@@ -1,15 +1,91 @@
 .header {
+  /* Keep the header aligned with the existing design-system spacing. */
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--spacing-md);
   padding: var(--spacing-md) var(--spacing-lg);
+
   background-color: var(--color-neutral-0);
   border-bottom: 1px solid var(--color-neutral-200);
+
+  /* Keep the header visible above the navigation drawer. */
+  position: relative;
+  z-index: 20;
+}
+
+.left {
+  /* Keep the menu control and application title aligned together. */
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.menuButton {
+  /* Use a native button for keyboard and accessibility support. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 40px;
+  padding: 0;
+
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--color-primary-500);
+
+  cursor: pointer;
+  flex-shrink: 0;
+
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.menuButton:hover {
+  /* Reuse existing neutral colors instead of introducing a new color. */
+  background-color: var(--color-neutral-100);
+}
+
+.menuButton:focus-visible {
+  /* Keep keyboard focus visible. */
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.menuButton svg {
+  /* Keep the hamburger/close icon visually consistent. */
+  width: 22px;
+  height: 22px;
 }
 
 .title {
+  /* Preserve the existing application branding. */
   font-family: var(--font-family-base);
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-title);
   color: var(--color-primary-500);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 639px) {
+  .header {
+    /* Reduce horizontal padding on small screens. */
+    padding-inline: var(--spacing-md);
+  }
+
+  .left {
+    gap: var(--spacing-sm);
+  }
+
+  .title {
+    /* Prevent the title from competing with the logout button. */
+    font-size: var(--font-size-body);
+  }
 }
