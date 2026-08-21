@@ -1,11 +1,14 @@
 /* =========================================================================
    SensorStatusPill — pill d'état capteur (maquettes Multi Sensors / SensorList).
    Active = fond vert clair + pastille verte ; En attente = gris + pastille
-   creuse ; Inactif = gris + pastille pleine grise.
+   creuse ; Désactivé = gris + pastille pleine grise (silence > 2 h) ;
+   Défaillant = rouge (silence > 24 h, alerte critique).
    ========================================================================= */
 
 .active,
-.inactive {
+.pending,
+.inactive,
+.failing {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -22,9 +25,16 @@
   background-color: var(--color-secondary-100);
 }
 
+.pending,
 .inactive {
   color: var(--color-neutral-grey);
   background-color: var(--color-neutral-200);
+}
+
+/* Silence > 24 h : état critique, même échelle rouge que les erreurs. */
+.failing {
+  color: var(--color-destructive-700);
+  background-color: var(--color-destructive-100);
 }
 
 .dotActive {
@@ -48,4 +58,11 @@
   height: 8px;
   border-radius: 50%;
   background-color: var(--color-neutral-grey);
+}
+
+.dotFailing {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-destructive-500);
 }

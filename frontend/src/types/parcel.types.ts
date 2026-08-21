@@ -66,13 +66,24 @@ export interface Sensor {
   parcelId: string;
   deviceId: string;
   deviceType: string;
-  isActive: boolean;
+  /**
+   * Santé du capteur, calculée par farm-service (machine à états
+   * SensorActivityService — seuils configurables côté backend) :
+   * - pending  : associé mais jamais vu ;
+   * - active   : envoie des données (heartbeat récent) ;
+   * - inactive : silencieux > SENSOR_INACTIVE_HOURS (2 h par défaut) ;
+   * - failing  : silencieux > SENSOR_FAILING_HOURS (24 h par défaut).
+   */
+  healthStatus: SensorHealthStatus;
   lastSeenAt: string | null;
   batteryPct: number | null;
   firmwareVersion: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Santé d'un capteur — reflet direct de l'enum PostgreSQL sensor_health_status_enum. */
+export type SensorHealthStatus = 'pending' | 'active' | 'inactive' | 'failing';
 
 /**
  * Entité Parcel — table `parcels`.
@@ -138,18 +149,15 @@ export interface AssociateSensorPayload {
   parcelId: string;
 }
 
-/** Statut d'affichage d'un capteur (dérivé de lastSeenAt + isActive). */
-export type SensorStatus = 'active' | 'pending' | 'inactive';
+/** Statut d'affichage d'un capteur — reflet du healthStatus renvoyé par farm-service. */
+export type SensorStatus = 'active' | 'pending' | 'inactive' | 'failing';
 
 /**
- * Dérive le statut d'affichage d'un capteur :
- * - `active` : a émis récemment (heartbeat reçu, is_active true) ;
- * - `pending` : associé mais jamais vu (lastSeenAt null) ;
- * - `inactive` : silencieux depuis plus de 48 h (cron SensorActivityService).
+ * Statut d'affichage d'un capteur : la source de vérité est le
+ * `healthStatus` calculé par farm-service (machine à états à seuils
+ * configurables). La fonction est conservée comme point d'entrée unique
+ * des composants (pastille, filtres, tri).
  */
 export function getSensorStatus(sensor: Sensor): SensorStatus {
-  if (sensor.lastSeenAt === null) {
-    return 'pending';
-  }
-  return sensor.isActive ? 'active' : 'inactive';
+  return sensor.healthStatus;
 }

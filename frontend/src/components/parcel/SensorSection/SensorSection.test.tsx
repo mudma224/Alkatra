@@ -20,7 +20,7 @@ function makeSensor(id: string, overrides: Partial<Sensor> = {}): Sensor {
     parcelId: 'parcel-1',
     deviceId: `ESP32-${id}`,
     deviceType: 'esp32-wroom-32',
-    isActive: true,
+    healthStatus: 'active',
     lastSeenAt: '2026-08-18T10:00:00.000Z',
     batteryPct: 87,
     firmwareVersion: null,
@@ -88,8 +88,8 @@ describe('SensorSection', () => {
   it('lists up to 3 sensors inline with Dissocier on each row', () => {
     renderSection([
       makeSensor('OL-001'),
-      makeSensor('OL-002', { lastSeenAt: null, batteryPct: null }),
-      makeSensor('OL-003', { isActive: false, batteryPct: null }),
+      makeSensor('OL-002', { lastSeenAt: null, batteryPct: null, healthStatus: 'pending' }),
+      makeSensor('OL-003', { healthStatus: 'inactive', batteryPct: null }),
     ]);
 
     expect(screen.getByText('ESP32-OL-001')).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe('SensorSection', () => {
     expect(screen.getAllByText(/Vu il y a/)).toHaveLength(2);
     expect(screen.getByText('ESP32-OL-002')).toBeInTheDocument();
     expect(screen.getByText('En attente')).toBeInTheDocument();
-    expect(screen.getByText('Inactif')).toBeInTheDocument();
+    expect(screen.getByText('Désactivé')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Dissocier' })).toHaveLength(3);
     expect(screen.queryByText(/Voir tous les capteurs/)).not.toBeInTheDocument();
   });

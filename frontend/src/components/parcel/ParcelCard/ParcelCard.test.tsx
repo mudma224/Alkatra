@@ -30,7 +30,7 @@ function makeSensor(id: string): Sensor {
     parcelId: 'parcel-1',
     deviceId: `ESP32-${id}`,
     deviceType: 'esp32-wroom-32',
-    isActive: true,
+    healthStatus: 'active',
     lastSeenAt: '2026-08-18T10:00:00.000Z',
     batteryPct: 87,
     firmwareVersion: null,

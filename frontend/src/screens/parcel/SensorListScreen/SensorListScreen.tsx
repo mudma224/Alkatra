@@ -18,12 +18,14 @@ import type { Sensor } from '../../../types/parcel.types';
 
 import styles from './SensorListScreen.module.css';
 
-type StatusFilter = 'all' | 'active' | 'inactive';
+type StatusFilter = 'all' | 'active' | 'pending' | 'inactive' | 'failing';
 
 const FILTER_LABELS: Record<StatusFilter, string> = {
   all: 'Tous',
   active: 'Actifs',
-  inactive: 'Non actifs',
+  pending: 'En attente',
+  inactive: 'Désactivés',
+  failing: 'Défaillants',
 };
 
 /**
@@ -31,7 +33,9 @@ const FILTER_LABELS: Record<StatusFilter, string> = {
  * /farms/:farmId/parcels/:parcelId/sensors) — maquette « SensorList -
  * Populated » (188:103). Recherche par deviceId (insensible casse/diacritiques,
  * comme les fermes) + filtre par statut (Actifs = a émis récemment ;
- * Non actifs = en attente ou silencieux > 48 h). Tri : actifs d'abord.
+ * En attente = jamais vu ; Désactivés = silence > 2 h ; Défaillants =
+ * silence > 24 h — seuils configurables côté farm-service). Tri : actifs
+ * d'abord, défaillants en dernier.
  */
 export function SensorListScreen() {
   const { farmId, parcelId } = useParams<{ farmId: string; parcelId: string }>();
@@ -49,10 +53,8 @@ export function SensorListScreen() {
 
   const filtered = sensors
     .filter((sensor) => {
-      const sensorStatus = getSensorStatus(sensor);
-      if (filter === 'active') return sensorStatus === 'active';
-      if (filter === 'inactive') return sensorStatus !== 'active';
-      return true;
+      if (filter === 'all') return true;
+      return getSensorStatus(sensor) === filter;
     })
     .filter((sensor) => normalizeSearch(sensor.deviceId).includes(normalizeSearch(query)))
     .sort(normalizeSearchOrder);

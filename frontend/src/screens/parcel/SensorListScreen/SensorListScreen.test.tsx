@@ -31,7 +31,7 @@ function makeSensor(id: string, overrides: Partial<Sensor> = {}): Sensor {
     parcelId: 'parcel-1',
     deviceId: `ESP32-${id}`,
     deviceType: 'esp32-wroom-32',
-    isActive: true,
+    healthStatus: 'active',
     lastSeenAt: '2026-08-18T10:00:00.000Z',
     batteryPct: 87,
     firmwareVersion: null,
@@ -114,8 +114,8 @@ describe('SensorListScreen', () => {
   it('lists all sensors with statuses, count subtitle and actifs-first order', async () => {
     mockedGet.mockResolvedValueOnce(
       makeParcel([
-        makeSensor('ZZ-001', { isActive: false }),
-        makeSensor('AB-002', { lastSeenAt: null, batteryPct: null }),
+        makeSensor('ZZ-001', { healthStatus: 'inactive' }),
+        makeSensor('AB-002', { lastSeenAt: null, batteryPct: null, healthStatus: 'pending' }),
         makeSensor('MM-003'),
         makeSensor('AA-004'),
       ]),
@@ -134,8 +134,8 @@ describe('SensorListScreen', () => {
       'ESP32-AB-002',
       'ESP32-ZZ-001',
     ]);
-    expect(screen.getByText('En attente')).toBeInTheDocument();
-    expect(screen.getByText('Inactif')).toBeInTheDocument();
+    expect(screen.getAllByText('En attente').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Désactivé').length).toBeGreaterThan(0);
   });
 
   it('filters by search query on deviceId (case-insensitive)', async () => {
@@ -161,14 +161,14 @@ describe('SensorListScreen', () => {
     mockedGet.mockResolvedValueOnce(
       makeParcel([
         makeSensor('OL-001'),
-        makeSensor('AA-002', { lastSeenAt: null, batteryPct: null }),
+        makeSensor('AA-002', { lastSeenAt: null, batteryPct: null, healthStatus: 'pending' }),
       ]),
     );
 
     renderListScreen();
     await waitFor(() => expect(screen.getByText('Parcelle Nord · 2 capteurs')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Non actifs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'En attente' }));
     expect(screen.queryByText('ESP32-OL-001')).not.toBeInTheDocument();
     expect(screen.getByText('ESP32-AA-002')).toBeInTheDocument();
     expect(screen.queryByText('Aucun capteur trouvé')).not.toBeInTheDocument();
