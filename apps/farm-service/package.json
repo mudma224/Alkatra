@@ -18,6 +18,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
   },
   "dependencies": {
+    "@alkatra/shared-types": "*",
     "@nestjs/axios": "^4.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.1.26",

@@ -39,9 +39,10 @@ export class SensorsService {
           );
         }
 
-        // Réassociation à la nouvelle parcelle
+        // Réassociation à la nouvelle parcelle — le capteur repart en
+        // « pending » : le premier heartbeat le repassera « active ».
         sensor.parcelId = parcelId;
-        sensor.isActive = true;
+        sensor.healthStatus = 'pending';
         this.logger.log(`Capteur ${deviceId} réassocié de la parcelle ${sensor.parcelId} vers ${parcelId}`);
       } else {
         // Capteur déjà sur la bonne parcelle — pas d'écriture DB inutile
@@ -49,12 +50,13 @@ export class SensorsService {
         return sensor;
       }
     } else {
-      // 4. S'il n'existe pas, on l'enregistre pour la 1ère fois
+      // 4. S'il n'existe pas, on l'enregistre pour la 1ère fois — « pending »
+      // jusqu'au premier heartbeat (jamais vu).
       sensor = this.sensorsRepository.create({
         deviceId: deviceId,
         parcelId: parcelId,
         deviceType: 'esp32-wroom-32', // Par défaut selon farm-db.sql
-        isActive: true
+        healthStatus: 'pending'
       });
       this.logger.log(`Nouveau capteur ${deviceId} associé à la parcelle ${parcelId}`);
     }
@@ -89,16 +91,18 @@ export class SensorsService {
 
   /**
    * Heartbeat interne (iot-service → PATCH /internal/sensors/:deviceId/seen) :
-   * rafraîchit last_seen_at, réactive le capteur et met à jour batterie/firmware
-   * si fournies. Le cron SensorActivityService le repassera inactif après 48 h
-   * de silence.
+   * rafraîchit last_seen_at, ramène le capteur à « active » (quel que soit son
+   * état : pending, inactive ou failing) et met à jour batterie/firmware si
+   * fournies. Le cycle SensorActivityService le repassera « inactive » après
+   * SENSOR_INACTIVE_HOURS de silence (2 h), puis « failing » après
+   * SENSOR_FAILING_HOURS (24 h) — seuils configurables.
    */
   async recordHeartbeat(deviceId: string, heartbeat: SensorHeartbeatDto): Promise<Sensor> {
     const sensor = await this.sensorsRepository.findOne({ where: { deviceId } });
     if (!sensor) throw new HttpException(`Capteur inconnu : ${deviceId}.`, HttpStatus.NOT_FOUND);
 
     sensor.lastSeenAt = new Date();
-    sensor.isActive = true;
+    sensor.healthStatus = 'active';
     if (heartbeat.batteryPct !== undefined) sensor.batteryPct = heartbeat.batteryPct;
     if (heartbeat.firmwareVersion !== undefined) sensor.firmwareVersion = heartbeat.firmwareVersion;
 

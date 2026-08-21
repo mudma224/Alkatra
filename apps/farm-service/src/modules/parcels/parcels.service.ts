@@ -69,6 +69,20 @@ export class ParcelsService {
     return parcel;
   }
 
+  /**
+   * Résolution parcelle → propriétaire pour les services internes sans
+   * contexte utilisateur (ex: alert-service sur le flux Kafka des
+   * recommandations). 404 si la parcelle n'existe pas.
+   */
+  async findParcelOwner(parcelId: string): Promise<{ parcelId: string; farmId: string; ownerId: string }> {
+    const parcel = await this.parcelsRepository.findOne({
+      where: { id: parcelId },
+      relations: { farm: true },
+    });
+    if (!parcel) throw new HttpException('Parcelle introuvable.', HttpStatus.NOT_FOUND);
+    return { parcelId: parcel.id, farmId: parcel.farmId, ownerId: parcel.farm.ownerId };
+  }
+
   async update(id: string, updateParcelDto: UpdateParcelDto, userId: string): Promise<Parcel> {
     const parcel = await this.findOne(id, userId);
 

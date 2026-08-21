@@ -12,8 +12,10 @@ COPY package*.json ./
 COPY tsconfig.json ./
 COPY apps/farm-service/package*.json ./apps/farm-service/
 COPY apps/farm-service/tsconfig.json ./apps/farm-service/
+COPY packages/shared-types ./packages/shared-types
 
 # Installer uniquement les dépendances de farm-service
+RUN npm install -g npm@11.9.0
 RUN npm ci --workspace @alkatra/farm-service
 
 # ============================================================
