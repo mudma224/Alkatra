@@ -20,11 +20,11 @@ Pour le détail d'un service précis, se reporter au guide correspondant dans `d
 
 ## 1. Vue d'ensemble
 
-La plateforme est un monorepo de 7 services applicatifs soutenus par une stack d'infrastructure Docker locale. Les services se répartissent en trois catégories :
+La plateforme est un monorepo de 8 services applicatifs soutenus par une stack d'infrastructure Docker locale. Les services se répartissent en trois catégories :
 
-- **Services métier** (NestJS, profil Docker `phase1`) : `auth-service`, `user-service`, `farm-service`, `recommendation-service`. Ces services exposent des API REST consommées par les clients à travers l'API Gateway Nginx.
+- **Services métier** (NestJS, profil Docker `phase1`) : `auth-service`, `user-service`, `farm-service`, `recommendation-service`, `alert-service`. Ces services exposent des API REST consommées par les clients à travers l'API Gateway Nginx.
 - **Services de données** : `iot-service` (NestJS, ingestion MQTT), `spark-jobs` (PySpark, feature engineering), `ml-inference-service` (FastAPI, inférence). Ces services forment le pipeline asynchrone qui transforme les mesures capteur en recommandations.
-- **Service réservé** : `alert-service` (dossier présent, non implémenté).
+- `alert-service` (NestJS, port 3006) centralise les notifications : alertes in-app (PostgreSQL), push FCM et traçabilité Kafka ; il consomme `recommendations-generated` (stress hydrique critique) et reçoit les événements capteurs de farm-service (silencieux > 2 h, défaillant > 24 h, batterie faible — seuils configurables).
 
 ```
                       Clients (web/PWA)
@@ -202,9 +202,9 @@ Chaque service métier possède sa propre base PostgreSQL avec un utilisateur d�
 | Base | Service | Tables principales |
 |---|---|---|
 | `auth_db` | auth-service | `users` |
-| `farm_db` | farm-service | `farms`, `parcels`, `sensors` (avec PostGIS pour la géométrie) |
+| `farm_db` | farm-service | `farms`, `parcels`, `sensors` (avec PostGIS pour la géométrie ; `health_status` = machine à états santé capteurs) |
 | `recommendation_db` | recommendation-service | `recommendations` |
-| `notification_db` | (réservé) | `alerts` |
+| `notification_db` | alert-service | `alerts`, `device_tokens` |
 | `keycloak_db` | Keycloak | (gérée par Keycloak) |
 | `mlflow_db` | MLflow | (gérée par MLflow Alembic) |
 

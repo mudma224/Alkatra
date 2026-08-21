@@ -9,6 +9,7 @@
 | **User Service** | `alkatra-user` | `http://localhost:3002` | `http://localhost:8080/api/v1/user/*` | `phase1` |
 | **Farm Service** | `alkatra-farm` | `http://localhost:3003` | `http://localhost:8080/api/v1/farms/*`, `/api/v1/parcels/*`, `/api/v1/sensors/*` | `phase1` |
 | **Recommendation Service** | `alkatra-recommendation` | `http://localhost:3004` | Non exposé (consommation interne) | `phase1` |
+| **Alert Service** | `alkatra-alert` | `http://localhost:3006` | `http://localhost:8080/api/v1/alerts/*`, `/api/v1/devices/*` | `phase1` |
 | **IoT Service** | `alkatra-iot` | `http://localhost:3005` | Non exposé (communication interne uniquement) | — |
 | **ML Inference** | `alkatra-ml` | `http://localhost:8000` | Non exposé (communication interne uniquement) | — |
 
@@ -43,8 +44,10 @@
 | `/api/v1/farms/*` | farm-service:3003 | Gestion des fermes |
 | `/api/v1/parcels/*` | farm-service:3003 | Gestion des parcelles |
 | `/api/v1/sensors/*` | farm-service:3003 | Gestion des capteurs |
+| `/api/v1/alerts/*` | alert-service:3006 | Notifications (liste, unread-count, mark-read) |
+| `/api/v1/devices/*` | alert-service:3006 | Enregistrement des tokens push FCM |
 
-Le gateway (NGINX, template `infra/nginx/nginx.conf.template`) est en place et exécute le routage ci-dessus. Les services `iot-service` et `ml-inference-service` ne sont pas exposés via le gateway : ils ne communiquent qu'en interne sur le réseau Docker.
+Le gateway (NGINX, template `infra/nginx/nginx.conf.template`) est en place et exécute le routage ci-dessus. Les services `iot-service` et `ml-inference-service` ne sont pas exposés via le gateway : ils ne communiquent qu'en interne sur le réseau Docker. Les endpoints `/internal/*` (heartbeat capteurs, ingestion d'alertes, résolution owner) ne sont jamais routés par la gateway.
 
 ## Commandes utiles
 

@@ -101,6 +101,8 @@ Toutes les routes sont définies dans un unique bloc `server` écoutant sur
 | `~ ^/api/v1/farms(?:/.*)?$` (regex) | `${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT}` | `api_limit` (30 r/s, burst 20) |
 | `~ ^/api/v1/parcels(?:/.*)?$` (regex) | `${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT}` (farm-service) | `api_limit` |
 | `~ ^/api/v1/sensors(?:/.*)?$` (regex) | `${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT}` (farm-service) | `api_limit` |
+| `~ ^/api/v1/alerts(?:/.*)?$` (regex) | `${ALERT_SERVICE_HOST}:${ALERT_SERVICE_PORT}` (alert-service) | `api_limit` |
+| `~ ^/api/v1/devices(?:/.*)?$` (regex) | `${ALERT_SERVICE_HOST}:${ALERT_SERVICE_PORT}` (alert-service) | `api_limit` |
 | `/` (fallback) | JSON `404` | — |
 
 Précisions :
@@ -108,6 +110,9 @@ Précisions :
 - Les routes `/api/v1/farms`, `/api/v1/parcels` et `/api/v1/sensors` sont toutes
   trois routées vers le **farm-service** ; ce service gère conjointement les
   fermes, les parcelles et les capteurs.
+- Les routes `/api/v1/alerts` et `/api/v1/devices` sont routées vers
+  l'**alert-service** (notifications in-app et enregistrement des tokens push
+  FCM). Ses endpoints `/internal/*` ne sont volontairement jamais routés.
 - Les expressions rationnelles utilisent la forme `(?:/.*)?` afin d'accepter
   aussi bien `/api/v1/farms` que `/api/v1/farms/`, `/api/v1/farms/:id`, etc.
 - Le fallback `/` renvoie un objet JSON structuré
@@ -124,7 +129,8 @@ Les services suivants ne sont **pas** exposés via le gateway :
 
 Ces services communiquent principalement via Kafka et MongoDB, ou exposent des
 endpoints consommés en interne ; ils ne disposent donc pas de route publique
-sur la passerelle.
+sur la passerelle. Les endpoints `/internal/*` de tous les services (heartbeat
+capteurs, ingestion d'alertes, résolution owner) ne sont jamais routés.
 
 ---
 
@@ -136,18 +142,20 @@ requises :
 ```
 REQUIRED_VARS="AUTH_SERVICE_HOST AUTH_SERVICE_PORT \
                USER_SERVICE_HOST USER_SERVICE_PORT \
-               FARM_SERVICE_HOST FARM_SERVICE_PORT"
+               FARM_SERVICE_HOST FARM_SERVICE_PORT \
+               ALERT_SERVICE_HOST ALERT_SERVICE_PORT"
 ```
 
-Soit **6 variables** obligatoires (hôte + port pour chacun des trois services
+Soit **8 variables** obligatoires (hôte + port pour chacun des quatre services
 routés). Le conteneur refuse de démarrer si l'une d'elles est vide.
 
-La substitution opérée par `envsubst` porte explicitement sur ces 6 variables :
+La substitution opérée par `envsubst` porte explicitement sur ces 8 variables :
 
 ```sh
 envsubst '${AUTH_SERVICE_HOST} ${AUTH_SERVICE_PORT} \
           ${USER_SERVICE_HOST} ${USER_SERVICE_PORT} \
-          ${FARM_SERVICE_HOST} ${FARM_SERVICE_PORT}' \
+          ${FARM_SERVICE_HOST} ${FARM_SERVICE_PORT} \
+          ${ALERT_SERVICE_HOST} ${ALERT_SERVICE_PORT}' \
     < "$TEMPLATE_PATH" > "$OUTPUT_PATH"
 ```
 
@@ -173,6 +181,8 @@ n'ont aucun effet sur la configuration Nginx générée.
 | `USER_SERVICE_PORT` | `3002` |
 | `FARM_SERVICE_HOST` | `farm-service` |
 | `FARM_SERVICE_PORT` | `3003` |
+| `ALERT_SERVICE_HOST` | `alert-service` |
+| `ALERT_SERVICE_PORT` | `3006` |
 
 ---
 
@@ -187,7 +197,7 @@ limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/s;
 
 | Zone | Taux | Burst | Routes concernées |
 | --- | --- | --- | --- |
-| `api_limit` | 30 requêtes/s | 20 (`nodelay`) | `/api/v1/farms`, `/api/v1/parcels`, `/api/v1/sensors` |
+| `api_limit` | 30 requêtes/s | 20 (`nodelay`) | `/api/v1/farms`, `/api/v1/parcels`, `/api/v1/sensors`, `/api/v1/alerts`, `/api/v1/devices` |
 | `auth_limit` | 10 requêtes/s | 20 (`nodelay`) | `/api/v1/auth/` |
 
 Les deux zones sont effectivement appliquées sur leurs routes respectives via la

@@ -37,8 +37,9 @@
 - Il gère le CRUD complet des fermes (création, lecture, modification, suppression)
 - Il gère le CRUD complet des parcelles (création, lecture par ferme, modification, suppression)
 - Il gère l'association de capteurs IoT à des parcelles (`POST /associate`) ainsi que leur dissociation (`DELETE /:sensorId`) et leur listing par parcelle (`GET /parcel/:parcelId`)
-- Il reçoit les heartbeats des capteurs depuis `iot-service` (endpoint interne `PATCH /internal/sensors/:deviceId/seen` : `last_seen_at`, `is_active`, batterie, firmware)
-- Il désactive automatiquement les capteurs silencieux depuis plus de 48 h (`SensorActivityService`, vérification horaire)
+- Il reçoit les heartbeats des capteurs depuis `iot-service` (endpoint interne `PATCH /internal/sensors/:deviceId/seen` : `last_seen_at`, `health_status = 'active'`, batterie, firmware)
+- Il pilote la **machine à états de santé des capteurs** (`SensorActivityService`, cycle configurable) : silence > `SENSOR_INACTIVE_HOURS` (2 h par défaut) → `inactive` (notification légère), silence > `SENSOR_FAILING_HOURS` (24 h par défaut) → `failing` (alerte critique) — seuils configurables par variable d'environnement
+- Il notifie `alert-service` des événements capteurs (silencieux, défaillant, batterie faible) via `POST /internal/alerts`, et résout une parcelle vers son propriétaire pour les autres services (`GET /internal/parcels/:parcelId/owner`)
 - Il vérifie l'existence d'un utilisateur auprès de `auth-service` avant la création d'une ferme
 - Il valide la cohérence des surfaces : la somme des parcelles ne peut pas dépasser la surface de la ferme
 - Il empêche la suppression d'une ferme qui possède des parcelles
@@ -94,10 +95,14 @@ farm-service (port 3003)
 ├── PostgreSQL — farm_db (via TypeORM)
 │   ├── Table: farms
 │   ├── Table: parcels
-│   └── Table: sensors
+│   └── Table: sensors (health_status : machine à états)
 │
-└── auth-service (via HTTP, @nestjs/axios)
-    └── GET /internal/user/:userId → vérification existence utilisateur
+├── auth-service (via HTTP, @nestjs/axios)
+│   └── GET /internal/user/:userId → vérification existence utilisateur
+│
+└── alert-service (via fetch natif, best-effort)
+    ├── POST /internal/alerts → notifications capteurs (silencieux/défaillant/batterie)
+    └── appelé par alert-service : GET /internal/parcels/:parcelId/owner
 ```
 
 ### Hiérarchie des données
@@ -168,6 +173,7 @@ apps/farm-service/
 │       │   ├── parcels.controller.ts     # Controller /api/v1/parcels (CRUD)
 │       │   ├── parcels.module.ts         # Module parcels
 │       │   ├── parcels.service.ts        # Service parcels (logique + cohérence surfaces)
+│       │   ├── internal-parcels.controller.ts # Controller /internal/parcels (résolution owner pour alert-service)
 │       │   └── dto/
 │       │       ├── create-parcel.dto.ts  # DTO création parcelle
 │       │       └── update-parcel.dto.ts  # DTO modification parcelle
@@ -177,10 +183,12 @@ apps/farm-service/
 │       │   ├── sensors.controller.ts     # Controller /api/v1/sensors (associate, list, dissociate)
 │       │   ├── sensors.module.ts         # Module sensors
 │       │   ├── sensors.service.ts        # Service sensors (association/dissociation/heartbeat)
-│       │   ├── sensor-activity.service.ts # Désactivation auto des capteurs silencieux (48 h, horaire)
+│       │   ├── sensor-activity.service.ts # Machine à états santé capteurs (seuils configurables)
+│       │   ├── alert-notifier.service.ts # Notifications capteurs → alert-service (best-effort)
 │       │   └── dto/
 │       │       ├── associate-sensor.dto.ts  # DTO association capteur
 │       │       └── sensor-heartbeat.dto.ts  # DTO heartbeat capteur (interne)
+│       │
 │       │
 │       └── health/
 │           └── health.controller.ts      # Controller health (live + ready)
@@ -272,9 +280,14 @@ Le code implémente un **double mode de configuration** de la base de données :
 | `FARM_DB_PASSWORD` | `farm_dev_pass` (ou password de `DATABASE_URL`) | Mot de passe PostgreSQL |
 | `FARM_DB_NAME` | `farm_db` (ou pathname de `DATABASE_URL`) | Nom de la base |
 | `AUTH_SERVICE_URL` | `http://auth-service:3001` | URL du service d'authentification |
+| `ALERT_SERVICE_URL` | `http://alert-service:3006` | URL d'alert-service (notifications capteurs) |
 | `JWT_SECRET` | `CHANGE_ME_IN_PRODUCTION` | Secret JWT (doit être identique à auth-service) |
 | `CORS_ORIGINS` | `http://localhost:3000` | Origines CORS autorisées (séparées par virgules) |
-| `INTERNAL_TOKEN` | (vide) | Si définie, exigée par les endpoints `/internal/*` via le header `X-Internal-Token` (heartbeat iot-service). Absente → isolation par le réseau Docker uniquement. |
+| `INTERNAL_TOKEN` | (vide) | Si définie, exigée par les endpoints `/internal/*` via le header `X-Internal-Token` (heartbeat iot-service, résolution owner par alert-service). Absente → isolation par le réseau Docker uniquement. |
+| `LOW_BATTERY_THRESHOLD` | `20` | Seuil (%) de batterie faible — alerte `low_battery` |
+| `SENSOR_INACTIVE_HOURS` | `2` | Silence (heures, **décimales acceptées** : `0.05` = 3 min) au-delà duquel un capteur `active` passe `inactive` + notification légère |
+| `SENSOR_FAILING_HOURS` | `24` | Silence (heures) au-delà duquel un capteur `inactive` est escaladé `failing` + alerte critique. Doit rester strictement supérieur à `SENSOR_INACTIVE_HOURS` (validé au démarrage) |
+| `SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES` | `15` | Cadence du cycle de santé (minutes, ≥ 1) |
 
 ### Fichier `.env.example`
 
@@ -332,7 +345,13 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 
 | Méthode | Route | DTO | Comportement |
 |---------|-------|-----|-------------|
-| `PATCH` | `/:deviceId/seen` | `SensorHeartbeatDto` | Heartbeat appelé par `iot-service` à chaque message `raw-sensor-data`. Met à jour `last_seen_at = now()`, `is_active = true`, et `batteryPct` / `firmwareVersion` si fournis. **404** si le `deviceId` est inconnu. |
+| `PATCH` | `/:deviceId/seen` | `SensorHeartbeatDto` | Heartbeat appelé par `iot-service` à chaque message `raw-sensor-data`. Met à jour `last_seen_at = now()`, `health_status = 'active'` (quel que soit l'état précédent), et `batteryPct` / `firmwareVersion` si fournis. **404** si le `deviceId` est inconnu. |
+
+### Internal parcels — `/internal/parcels` (non routé par la gateway, `InternalTokenGuard`)
+
+| Méthode | Route | Comportement |
+|---------|-------|-------------|
+| `GET` | `/:parcelId/owner` | Résout une parcelle vers son propriétaire : `{ parcelId, farmId, ownerId }`. Utilisé par alert-service pour le flux Kafka (recommandations critiques sans contexte utilisateur). **404** si parcelle inconnue. |
 
 ### Health — non protégé
 
@@ -372,11 +391,13 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | `src/modules/parcels/parcels.service.ts` | Service parcels. `create()` : vérifie propriété ferme, vérifie cohérence des surfaces (somme + nouvelle ≤ totalAreaHa), crée avec mapping explicite. `findAllByFarm()` : vérifie propriété ferme, retourne les parcelles **avec relation `sensors`**. `findOne()` : 404 si introuvable, 403 si pas propriétaire via `parcel.farm.ownerId`, relations `farm` + `sensors`. `update()` : si `areaHa` change, re-vérifie cohérence. `remove()` : supprime après vérification. |
 | `src/modules/parcels/dto/create-parcel.dto.ts` | DTO création parcelle. Valide `farmId` (UUID), `name` (string, max 150), `areaHa` (number, min 0.01), `cropType` (enum), `soilType` (enum), `irrigationMethod` (enum), + champs optionnels. |
 | `src/modules/parcels/dto/update-parcel.dto.ts` | DTO modification parcelle. Tous les champs optionnels (pas de `farmId` — la parcelle ne change pas de ferme). |
-| `src/modules/sensors/sensors.module.ts` | Module sensors. Importe `TypeOrmModule.forFeature([Sensor, Parcel])`. Déclare `SensorsController`, `InternalSensorsController`, `SensorsService` et `SensorActivityService`. Exporte `SensorsService`. |
+| `src/modules/sensors/sensors.module.ts` | Module sensors. Importe `TypeOrmModule.forFeature([Sensor, Parcel])`. Déclare `SensorsController`, `InternalSensorsController`, `SensorsService`, `SensorActivityService` et `AlertNotifierService`. Exporte `SensorsService`. |
 | `src/modules/sensors/sensors.controller.ts` | Controller `/api/v1/sensors`. `@UseGuards(JwtAuthGuard)`. 3 endpoints : POST `/associate`, GET `/parcel/:parcelId`, DELETE `/:sensorId`. |
 | `src/modules/sensors/internal-sensors.controller.ts` | Controller `/internal/sensors`. `@UseGuards(InternalTokenGuard)` (pas de JWT — réservé au réseau interne des services). 1 endpoint : PATCH `/:deviceId/seen` (heartbeat iot-service). |
-| `src/modules/sensors/sensors.service.ts` | Service sensors. `associate()` : vérifie propriété parcelle, cherche capteur par `deviceId`, gère création/réassociation/idempotence. `findByParcel()` : liste avec vérification de propriété. `dissociate()` : supprime la ligne après garde anti-vol. `recordHeartbeat()` : `last_seen_at` + `is_active = true` + batterie/firmware si fournis. |
-| `src/modules/sensors/sensor-activity.service.ts` | Désactivation automatique. `setInterval` horaire (`CHECK_INTERVAL_MS`) + premier passage au démarrage (`onApplicationBootstrap`). `deactivateStaleSensors()` : `UPDATE sensors SET is_active = false WHERE is_active = true AND last_seen_at IS NOT NULL AND last_seen_at < now() - 48 h` (`SILENCE_MS`). Les capteurs jamais vus (`last_seen_at NULL`) restent actifs (« En attente » côté frontend). |
+| `src/modules/parcels/internal-parcels.controller.ts` | Controller `/internal/parcels`. `@UseGuards(InternalTokenGuard)`. 1 endpoint : GET `/:parcelId/owner` (résolution parcelle → propriétaire pour alert-service). |
+| `src/modules/sensors/sensors.service.ts` | Service sensors. `associate()` : vérifie propriété parcelle, cherche capteur par `deviceId`, gère création/réassociation/idempotence (nouveau capteur ou réassociation → `health_status = 'pending'`). `findByParcel()` : liste avec vérification de propriété. `dissociate()` : supprime la ligne après garde anti-vol. `recordHeartbeat()` : `last_seen_at` + `health_status = 'active'` + batterie/firmware si fournis. |
+| `src/modules/sensors/sensor-activity.service.ts` | Machine à états de santé (cycle `setInterval` à cadence configurable + premier passage au démarrage). `deactivateSilentSensors()` : capteurs `active` silencieux > `SENSOR_INACTIVE_HOURS` → `inactive` + notification légère. `escalateToFailingSensors()` : capteurs `inactive` silencieux > `SENSOR_FAILING_HOURS` → `failing` + alerte critique. `notifyLowBatterySensors()` : capteurs `active` sous `LOW_BATTERY_THRESHOLD` → alerte `low_battery`. Les capteurs jamais vus (`pending`) ne sont jamais touchés. |
+| `src/modules/sensors/alert-notifier.service.ts` | Notifications vers alert-service (`POST /internal/alerts`, header `X-Internal-Token`) : `notifySensorSilent()` (info), `notifySensorFailing()` (critical), `notifyLowBattery()` (warning). Best-effort : échec réseau loggé en warning, jamais de rejet ; 409 (dédup) toléré silencieusement. |
 | `src/modules/sensors/dto/associate-sensor.dto.ts` | DTO association capteur. Valide `deviceId` (string) et `parcelId` (UUID). |
 | `src/modules/sensors/dto/sensor-heartbeat.dto.ts` | DTO heartbeat capteur. Tous champs optionnels : `batteryPct` (int, 0–100), `firmwareVersion` (string, max 20). |
 | `src/common/guards/internal-token.guard.ts` | Guard des endpoints `/internal/*`. Si `INTERNAL_TOKEN` est définie, exige le header `X-Internal-Token` correspondant (sinon 401). Absente → accès autorisé (isolation par le réseau Docker, préfixe non routé par la gateway). |
@@ -506,7 +527,8 @@ CREATE TABLE sensors (
   parcel_id         UUID NOT NULL,         -- indexé, FK → parcels(id) ON DELETE CASCADE
   device_id         VARCHAR(100) NOT NULL UNIQUE,  -- identifiant physique unique
   device_type       VARCHAR(50) DEFAULT 'esp32-wroom-32',
-  is_active         BOOLEAN DEFAULT true,
+  health_status     sensor_health_status_enum NOT NULL DEFAULT 'pending',
+                    -- enum : pending | active | inactive | failing (indexé)
   last_seen_at      TIMESTAMPTZ NULL,
   battery_pct       INT NULL,
   firmware_version  VARCHAR(20) NULL,
@@ -625,13 +647,19 @@ Association (POST /associate)          Heartbeat (PATCH /internal/.../seen)
         │                                       │
         └──────────────┬────────────────────────┘
                        ▼
-         SensorActivityService (setInterval horaire)
-         is_active = false si last_seen_at < now() - 48 h
+         SensorActivityService (cycle à cadence configurable)
+         active → inactive si silence > SENSOR_INACTIVE_HOURS (2 h)
+         inactive → failing si silence > SENSOR_FAILING_HOURS (24 h)
 ```
 
-- **Jamais vu** (`last_seen_at NULL`) : reste `is_active = true` → affiché « En attente » par le frontend
-- **Silence > 48 h** (`SILENCE_MS`) : `is_active = false` → « Inactif » ; le prochain heartbeat le réactive
-- Le premier passage s'exécute au démarrage (`onApplicationBootstrap`) pour rattraper les silences accumulés pendant un arrêt
+Machine à états complète (seuils configurables par env, décimales acceptées) :
+
+- **`pending`** (jamais vu, `last_seen_at NULL`) : reste « En attente » indéfiniment — un capteur associé mais pas encore posé ne génère pas de bruit
+- **`active`** : heartbeat récent ; tout heartbeat ramène le capteur à `active` quel que soit l'état précédent
+- **`inactive`** (« Désactivé ») : silence > `SENSOR_INACTIVE_HOURS` → notification légère `sensor_offline` (sévérité `info`) vers alert-service
+- **`failing`** (« Défaillant ») : silence > `SENSOR_FAILING_HOURS` → alerte rouge `sensor_offline` (sévérité `critical`)
+- Le premier passage s'exécute au démarrage (`onApplicationBootstrap`) pour rattraper les silences accumulés pendant un arrêt — un capteur silencieux depuis plus des deux seuils enchaîne les deux transitions (et les deux alertes) dans le même cycle
+- La config est validée au démarrage : `SENSOR_INACTIVE_HOURS >= SENSOR_FAILING_HOURS` ou un intervalle < 1 minute → refus de démarrer
 
 ### Unicité
 
@@ -876,7 +904,9 @@ module.exports = {
 | `test/farms.controller.spec.ts` | `FarmsController` — create, findAll, findOne, remove. Mock `FarmsService` et `AuthClientService`. Override `JwtAuthGuard`. | 10 cas |
 | `test/parcels.service.spec.ts` | `ParcelsService` — create (succès, ferme inexistante, autre user, dépassement surface, doublon nom), findOne (succès, 404). Mock repositories. | 7 cas |
 | `test/sensors.service.spec.ts` | `SensorsService` — associate (nouveau capteur, réassociation, idempotence, 403 autre user, 404 parcelle, anti-vol capteur, doublon deviceId), findByParcel (succès, vide, 404, 403), dissociate (succès, 404, 403), recordHeartbeat (succès, champs absents, 404). Mock repositories. | 17 cas |
-| `test/sensor-activity.service.spec.ts` | `SensorActivityService` — `deactivateStaleSensors` (seuil 48 h vérifié, retour 0 si rien à désactiver). Mock QueryBuilder. | 2 cas |
+| `test/sensor-activity.service.spec.ts` | `SensorActivityService` — transitions `active → inactive` (seuil 2 h) et `inactive → failing` (seuil 24 h), notifications par niveau, `runSensorHealthChecks` agrégé. Mock repository `find`/`update`. | 7 cas |
+| `test/alert-notifier.service.spec.ts` | `AlertNotifierService` — payload `notifySensorSilent` (info) / `notifySensorFailing` (critical), header `X-Internal-Token`, 409 toléré, erreur réseau avalée (best-effort), owner irrésoluble ignoré. Mock `global.fetch`. | 5 cas |
+| `test/internal-parcels.controller.spec.ts` | `InternalParcelsController` — résolution owner 200, propagation 404. | 2 cas |
 
 ### Commandes
 
@@ -1012,7 +1042,7 @@ CMD ["node", "dist/main.js"]
 ### Endpoints capteurs restant à couvrir
 
 - ❌ Aucun endpoint `GET /:id` pour récupérer un capteur par ID
-- ❌ Aucun endpoint public `PATCH /:id` pour renommer/mettre à jour manuellement un capteur (la mise à jour passe uniquement par le heartbeat interne : `last_seen_at`, `is_active`, batterie, firmware)
+- ❌ Aucun endpoint public `PATCH /:id` pour renommer/mettre à jour manuellement un capteur (la mise à jour passe uniquement par le heartbeat interne : `last_seen_at`, `health_status`, batterie, firmware)
 - ❌ Aucun endpoint de liste globale des capteurs d'un utilisateur (au-delà d'une parcelle)
 
 ### Ingestion de données
@@ -1077,7 +1107,7 @@ CMD ["node", "dist/main.js"]
 | **ORM** | TypeORM 0.3.20 (`synchronize: false`) |
 | **Authentification** | JWT (HS256, secret partagé avec auth-service) |
 | **Communication inter-service** | Sortant : HTTP GET vers `auth-service` `/internal/user/:userId`. Entrant : HTTP PATCH depuis `iot-service` `/internal/sensors/:deviceId/seen` (heartbeat, non routé par la gateway). |
-| **Tâche planifiée** | `SensorActivityService` — `setInterval` horaire, désactivation après 48 h de silence |
+| **Tâche planifiée** | `SensorActivityService` — cycle configurable (`SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES`, 15 min) : `inactive` après 2 h de silence (notification info), `failing` après 24 h (alerte critical) — seuils configurables |
 | **Validation** | class-validator + class-transformer (ValidationPipe global) |
 | **Health checks** | `/api/v1/health/live` + `/api/v1/health/ready` (SELECT 1) |
 | **Métriques** | Aucune |

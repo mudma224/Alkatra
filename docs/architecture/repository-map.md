@@ -162,7 +162,9 @@ Voir [guides/spark-jobs.md](../guides/spark-jobs.md).
 
 ### `apps/alert-service`
 
-Dossier réservé. Contient uniquement `.gitkeep`. Service non implémenté.
+Service NestJS de notification (Sprint 5, port 3006) : alertes in-app (`notification_db`), push FCM (`firebase-admin`, dégradation gracieuse), consumer Kafka `recommendations-generated` (stress hydrique critique, DLQ `alerts-dlq`), publication `alerts-outbound`, ingestion interne `POST /internal/alerts`.
+
+Voir [guides/alert-service.md](../guides/alert-service.md).
 
 ## Packages partagés
 

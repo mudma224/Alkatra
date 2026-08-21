@@ -116,7 +116,7 @@ alkatra-platform/
 │   ├── iot-service/            NestJS — bridge MQTT → Kafka → Mongo
 │   ├── ml-inference-service/   FastAPI — inférence XGBoost
 │   ├── spark-jobs/             PySpark — feature engineering + streaming
-│   └── alert-service/          (dossier réservé, vide)
+│   └── alert-service/          # ✅ Sprint 5 — NestJS notifications (in-app + FCM + Kafka)
 ├── packages/
 │   ├── shared-types/           Types TypeScript partagés (auth, farm, sensor, user)
 │   └── shared-utils/           (dossier réservé, vide)
@@ -132,7 +132,7 @@ alkatra-platform/
 │   └── kubernetes/             manifests K8s (partiel — ml-inference uniquement)
 ├── scripts/                    Scripts utilitaires (simulateur, validation, setup)
 ├── docs/                       Documentation
-├── .github/workflows/          CI/CD (6 workflows)
+├── .github/workflows/          CI/CD (9 workflows)
 ├── package.json                Workspaces, scripts racine, dépendances partagées
 ├── turbo.json                  Orchestration build/test/dev
 ├── tsconfig.json               Configuration TypeScript racine
@@ -200,8 +200,12 @@ Kafka topic "raw-sensor-data" (6 partitions, rétention 7 j)
   ├──▶ iot-service (consumer, group iot-service-mongodb-persister)
   │      ├─▶ MongoDB collection "ai_sensor_features" (persistance brute, TTL 90 j)
   │      └─▶ farm-service PATCH /internal/sensors/:device_id/seen
-  │           (heartbeat best-effort : last_seen_at, is_active, batterie ; les capteurs
-  │            silencieux > 48 h sont désactivés par une vérification horaire)
+  │           (heartbeat best-effort : last_seen_at, health_status=active, batterie.
+  │            Machine à états de santé pilotée par SensorActivityService — cycle
+  │            configurable (SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES, 15 min) :
+  │            silence > SENSOR_INACTIVE_HOURS (2 h) → inactive + notification info,
+  │            silence > SENSOR_FAILING_HOURS (24 h) → failing + alerte critical,
+  │            via POST alert-service:3006/internal/alerts. Seuils en env.)
   │
   └──▶ spark-jobs (Structured Streaming, trigger 30 s)
          │ - Calcule ETo (Penman-Monteith FAO-56)
@@ -230,6 +234,11 @@ Kafka topic "raw-sensor-data" (6 partitions, rétention 7 j)
            │ - Consomme avec idempotence (UNIQUE parcel_id, generated_at)
            │ - DLQ sur "recommendations-generated-dlq" en cas d'erreur
            │ - Persiste dans Postgres (recommendation_db)
+           │
+           ├─▶ alert-service (NestJS, port 3006, group alert-service-group)
+           │     - Même flux consommé : règle hydric-stress (proba ≥ 0.75 ET
+           │       humidité sol ≤ 25 %, configurables) → alerte critique
+           │     - DLQ dédiée "alerts-dlq"
            │
            ▼
          API REST exposée :
@@ -297,7 +306,7 @@ Tableau récapitulatif. Pour le détail, suivre le lien vers le guide de chaque 
 | `iot-service` | 3005 | NestJS / TS | MongoDB (`ai_sensor_features`) | Bridge MQTT → Kafka, validation capteur, persistance time-series | [guides/iot-service.md](guides/iot-service.md) |
 | `ml-inference-service` | 8000 | Python / FastAPI | MongoDB (`irrigation_recommendations`) | Inférence XGBoost, consumer/producer Kafka, registre MLflow | [guides/ml-inference-service.md](guides/ml-inference-service.md) |
 | `spark-jobs` | — | Python / PySpark | Redis (état) | Feature engineering (ETo, Kc), streaming Kafka→Kafka | [guides/spark-jobs.md](guides/spark-jobs.md) |
-| `alert-service` | — | (réservé) | — | Dossier réservé, non implémenté | — |
+| `alert-service` | 3006 | NestJS / TS | `notification_db` (Postgres) | Notifications in-app + push FCM + traçabilité Kafka ; consumer `recommendations-generated` (stress hydrique) ; ingestion interne farm-service (capteurs) | [guides/alert-service.md](guides/alert-service.md) |
 
 ### Endpoints clés par service
 
@@ -315,12 +324,21 @@ Tableau récapitulatif. Pour le détail, suivre le lien vers le guide de chaque 
 - `PATCH /api/v1/user/profile` — proxy vers auth-service
 - `GET /api/v1/farms` — renvoie `501 NotImplementedException` (route réservée)
 
-**farm-service** (`/api/v1/farms`, `/api/v1/parcels`, `/api/v1/sensors`, `/api/v1/health` + endpoints internes `/internal/sensors`)
+**farm-service** (`/api/v1/farms`, `/api/v1/parcels`, `/api/v1/sensors`, `/api/v1/health` + endpoints internes `/internal/sensors`, `/internal/parcels`)
 - CRUD complet sur `farms` et `parcels` (JWT, isolation par `ownerId`)
 - `POST /api/v1/sensors/associate` — association capteur → parcelle (idempotente, anti-vol)
 - `GET /api/v1/sensors/parcel/:parcelId` — capteurs d'une parcelle
 - `DELETE /api/v1/sensors/:sensorId` — dissociation (mesures MongoDB conservées)
-- `PATCH /internal/sensors/:deviceId/seen` — heartbeat appelé par iot-service (non routé par la gateway) ; désactivation automatique des capteurs silencieux > 48 h
+- `PATCH /internal/sensors/:deviceId/seen` — heartbeat appelé par iot-service (non routé par la gateway) ; ramène `health_status = 'active'`
+- `GET /internal/parcels/:parcelId/owner` — résolution parcelle → propriétaire (utilisé par alert-service pour le flux Kafka)
+- Machine à états santé capteurs (`SensorActivityService`) : `pending → active → inactive (silence > 2 h configurable) → failing (silence > 24 h configurable)`, avec notifications vers alert-service à chaque transition
+
+**alert-service** (`/api/v1/alerts`, `/api/v1/devices`, `/internal/alerts`, `/health`, `/metrics`)
+- `GET /api/v1/alerts` — liste paginée des alertes de l'utilisateur (filtres `status`, `unreadOnly`)
+- `GET /api/v1/alerts/unread-count` — compteur de non-lues (badge)
+- `PATCH /api/v1/alerts/:id/read` · `PATCH /api/v1/alerts/read-all` — marquage lu
+- `POST /api/v1/devices` · `DELETE /api/v1/devices/:token` — enregistrement/révocation des tokens push FCM
+- `POST /internal/alerts` — ingestion des alertes des services (farm-service : capteur silencieux/défaillant/batterie) ; 409 = dédup < 24 h par (user, parcelle, type, sévérité)
 
 **recommendation-service** (`/api/v1/recommendations`, `/health`, `/metrics`)
 - `GET /parcel/:parcelId/today` — recommandation du jour
@@ -348,7 +366,7 @@ La plateforme adopte le principe **un service = une base de données**, avec iso
 | `auth_db` | `auth_user` | auth-service | `users` |
 | `farm_db` | `farm_user` | farm-service | `farms`, `parcels`, `sensors` |
 | `recommendation_db` | `recommendation_user` | recommendation-service | `recommendations` |
-| `notification_db` | `notify_user` | (réservé) | `alerts` |
+| `notification_db` | `notify_user` | alert-service | `alerts`, `device_tokens` |
 | `keycloak_db` | `keycloak_user` | Keycloak | (gérée par Keycloak) |
 | `mlflow_db` | `mlflow_user` | MLflow | (gérée par MLflow Alembic) |
 
@@ -377,10 +395,11 @@ Kafka tourne en mode KRaft single-node (image `apache/kafka:3.7.0`) avec deux li
 |---|---|---|---|---|
 | `raw-sensor-data` | 6 | 7 jours | iot-service | iot-service (persistance Mongo), spark-jobs |
 | `processed-sensor-data` | 6 | 7 jours | spark-jobs | ml-inference-service |
-| `recommendations-generated` | 3 | 24 heures | ml-inference-service | recommendation-service |
+| `recommendations-generated` | 3 | 24 heures | ml-inference-service | recommendation-service, alert-service |
 | `recommendations-generated-dlq` | 3 | 7 jours | recommendation-service | (dead letter queue) |
 | `ml-inference-requests` | 3 | 1 heure | (réservé) | (réservé) |
-| `alerts-outbound` | 3 | 24 heures | (réservé pour alert-service) | (réservé) |
+| `alerts-outbound` | 3 | 24 heures | alert-service (fan-out, best-effort) | (réservé passerelle SMS Phase 2) |
+| `alerts-dlq` | 3 | 7 jours | alert-service | (dead letter queue du consumer alert-service) |
 | `sensor-anomalies` | 2 | 7 jours | (réservé) | (réservé) |
 
 Les topics sont créés par `infra/kafka/topics.sh` (replication-factor 1, single-node). L'auto-création est aussi activée côté broker (`KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`) et côté producer iot-service (`allowAutoTopicCreation: true`).
@@ -423,6 +442,7 @@ Les services métier sont démarrés avec le profil `phase1` via `npm run docker
 | `alkatra-user` | 3002 | `phase1` | auth-service |
 | `alkatra-farm` | 3003 | `phase1` | postgres, auth-service |
 | `alkatra-recommendation` | 3004 | `phase1` | postgres, kafka, farm-service |
+| `alkatra-alert` | 3006 | `phase1` | postgres, kafka, farm-service |
 | `alkatra-keycloak` | 8081 → 8080 | `phase1` | postgres |
 
 > Le port Keycloak exposé sur le host est **8081** (modifié pour éviter le conflit avec la gateway sur 8080). En interne Docker, le conteneur écoute sur 8080.
@@ -445,17 +465,20 @@ L'API Gateway est un Nginx avec template dynamique (`infra/nginx/nginx.conf.temp
 | `~ ^/api/v1/farms(/.*)?$` | farm-service:3003 | `api_limit` (30 r/s, burst 20) |
 | `~ ^/api/v1/parcels(/.*)?$` | farm-service:3003 | `api_limit` |
 | `~ ^/api/v1/sensors(/.*)?$` | farm-service:3003 | `api_limit` |
+| `~ ^/api/v1/alerts(/.*)?$` | alert-service:3006 | `api_limit` |
+| `~ ^/api/v1/devices(/.*)?$` | alert-service:3006 | `api_limit` |
 | `/` | (404 JSON) | — |
 
-Les routes iot-service, ml-inference-service et recommendation-service ne sont pas exposées via la gateway.
+Les routes iot-service et ml-inference-service ne sont pas exposées via la gateway. Les endpoints `/internal/*` (heartbeat, ingestion d'alertes, résolution owner) ne sont jamais routés.
 
 ### Variables d'environnement requises par le template
 
-Le `entrypoint.sh` valide la présence de 6 variables avant substitution et refuse de démarrer sinon :
+Le `entrypoint.sh` valide la présence de 8 variables avant substitution et refuse de démarrer sinon :
 
 - `AUTH_SERVICE_HOST`, `AUTH_SERVICE_PORT`
 - `USER_SERVICE_HOST`, `USER_SERVICE_PORT`
 - `FARM_SERVICE_HOST`, `FARM_SERVICE_PORT`
+- `ALERT_SERVICE_HOST`, `ALERT_SERVICE_PORT`
 
 Les variables `RECOMMENDATION_SERVICE_*` sont injectées par le compose mais ne sont pas consommées par le template actuel (réservées pour une route future).
 
@@ -472,7 +495,7 @@ Le détail complet (config, ajouter une route) est dans [`docs/guides/api-gatewa
 
 ## 11. CI/CD
 
-Six workflows GitHub Actions dans `.github/workflows/`. Tous se déclenchent sur `push` et `pull_request` vers `main` et `develop`, avec filtres de chemins pour ne lancer que les jobs pertinents.
+Neuf workflows GitHub Actions dans `.github/workflows/`. Tous se déclenchent sur `push` et `pull_request` vers `main` et `develop`, avec filtres de chemins pour ne lancer que les jobs pertinents.
 
 | Workflow | Cible | Jobs |
 |---|---|---|
@@ -482,6 +505,9 @@ Six workflows GitHub Actions dans `.github/workflows/`. Tous se déclenchent sur
 | `ci-spark.yml` | `apps/spark-jobs/**` | pytest fonctions pures (`-k "not spark and not kafka"`), ruff, build + run image Docker |
 | `ci-auth.yml` | `apps/auth-service/**`, `packages/shared-types/**` | Lint + build + tests unitaires (npm workspace) |
 | `ci-farm.yml` | `apps/farm-service/**`, `packages/shared-types/**` | Tests avec service Postgres PostGIS (init `farm-db.sql`), build Docker |
+| `ci-recommendation.yml` | `apps/recommendation-service/**`, `packages/shared-types/**` | Lint + tests unitaires (npm workspace), vérification build Docker |
+| `ci-alert.yml` | `apps/alert-service/**`, `packages/shared-types/**` | Lint + tests unitaires (npm workspace), vérification build Docker |
+| `ci-frontend.yml` | `frontend/**` | Lint + tests + build du frontend |
 
 Versions CI : **Node.js 20** pour les workflows TypeScript, **Python 3.11** pour les workflows ML/Spark.
 
@@ -686,6 +712,7 @@ Map `statusCode → errorCode` : 400 `BAD_REQUEST`, 401 `UNAUTHORIZED`, 403 `FOR
 - [`docs/guides/iot-service.md`](guides/iot-service.md)
 - [`docs/guides/ml-inference-service.md`](guides/ml-inference-service.md)
 - [`docs/guides/spark-jobs.md`](guides/spark-jobs.md)
+- [`docs/guides/alert-service.md`](guides/alert-service.md)
 
 ### Guides transverses
 

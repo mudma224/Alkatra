@@ -325,7 +325,7 @@ Tous les composants sont colocalisés avec leur CSS module (`<Nom>.module.css`) 
 
 - **`ParcelCard`** : card cliquable (nom, « Culture · Irrigation » en labels FR, badge surface, pill « ● Capteur » / « ● N capteurs » / « Sans capteur », chevron).
 - **`ParcelForm`** : formulaire partagé création (5 champs requis) / édition (+ 4 optionnels) ; selects sur `CROP_TYPE_OPTIONS` / `SOIL_TYPE_OPTIONS` / `IRRIGATION_METHOD_OPTIONS`.
-- **`SensorStatusPill`** : pill dérivée de `getSensorStatus(sensor)` — ● Actif (vert) / ○ En attente (creux, jamais vu) / ● Inactif (gris, silence > 48 h).
+- **`SensorStatusPill`** : pill lisant directement `sensor.healthStatus` renvoyé par farm-service — ● Actif (vert) / ○ En attente (creux, jamais vu) / ● Désactivé (gris plein, silence > `SENSOR_INACTIVE_HOURS`, 2 h par défaut) / ● Défaillant (rouge, silence > `SENSOR_FAILING_HOURS`, 24 h par défaut — seuils configurables côté backend).
 - **`SensorListItem`** : ligne complète (deviceId, lien « Dissocier » rouge, `SensorStatusPill`, « Batterie N % », « Vu il y a … » via `formatLastSeen`).
 - **`SensorSection`** : bloc capteurs du détail — bouton « + Associer » au-dessus de la card ; ≤ 3 capteurs : liste complète avec Dissocier ; > 3 : card compacte (3 max) + lien « Voir tous les capteurs (N) › » ; modales d'association et de dissociation (messages rassurants : mesures conservées, réassociation possible).
 - **`AssociateSensorDialog`** : modale de saisie du `deviceId` (placeholder `ex. ESP32-OL-001`), bouton Associer désactivé si vide, erreur 403 anti-vol affichée dans la modale, Échap/Annuler.

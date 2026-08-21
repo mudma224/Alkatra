@@ -33,7 +33,7 @@
 
 1. **Bridge MQTT → Kafka** — souscrit au broker Mosquitto, valide le contrat IA des payload capteurs, détecte les anomalies, puis publie les lectures enrichies sur le topic Kafka `raw-sensor-data`.
 2. **Consumer Kafka → MongoDB** — consomme le topic `raw-sensor-data`, persiste chaque lecture dans la collection MongoDB `ai_sensor_features` (rétention 90 jours), puis notifie `farm-service` du passage du capteur (heartbeat).
-3. **Heartbeat capteurs vers farm-service** — après chaque persistance, appelle `PATCH /internal/sensors/:deviceId/seen` (best-effort) pour rafraîchir `last_seen_at`, `is_active` et éventuellement batterie/firmware dans `farm_db`.
+3. **Heartbeat capteurs vers farm-service** — après chaque persistance, appelle `PATCH /internal/sensors/:deviceId/seen` (best-effort) pour rafraîchir `last_seen_at`, `health_status` (→ `active`) et éventuellement batterie/firmware dans `farm_db`.
 4. **Surface d'observabilité** — expose deux endpoints non protégés : `GET /health` (statistiques runtime) et `GET /metrics` (métriques au format Prometheus).
 
 **Ce qu'il fait :**
@@ -86,7 +86,7 @@ iot-service — SensorDataConsumer (group iot-service-mongodb-persister)
               │
               ▼
         MongoDB — collection ai_sensor_features (TTL 90 jours)
-        farm-service — table sensors (last_seen_at, is_active, batterie, firmware)
+        farm-service — table sensors (last_seen_at, health_status, batterie, firmware)
 ```
 
 ### Architecture des dépendances

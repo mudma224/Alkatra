@@ -20,8 +20,29 @@ Le fichier `.env` local ne doit pas etre committe.
 | `KEYCLOAK_ADMIN` | admin Keycloak |
 | `KEYCLOAK_ADMIN_PASSWORD` | mot de passe Keycloak |
 | `MLFLOW_TRACKING_URI` | URI MLflow locale (`http://localhost:5001`) |
-| `JWT_SECRET` | secret JWT partagé (auth-service / user-service / farm-service / recommendation-service) |
-| `INTERNAL_TOKEN` | (optionnel) token d'authentification mutuelle entre services pour les endpoints `/internal/*` — header `X-Internal-Token`. Utilisé par le heartbeat capteurs iot-service → farm-service. Si absent, l'isolation réseau Docker suffit en développement |
+| `JWT_SECRET` | secret JWT partagé (auth-service / user-service / farm-service / recommendation-service / alert-service) |
+| `INTERNAL_TOKEN` | (optionnel) token d'authentification mutuelle entre services pour les endpoints `/internal/*` — header `X-Internal-Token`. Utilisé par le heartbeat capteurs iot-service → farm-service, les notifications farm-service → alert-service et la résolution owner alert-service → farm-service. Si absent, l'isolation réseau Docker suffit en développement |
+| `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | credentials FCM (les trois requis ensemble) — vides = canal push désactivé, alert-service fonctionne in-app uniquement |
+
+## Santé capteurs (farm-service)
+
+Seuils de la machine à états `pending → active → inactive → failing`, modifiables à tout moment dans `.env` (puis recréer le conteneur farm-service). Les heures acceptent les décimales pour tester vite (`0.05` h = 3 min) :
+
+| Variable | Défaut | Usage |
+| --- | --- | --- |
+| `SENSOR_INACTIVE_HOURS` | `2` | silence au-delà duquel un capteur `active` passe `inactive` (« Désactivé ») + notification légère (`sensor_offline` sévérité `info`) |
+| `SENSOR_FAILING_HOURS` | `24` | silence au-delà duquel un capteur `inactive` est escaladé `failing` (« Défaillant ») + alerte rouge (`sensor_offline` sévérité `critical`). Doit rester strictement supérieur à `SENSOR_INACTIVE_HOURS` (validé au démarrage) |
+| `SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES` | `15` | cadence du cycle de santé (≥ 1 minute) |
+| `LOW_BATTERY_THRESHOLD` | `20` | seuil (%) de batterie faible — alerte `low_battery` (sévérité `warning`) |
+
+## alert-service
+
+| Variable | Défaut | Usage |
+| --- | --- | --- |
+| `ALERT_SERVICE_PORT` | `3006` | port d'écoute |
+| `HYDRIC_STRESS_PROBABILITY_THRESHOLD` | `0.75` | probabilité d'irrigation au-delà de laquelle une recommandation est critique (politique de notification, pas du ML) |
+| `HYDRIC_STRESS_SOIL_HUMIDITY_MAX_PCT` | `25` | humidité du sol en dessous de laquelle une recommandation est critique |
+| `DEDUP_WINDOW_HOURS` | `24` | fenêtre de déduplication des alertes par (user, parcelle, type, sévérité) |
 
 ## Mots de passe multi-bases PostgreSQL
 

@@ -4,7 +4,7 @@ Ce document décrit les pipelines GitHub Actions qui vérifient le code du monor
 
 ## Vue d'ensemble
 
-Le monorepo est vérifié par six workflows GitHub Actions, définis dans `.github/workflows/`. Chaque workflow se déclenche sur les branches `main` et `develop`. Les workflows spécialisés (`ci-iot`, `ci-ml`, `ci-spark`, `ci-auth`, `ci-farm`) utilisent des filtres de chemins (`paths`) pour ne s'exécuter que lorsqu'un service concerné est modifié. Le workflow `ci-common` s'exécute sur l'ensemble du dépôt, sans filtre de chemins.
+Le monorepo est vérifié par neuf workflows GitHub Actions, définis dans `.github/workflows/`. Chaque workflow se déclenche sur les branches `main` et `develop`. Les workflows spécialisés (`ci-iot`, `ci-ml`, `ci-spark`, `ci-auth`, `ci-farm`, `ci-recommendation`, `ci-alert`, `ci-frontend`) utilisent des filtres de chemins (`paths`) pour ne s'exécuter que lorsqu'un service concerné est modifié. Le workflow `ci-common` s'exécute sur l'ensemble du dépôt, sans filtre de chemins.
 
 Les versions d'exécuteur utilisées en CI :
 
@@ -24,6 +24,9 @@ Les versions d'exécuteur utilisées en CI :
 | Spark | `ci-spark.yml` | `apps/spark-jobs/**` | Test Feature Engineering, Validate Spark Docker Build |
 | Auth | `ci-auth.yml` | `apps/auth-service/**`, `packages/shared-types/**`, `.github/workflows/ci-auth.yml` | Lint, Build & Test |
 | Farm | `ci-farm.yml` | `apps/farm-service/**`, `packages/shared-types/**`, `packages/shared-utils/**`, `.github/workflows/ci-farm.yml` | Lint/Build/Test (avec Postgres PostGIS), Build Docker Image |
+| Recommendation | `ci-recommendation.yml` | `apps/recommendation-service/**`, `packages/shared-types/**`, `.github/workflows/ci-recommendation.yml` | Lint, Test & Build, Vérification build Docker |
+| Alert | `ci-alert.yml` | `apps/alert-service/**`, `packages/shared-types/**`, `.github/workflows/ci-alert.yml` | Lint, Test & Build, Vérification build Docker |
+| Frontend | `ci-frontend.yml` | `frontend/**` | Lint, Test & Build du frontend |
 
 ## Détail par workflow
 
@@ -100,6 +103,19 @@ Job **Lint, Build & Test** — utilise un service conteneur Postgres avec l'imag
 - `npm run test --workspace=farm-service` avec les variables Postgres et `JWT_SECRET=test_jwt_secret_for_ci`.
 
 Job **Build Docker Image** — dépend du job de test. `docker build apps/farm-service --target development -t alkatra-farm:ci`.
+
+### ci-alert.yml
+
+Se déclenche sur les modifications de `apps/alert-service/**`, `packages/shared-types/**` et du fichier workflow lui-même (push) ; pour les PR, seuls le service et shared-types sont surveillés. Même structure que `ci-recommendation.yml` :
+
+Job **Lint, Test & Build** — `npm ci` à la racine du monorepo, puis au niveau workspace :
+
+- `npm run lint --workspace=@alkatra/alert-service` ;
+- `npm run test --workspace=@alkatra/alert-service -- --coverage` (Jest + ts-jest, 10 suites unitaires, aucun broker Kafka ni base réelle — tout est mocké) ;
+- `npm run build --workspace=@alkatra/alert-service` ;
+- upload du rapport de couverture (`apps/alert-service/coverage`, rétention 7 jours).
+
+Job **Vérification build Docker (sans push)** — dépend du job précédent. `docker/build-push-action@v5` avec `context: .` et `file: apps/alert-service/Dockerfile` (multi-stage, contexte racine pour les workspaces), tag `alkatra/alert-service:ci`.
 
 ## Validation Kubernetes
 

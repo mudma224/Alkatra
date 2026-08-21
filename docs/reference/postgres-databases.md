@@ -65,7 +65,7 @@ Chaque microservice possède **sa propre base de données** et **son propre util
 | `auth-service` | `auth_db` | `auth_user` | `users` |
 | `farm-service` | `farm_db` | `farm_user` | `farms`, `parcels`, `sensors` |
 | `recommendation-service` | `recommendation_db` | `recommendation_user` | `recommendations` |
-| `alert-service` | `notification_db` | `notify_user` | `alerts` |
+| `alert-service` | `notification_db` | `notify_user` | `alerts`, `device_tokens` |
 | `keycloak` | `keycloak_db` | `keycloak_user` | schema `keycloak` (géré par Keycloak) |
 | `mlflow` | `mlflow_db` | `mlflow_user` | Tables gérées par MLflow (Alembic) |
 
@@ -189,7 +189,7 @@ infra/postgres/
     ├── auth-db.sql                 # auth_db : table users
     ├── farm-db.sql                 # farm_db : tables farms, parcels, sensors
     ├── recommendation-db.sql       # recommendation_db : table recommendations
-    └── notification-db.sql         # notification_db : table alerts
+    └── notification-db.sql         # notification_db : tables alerts, device_tokens
 ```
 
 ### Ordre d'exécution
@@ -399,7 +399,7 @@ CREATE TABLE sensors (
     parcel_id        UUID NOT NULL REFERENCES parcels(id) ON DELETE CASCADE,
     device_id        VARCHAR(100) UNIQUE NOT NULL,
     device_type      VARCHAR(50) NOT NULL DEFAULT 'esp32-wroom-32',
-    is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+    health_status    sensor_health_status_enum NOT NULL DEFAULT 'pending',
     last_seen_at     TIMESTAMP WITH TIME ZONE,
     battery_pct      INT,
     firmware_version VARCHAR(20),
@@ -415,14 +415,14 @@ CREATE TABLE sensors (
 | `parcel_id` | UUID | FK → parcels(id) CASCADE | Parcelle associée |
 | `device_id` | VARCHAR(100) | UNIQUE, NOT NULL | Identifiant matériel du capteur |
 | `device_type` | VARCHAR(50) | défaut `'esp32-wroom-32'` | Type de capteur |
-| `is_active` | BOOLEAN | défaut TRUE | Passé à FALSE par la vérification horaire du farm-service après 48 h de silence (`last_seen_at`), remis à TRUE par chaque heartbeat |
+| `health_status` | ENUM | défaut `'pending'` | Machine à états pilotée par `SensorActivityService` : `pending` (jamais vu) → `active` (heartbeat) → `inactive` (silence > `SENSOR_INACTIVE_HOURS`, 2 h par défaut) → `failing` (silence > `SENSOR_FAILING_HOURS`, 24 h par défaut). Tout heartbeat ramène à `active`. Seuils configurables côté farm-service |
 | `last_seen_at` | TIMESTAMP | nullable | Dernière communication — mise à jour par le heartbeat iot-service (`PATCH /internal/sensors/:deviceId/seen`) ; NULL = jamais vu |
 | `battery_pct` | INT | 0-100 | Niveau de batterie |
 | `firmware_version` | VARCHAR(20) | nullable | Version du firmware |
 | `created_at` | TIMESTAMP | auto | Date de création |
 | `updated_at` | TIMESTAMP | auto | Date de modification |
 
-**Index** : `idx_sensors_parcel_id`, `idx_sensors_device_id`, `idx_sensors_active`  
+**Index** : `idx_sensors_parcel_id`, `idx_sensors_device_id`, `idx_sensors_health_status`  
 **Trigger** : `set_sensors_updated_at`
 
 ---
@@ -491,7 +491,7 @@ CREATE TABLE recommendations (
 
 ---
 
-### `notification_db` — Table `alerts`
+### `notification_db` — Tables `alerts` et `device_tokens`
 
 **Fichier** : `infra/postgres/schemas/notification-db.sql`  
 **Service propriétaire** : `alert-service`  
@@ -499,29 +499,54 @@ CREATE TABLE recommendations (
 
 ```sql
 CREATE TABLE alerts (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id    UUID,
-    parcel_id  UUID,
-    alert_type alert_type_enum NOT NULL,
-    status     alert_status_enum NOT NULL DEFAULT 'unread',
-    title      VARCHAR(255),
-    message    TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id     UUID,
+    parcel_id   UUID,
+    alert_type  alert_type_enum NOT NULL,
+    severity    alert_severity_enum NOT NULL DEFAULT 'info',
+    status      alert_status_enum NOT NULL DEFAULT 'unread',
+    title       VARCHAR(255),
+    message     TEXT NOT NULL,
+    data        JSONB NOT NULL DEFAULT '{}',
+    read_at     TIMESTAMP WITH TIME ZONE,
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CHECK (read_at IS NULL OR status <> 'unread')
+);
+
+CREATE TABLE device_tokens (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id      UUID NOT NULL,
+    token        VARCHAR(255) UNIQUE NOT NULL,
+    platform     VARCHAR(20) NOT NULL DEFAULT 'android',
+    created_at   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    revoked_at   TIMESTAMP WITH TIME ZONE,
+    CHECK (platform IN ('android', 'ios', 'web'))
 );
 ```
 
-| Colonne | Type | Contrainte | Description |
+| Table `alerts` — Colonne | Type | Contrainte | Description |
 |---------|------|-----------|-------------|
-| `id` | UUID | PK | Identifiant unique |
-| `user_id` | UUID | nullable | Utilisateur concerné (dans auth_db, pas de FK) |
+| `user_id` | UUID | nullable | Utilisateur destinataire (dans auth_db, pas de FK) |
 | `parcel_id` | UUID | nullable | Parcelle concernée (dans farm_db, pas de FK) |
-| `alert_type` | ENUM | NOT NULL | Type d'alerte |
-| `status` | ENUM | défaut `'unread'` | Statut de l'alerte |
-| `title` | VARCHAR(255) | nullable | Titre de l'alerte |
-| `message` | TEXT | NOT NULL | Message de l'alerte |
-| `created_at` | TIMESTAMP | auto | Date de création |
+| `alert_type` | ENUM | NOT NULL | Type d'alerte (8 valeurs) |
+| `severity` | ENUM | défaut `'info'` | `info` (notification légère) / `warning` / `critical` (alerte rouge) |
+| `status` | ENUM | défaut `'unread'` | `unread` / `read` / `resolved` |
+| `data` | JSONB | défaut `'{}'` | Contexte structuré (deviceId, silentHours, seuils…) |
+| `read_at` | TIMESTAMP | nullable | Passée à NOW() au mark-read (cohérence CHECK avec status) |
 
-**Index** : `idx_alerts_user_id`, `idx_alerts_parcel_id`, `idx_alerts_type`
+| Table `device_tokens` — Colonne | Type | Contrainte | Description |
+|---------|------|-----------|-------------|
+| `user_id` | UUID | NOT NULL | Propriétaire du device |
+| `token` | VARCHAR(255) | UNIQUE | Token FCM (un device = un compte) |
+| `platform` | VARCHAR(20) | CHECK android/ios/web | Plateforme cliente |
+| `last_seen_at` | TIMESTAMP | auto NOW() | Mis à jour à chaque ré-enregistrement |
+| `revoked_at` | TIMESTAMP | nullable | NULL = actif — révocation logique (manuelle ou auto par FCM) |
+
+**Index `alerts`** : `idx_alerts_user_created` (user_id, created_at DESC — liste paginée), `idx_alerts_user_status` (unread-count), `idx_alerts_parcel_id`, `idx_alerts_type`  
+**Index `device_tokens`** : `idx_device_tokens_user`, `idx_device_tokens_active` (partiel `WHERE revoked_at IS NULL`)  
+**Trigger** : `set_alerts_updated_at`
 
 ---
 
@@ -607,7 +632,19 @@ CREATE TYPE alert_type_enum AS ENUM (
 );
 
 CREATE TYPE alert_status_enum AS ENUM ('unread', 'read', 'resolved');
+
+CREATE TYPE alert_severity_enum AS ENUM ('info', 'warning', 'critical');
 ```
+
+Utilisé par : `alerts.severity` — la sévérité distingue les niveaux d'un même type (`sensor_offline` info à 2 h vs critical à 24 h) et fait partie de la clé de déduplication d'alert-service.
+
+Également dans `farm_db` :
+
+```sql
+CREATE TYPE sensor_health_status_enum AS ENUM ('pending', 'active', 'inactive', 'failing');
+```
+
+Utilisé par : `sensors.health_status` — machine à états de santé capteurs (seuils configurables côté farm-service).
 
 Utilisé par : `alerts.alert_type`, `alerts.status`
 
