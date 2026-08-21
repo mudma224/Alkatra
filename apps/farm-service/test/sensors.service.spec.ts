@@ -49,7 +49,7 @@ describe('SensorsService', () => {
     parcelId: mockParcel.id,
     parcel: null,
     deviceType: 'esp32-wroom-32',
-    isActive: true,
+    healthStatus: 'active',
     batteryPct: null,
     firmwareVersion: null,
     lastSeenAt: null,
@@ -263,13 +263,13 @@ describe('SensorsService', () => {
 
   describe('recordHeartbeat()', () => {
     it('✅ Devrait rafraîchir last_seen_at, réactiver et enregistrer la batterie', async () => {
-      const silentSensor = { ...mockSensor, isActive: false, batteryPct: null };
+      const silentSensor = { ...mockSensor, healthStatus: 'failing', batteryPct: null };
       mockSensorRepo.findOne.mockResolvedValue(silentSensor as any);
       mockSensorRepo.save.mockImplementation(async (sensor) => sensor as any);
 
       const result = await service.recordHeartbeat('SENSOR-OL-001', { batteryPct: 87 });
 
-      expect(result.isActive).toBe(true);
+      expect(result.healthStatus).toBe('active');
       expect(result.batteryPct).toBe(87);
       expect(result.lastSeenAt).toBeInstanceOf(Date);
       expect(sensorRepo.save).toHaveBeenCalled();
