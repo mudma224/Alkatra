@@ -1,0 +1,109 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-card);
+
+  /* Light surface replaces the dark green card from the supplied Figma. */
+  background-color: var(--color-secondary-100);
+  color: var(--color-primary-700);
+}
+
+.headerRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.title {
+  max-width: 280px;
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-heading-sm);
+  line-height: 1.35;
+  color: var(--color-primary-700);
+}
+
+.quantity {
+  margin: var(--spacing-md) 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-button);
+  color: var(--color-primary-500);
+}
+
+.irrigationIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: var(--radius-button);
+  background-color: var(--color-secondary-500);
+  color: var(--color-primary-700);
+}
+
+.irrigationIcon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.explanationPanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  min-height: 64px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-input);
+  background-color: var(--color-neutral-0);
+}
+
+.explanation {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  line-height: 1.4;
+  color: var(--color-primary-500);
+}
+
+.botIcon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  color: var(--color-primary-500);
+}
+
+.duration {
+  margin: -4px 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  color: var(--color-primary-500);
+}
+
+.demoBadge {
+  align-self: flex-start;
+  margin: -4px 0 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-badge);
+  background-color: var(--color-neutral-0);
+  font-size: var(--font-size-error);
+  color: var(--color-neutral-grey);
+}
+
+@media (max-width: 375px) {
+  .card {
+    padding: var(--spacing-md);
+  }
+
+  .title {
+    font-size: var(--font-size-body);
+  }
+}
