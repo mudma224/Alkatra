@@ -1,0 +1,65 @@
+name: CI - alert-service
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'apps/alert-service/**'
+      - 'packages/shared-types/**'
+      - '.github/workflows/ci-alert.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'apps/alert-service/**'
+      - 'packages/shared-types/**'
+
+jobs:
+  lint-test-build:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (monorepo)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --workspace=@alkatra/alert-service
+
+      - name: Unit tests (avec couverture)
+        run: npm run test --workspace=@alkatra/alert-service -- --coverage
+
+      - name: Build
+        run: npm run build --workspace=@alkatra/alert-service
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alert-service-coverage
+          path: apps/alert-service/coverage
+          retention-days: 7
+
+  docker-build-check:
+    name: Vérification build Docker (sans push)
+    runs-on: ubuntu-latest
+    needs: lint-test-build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image (CI only, no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/alert-service/Dockerfile
+          push: false
+          tags: alkatra/alert-service:ci
