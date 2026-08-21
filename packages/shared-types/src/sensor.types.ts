@@ -1,5 +1,14 @@
 export const SENSOR_SCHEMA_VERSION = 'sensor-ai-v2';
 
+/**
+ * Santé d'un capteur (machine à états pilotée par farm-service) :
+ * - pending  : associé mais jamais vu ;
+ * - active   : envoie des données (heartbeat récent) ;
+ * - inactive : silencieux > SENSOR_INACTIVE_HOURS (2 h par défaut) ;
+ * - failing  : silencieux > SENSOR_FAILING_HOURS (24 h par défaut).
+ */
+export type SensorHealthStatus = 'pending' | 'active' | 'inactive' | 'failing';
+
 export interface RawSensorPayload {
   ts: number;
   device_id: string;
