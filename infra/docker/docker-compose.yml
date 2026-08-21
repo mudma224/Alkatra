@@ -358,7 +358,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
       ML_INFERENCE_URL: http://ml-inference-service:8000
-      # Heartbeat capteurs → endpoint interne du farm-service (last_seen_at / is_active)
+      # Heartbeat capteurs → endpoint interne du farm-service (last_seen_at / health_status)
       FARM_SERVICE_URL: http://farm-service:3003
     ports:
       - "3005:3005"
@@ -473,6 +473,8 @@ services:
       FARM_SERVICE_PORT: ${FARM_SERVICE_PORT:-3003}
       RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST:-recommendation-service}
       RECOMMENDATION_SERVICE_PORT: ${RECOMMENDATION_SERVICE_PORT:-3004}
+      ALERT_SERVICE_HOST: ${ALERT_SERVICE_HOST:-alert-service}
+      ALERT_SERVICE_PORT: ${ALERT_SERVICE_PORT:-3006}
     depends_on:
       auth-service:
         condition: service_healthy
@@ -481,6 +483,8 @@ services:
       farm-service:
         condition: service_healthy
       recommendation-service:
+        condition: service_healthy
+      alert-service:
         condition: service_healthy
     networks:
       - alkatra-net
@@ -592,6 +596,16 @@ services:
       DATABASE_URL: postgresql://farm_user:${FARM_DB_PASSWORD:-farm_dev_pass}@postgres:5432/farm_db
       JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
       AUTH_SERVICE_URL: http://auth-service:3001
+      # --- alert-service (notification capteur silencieux / défaillant / batterie faible) ---
+      ALERT_SERVICE_URL: http://alert-service:3006
+      # Token inter-services partagé (header X-Internal-Token) — vide = isolation réseau uniquement
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      LOW_BATTERY_THRESHOLD: "20"
+      # --- Santé capteurs : seuils configurables (heures, décimales acceptées)
+      # + cadence du cycle — surchargeables via le .env racine ---
+      SENSOR_INACTIVE_HOURS: ${SENSOR_INACTIVE_HOURS:-2}
+      SENSOR_FAILING_HOURS: ${SENSOR_FAILING_HOURS:-24}
+      SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES: ${SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES:-15}
       # CORS : origines du frontend autorisées (dev Vite + fallback historique)
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
     depends_on:
@@ -647,6 +661,64 @@ services:
       - ./../../apps/recommendation-service/src:/workspace/apps/recommendation-service/src
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:3004/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - alkatra-net
+
+# ==========================================
+# ALERT SERVICE — Notifications (in-app + FCM + Kafka)
+# ==========================================
+  alert-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/alert-service/Dockerfile
+      target: development
+    container_name: alkatra-alert
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: development
+      PORT: 3006
+      TZ: Africa/Casablanca
+      DATABASE_URL: postgresql://notify_user:${NOTIFY_DB_PASSWORD:-notify_dev_pass}@postgres:5432/notification_db
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      # Token inter-services (header X-Internal-Token) — vide = isolation réseau uniquement
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: alert-service
+      KAFKA_GROUP_ID: alert-service-group
+      KAFKA_RECOMMENDATIONS_TOPIC: recommendations-generated
+      KAFKA_TOPIC_DLQ: alerts-dlq
+      KAFKA_OUTBOUND_TOPIC: alerts-outbound
+      KAFKA_CONSUMER_ENABLED: "true"
+      FARM_SERVICE_URL: http://farm-service:3003
+      FARM_SERVICE_TIMEOUT_MS: "5000"
+      # Règle stress hydrique critique
+      HYDRIC_STRESS_PROBABILITY_THRESHOLD: "0.75"
+      HYDRIC_STRESS_SOIL_HUMIDITY_MAX_PCT: "25"
+      # Dédup fenêtre glissante (heures)
+      DEDUP_WINDOW_HOURS: "24"
+      # FCM — vides = canal push désactivé (mode in-app uniquement)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      CORS_ORIGINS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      farm-service:
+        condition: service_healthy
+    volumes:
+      - ./../../apps/alert-service/src:/workspace/apps/alert-service/src
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3006/health/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

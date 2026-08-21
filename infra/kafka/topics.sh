@@ -36,6 +36,9 @@ create_topic "ml-inference-requests" 3 3600000
 create_topic "recommendations-generated" 3 86400000
 create_topic "recommendations-generated-dlq" 3 604800000
 create_topic "alerts-outbound" 3 86400000
+# DLQ dédiée au consumer Kafka de l'alert-service (distincte de
+# recommendations-generated-dlq qui appartient au recommendation-service)
+create_topic "alerts-dlq" 3 604800000
 create_topic "sensor-anomalies" 2 604800000
 
 docker exec $KAFKA_CONTAINER /opt/kafka/bin/kafka-topics.sh \

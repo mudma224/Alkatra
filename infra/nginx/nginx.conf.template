@@ -4,6 +4,7 @@
 # Fichier : infra/nginx/nginx.conf.template
 # Port    : 8080
 # Routage : ${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT}, ${USER_SERVICE_HOST}:${USER_SERVICE_PORT}
+#           ${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT}, ${ALERT_SERVICE_HOST}:${ALERT_SERVICE_PORT}
 # Note    : Ce fichier est un template — NE PAS utiliser directement.
 #           Il est traite par envsubst au demarrage du conteneur.
 # =============================================================================
@@ -154,6 +155,27 @@ http {
         location ~ ^/api/v1/sensors(?:/.*)?$ {
             set $farm_upstream http://${FARM_SERVICE_HOST}:${FARM_SERVICE_PORT};
             proxy_pass $farm_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            limit_req zone=api_limit burst=20 nodelay;
+        }
+
+        # ---- Alert Service — notifications (polling frontend) + tokens push ----
+        location ~ ^/api/v1/alerts(?:/.*)?$ {
+            set $alert_upstream http://${ALERT_SERVICE_HOST}:${ALERT_SERVICE_PORT};
+            proxy_pass $alert_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            limit_req zone=api_limit burst=20 nodelay;
+        }
+
+        location ~ ^/api/v1/devices(?:/.*)?$ {
+            set $alert_upstream http://${ALERT_SERVICE_HOST}:${ALERT_SERVICE_PORT};
+            proxy_pass $alert_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -30,6 +30,11 @@ scrape_configs:
       - targets: ['user-service:3002']
     metrics_path: /metrics
 
+#  - job_name: 'alert-service'
+#    static_configs:
+#      - targets: ['alert-service:3006']
+#    metrics_path: /metrics
+
 #  - job_name: 'farm-service'
 #    static_configs:
 #      - targets: ['farm-service:3003']

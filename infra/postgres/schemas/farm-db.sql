@@ -69,12 +69,16 @@ CREATE TRIGGER set_parcels_updated_at
     BEFORE UPDATE ON parcels
     FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
+CREATE TYPE sensor_health_status_enum AS ENUM ('pending', 'active', 'inactive', 'failing');
+
 CREATE TABLE sensors (
     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     parcel_id        UUID NOT NULL REFERENCES parcels(id) ON DELETE CASCADE,
     device_id        VARCHAR(100) UNIQUE NOT NULL,
     device_type      VARCHAR(50) NOT NULL DEFAULT 'esp32-wroom-32',
-    is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+    -- pending : associé mais jamais vu · active : heartbeat récent ·
+    -- inactive : silence > SENSOR_INACTIVE_HOURS (2 h) · failing : silence > SENSOR_FAILING_HOURS (24 h)
+    health_status    sensor_health_status_enum NOT NULL DEFAULT 'pending',
     last_seen_at     TIMESTAMP WITH TIME ZONE,
     battery_pct      INT,
     firmware_version VARCHAR(20),
@@ -85,7 +89,7 @@ CREATE TABLE sensors (
 
 CREATE INDEX idx_sensors_parcel_id ON sensors(parcel_id);
 CREATE INDEX idx_sensors_device_id ON sensors(device_id);
-CREATE INDEX idx_sensors_active ON sensors(is_active);
+CREATE INDEX idx_sensors_health_status ON sensors(health_status);
 
 CREATE TRIGGER set_sensors_updated_at
     BEFORE UPDATE ON sensors
