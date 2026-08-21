@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260821T151656849Z-19556-b9264c8ebc2d",
+  "runId": "20260821T151656849Z-19556-b9264c8ebc2d",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "cd7e64e14af5c6e98e3617555e0999cb4dfb100b",
+  "diffHash": "b8f2e1c4a4398752de86ea65fc14a192a293210edb5e3839b7c2a4524707fcd0",
+  "rulesVersion": "unavailable",
+  "sessionHash": "1f8944aac8e45a5ce5daf341b8bdec89da36834b7354c601b5b45ca5c3aa3488",
+  "reportRef": ".mimosa/reports/task-review-sess_247497ce-6de8-4378-844c-a30d92ee3012-20260821T151656849Z-19556-b9264c8ebc2d.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "test/sensor-activity.service.spec.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "test/alert-notifier.service.spec.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "test/sensors.service.spec.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/modules/sensors/alert-notifier.service.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/modules/sensors/sensor-activity.service.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/modules/sensors/sensors.service.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/database/entities/sensor.entity.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/config/configuration.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-08-21T15:16:57.656Z"
+}

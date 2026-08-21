@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-08-21T14:58:44.095Z",
+  "sessionId": "sess_247497ce-6de8-4378-844c-a30d92ee3012",
+  "event": "PostToolUse",
+  "toolName": "Edit",
+  "file": "C:\\Users\\Mahmoud\\Desktop\\alkatra-platform-stage\\apps\\alert-service\\tests\\alert-dispatcher.service.spec.ts",
+  "outcome": "inconclusive",
+  "coverage": "partial",
+  "findingCount": 0,
+  "durationMs": 8,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

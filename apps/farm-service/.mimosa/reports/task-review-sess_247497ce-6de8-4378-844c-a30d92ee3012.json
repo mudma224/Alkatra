@@ -1,0 +1,454 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260821T151656849Z-19556-b9264c8ebc2d",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "baseline",
+      "target": ".",
+      "reason": "baseline_partial: baseline capture had enumeration or snapshot errors"
+    }
+  ],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "partial",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": false,
+      "captured_files": 45,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 3,
+      "compensated_target_count": 8
+    },
+    "change_tracking": {
+      "touched_observed": 2,
+      "touched_retained": 2,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 8,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 8,
+      "selected_files": 8,
+      "limit": 20,
+      "truncated": false
+    },
+    "scanning": {
+      "required_files": 8,
+      "scanned_files": 8,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {
+      "baseline_partial": 1,
+      "project_check_failed": 1
+    },
+    "reasons": [
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      }
+    ],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-08-21T15:16:56.849Z",
+  "session_id": "sess_247497ce-6de8-4378-844c-a30d92ee3012",
+  "target": ".",
+  "revision": "cd7e64e14af5c6e98e3617555e0999cb4dfb100b",
+  "rules_version": "unavailable",
+  "diff_hash": "b8f2e1c4a4398752de86ea65fc14a192a293210edb5e3839b7c2a4524707fcd0",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 8,
+    "changed_files": [
+      {
+        "file": "src/config/configuration.ts",
+        "ranges": [
+          {
+            "start": 3,
+            "end": 11
+          },
+          {
+            "start": 26,
+            "end": 26
+          },
+          {
+            "start": 53,
+            "end": 74
+          },
+          {
+            "start": 93,
+            "end": 93
+          }
+        ],
+        "before_hash": "e057bc2fb6b3166054d14aec58601727b3111670c042ad6d336d6aa9316a084f",
+        "after_hash": "8c3a191d9d9e957c61e0c39b3f8b7a1295f0d77bb782372aee9d50434fd82ecf"
+      },
+      {
+        "file": "src/database/entities/sensor.entity.ts",
+        "ranges": [
+          {
+            "start": 4,
+            "end": 7
+          },
+          {
+            "start": 23,
+            "end": 39
+          }
+        ],
+        "before_hash": "5e584fc2869b46cbd1f3fc8254ae4d50e239043a7d09e119ff3a702a1f4345e2",
+        "after_hash": "8b06d0cb3dd3d12fddee3fcc14770ee151b8a918bb15e558cb3e1dc11002a916"
+      },
+      {
+        "file": "src/modules/sensors/alert-notifier.service.ts",
+        "ranges": [
+          {
+            "start": 8,
+            "end": 9
+          },
+          {
+            "start": 22,
+            "end": 26
+          },
+          {
+            "start": 31,
+            "end": 54
+          },
+          {
+            "start": 59,
+            "end": 59
+          }
+        ],
+        "before_hash": "c45e8aa3351a46fd52cbfbdb86d2906101874ae8319cc5cf8dd806063c28ad1d",
+        "after_hash": "43fe37ab0479501f75f105f7c71e1976e7318c12a98acce66f1e89ad301f1819"
+      },
+      {
+        "file": "src/modules/sensors/sensor-activity.service.ts",
+        "ranges": [
+          {
+            "start": 14,
+            "end": 19
+          },
+          {
+            "start": 21,
+            "end": 22
+          },
+          {
+            "start": 24,
+            "end": 26
+          },
+          {
+            "start": 28,
+            "end": 36
+          },
+          {
+            "start": 51,
+            "end": 52
+          },
+          {
+            "start": 55,
+            "end": 55
+          },
+          {
+            "start": 70,
+            "end": 70
+          },
+          {
+            "start": 78,
+            "end": 85
+          },
+          {
+            "start": 87,
+            "end": 88
+          },
+          {
+            "start": 90,
+            "end": 93
+          },
+          {
+            "start": 96,
+            "end": 98
+          },
+          {
+            "start": 102,
+            "end": 102
+          },
+          {
+            "start": 107,
+            "end": 108
+          },
+          {
+            "start": 111,
+            "end": 113
+          },
+          {
+            "start": 115,
+            "end": 162
+          },
+          {
+            "start": 165,
+            "end": 165
+          },
+          {
+            "start": 170,
+            "end": 171
+          },
+          {
+            "start": 176,
+            "end": 177
+          },
+          {
+            "start": 179,
+            "end": 179
+          },
+          {
+            "start": 185,
+            "end": 187
+          }
+        ],
+        "before_hash": "23b2bf9ced15fdf57b1d52f9af8a78dc13eaae40dbe882b7cea669fffb9c0ba9",
+        "after_hash": "ae5409648ba8e5478155883718919c8943cb7a2c69c82ff864f797485e4d141d"
+      },
+      {
+        "file": "src/modules/sensors/sensors.service.ts",
+        "ranges": [
+          {
+            "start": 42,
+            "end": 43
+          },
+          {
+            "start": 45,
+            "end": 45
+          },
+          {
+            "start": 53,
+            "end": 54
+          },
+          {
+            "start": 59,
+            "end": 59
+          },
+          {
+            "start": 94,
+            "end": 98
+          },
+          {
+            "start": 105,
+            "end": 105
+          }
+        ],
+        "before_hash": "06fac558e5b5dc33cc2f002983616594242b118c48afac0730a09712982ba414",
+        "after_hash": "816e1bd0d165b481d9d49e88f1056fbb1b85bb769aefaced46c60554d9d22aab"
+      },
+      {
+        "file": "test/alert-notifier.service.spec.ts",
+        "ranges": [
+          {
+            "start": 53,
+            "end": 54
+          },
+          {
+            "start": 69,
+            "end": 71
+          },
+          {
+            "start": 76,
+            "end": 85
+          },
+          {
+            "start": 97,
+            "end": 97
+          },
+          {
+            "start": 102,
+            "end": 102
+          },
+          {
+            "start": 109,
+            "end": 109
+          }
+        ],
+        "before_hash": "a067220d081318641994ba5a857c247ae2f2e23e4816a808183e5f133d57f198",
+        "after_hash": "4c02b5ce86dc3f3a768ab50edbc5b38145071179b0b113e3b2a9a3bfd7442e47"
+      },
+      {
+        "file": "test/sensor-activity.service.spec.ts",
+        "ranges": [
+          {
+            "start": 13,
+            "end": 17
+          },
+          {
+            "start": 25,
+            "end": 26
+          },
+          {
+            "start": 39,
+            "end": 40
+          },
+          {
+            "start": 43,
+            "end": 51
+          },
+          {
+            "start": 65,
+            "end": 68
+          },
+          {
+            "start": 70,
+            "end": 70
+          },
+          {
+            "start": 73,
+            "end": 77
+          },
+          {
+            "start": 80,
+            "end": 80
+          },
+          {
+            "start": 83,
+            "end": 83
+          },
+          {
+            "start": 85,
+            "end": 86
+          },
+          {
+            "start": 89,
+            "end": 89
+          },
+          {
+            "start": 92,
+            "end": 93
+          },
+          {
+            "start": 96,
+            "end": 96
+          },
+          {
+            "start": 98,
+            "end": 101
+          },
+          {
+            "start": 103,
+            "end": 119
+          },
+          {
+            "start": 124,
+            "end": 124
+          },
+          {
+            "start": 132,
+            "end": 132
+          },
+          {
+            "start": 136,
+            "end": 136
+          },
+          {
+            "start": 138,
+            "end": 151
+          },
+          {
+            "start": 153,
+            "end": 156
+          }
+        ],
+        "before_hash": "411669b82d6af430a86a677de6c1256c69025be7b689784e98a805ad49b18663",
+        "after_hash": "3e1181cec508a136f7b3dee879def432c8ed96177aa65e9139fec1d297206859"
+      },
+      {
+        "file": "test/sensors.service.spec.ts",
+        "ranges": [
+          {
+            "start": 52,
+            "end": 52
+          },
+          {
+            "start": 266,
+            "end": 266
+          },
+          {
+            "start": 272,
+            "end": 272
+          }
+        ],
+        "before_hash": "15367a1012910562d0845f6516e507c403027ab6879ba3b3d8aba30538519f0f",
+        "after_hash": "569fe2f3e8c61093cf7582cbd0bf5442ebb471e1e44387fca9fecba592caffd3"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-08-21T15:16:54.532Z",
+    "completed_at": "2026-08-21T15:16:56.849Z",
+    "duration_ms": 2317,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 2317,
+    "peakMemoryBytes": 144302080,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 8,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_247497ce-6de8-4378-844c-a30d92ee3012-20260821T151656849Z-19556-b9264c8ebc2d.json",
+    "latest_report": ".mimosa/reports/task-review-sess_247497ce-6de8-4378-844c-a30d92ee3012.json",
+    "history_summary": ".mimosa/history/run-20260821T151656849Z-19556-b9264c8ebc2d.json"
+  }
+}

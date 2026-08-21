@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260818T085323277Z-10476-42a5f39dd559",
+  "runId": "20260818T085323277Z-10476-42a5f39dd559",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": [
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": false
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "f88fb424866cdcb68c92c441b3082a41efe0e363",
+  "diffHash": "7ccba1ca1c9a10e17be52bdb968bbea74e38273411a93bfcf5486d4c6e73b938",
+  "rulesVersion": "unavailable",
+  "sessionHash": "965cfd6330e67bf02f2788d5f8a464bde5c0ec87e0b3afa52a244c46356f2d7b",
+  "reportRef": ".mimosa/reports/task-review-sess_33086958-039c-4d01-924d-22c354552ff8-20260818T085323277Z-10476-42a5f39dd559.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "src/database/entities/parcel.entity.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/modules/parcels/parcels.service.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/modules/sensors/sensors.controller.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/modules/sensors/sensors.service.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "test/sensors.service.spec.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-08-18T08:53:23.700Z"
+}
