@@ -55,9 +55,12 @@ export function FeedbackScreen() {
   const navigate = useNavigate();
 
   const locationState = location.state as FeedbackLocationState | null;
+  // Ensure TypeScript correctly narrows the possibly-null locationState
+  // by extracting the candidate recommendation first, then comparing its id.
+  const stateRecommendationCandidate = locationState?.recommendation ?? null;
   const stateRecommendation =
-    locationState?.recommendation?.id === recommendationId
-      ? locationState.recommendation
+    stateRecommendationCandidate?.id === recommendationId
+      ? stateRecommendationCandidate
       : null;
 
   // A direct page refresh can recover today's recommendation without inventing GET /:id.
