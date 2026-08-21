@@ -128,7 +128,7 @@ export class SensorDataConsumer
 
   /**
    * Signale au farm-service que le capteur vient d'émettre (met à jour
-   * last_seen_at / is_active / batterie). Appel interne PATCH
+   * last_seen_at / health_status (= active) / batterie). Appel interne PATCH
    * /internal/sensors/:deviceId/seen — non exposé par la gateway.
    */
   private async notifySensorSeen(payload: Record<string, unknown>): Promise<void> {
