@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ObservabilityModule } from '@alkatra/observability';
 import { AlertsModule } from './alerts/alerts.module';
 import { ChannelsModule } from './channels/channels.module';
 import configuration from './config/configuration';
@@ -16,6 +17,7 @@ import { MetricsModule } from './metrics/metrics.module';
       load: [configuration],
       envFilePath: ['.env.local', '.env'],
     }),
+    ObservabilityModule.forRoot({ prefix: 'alert' }),
     DatabaseModule,
     MetricsModule,
     DevicesModule,
