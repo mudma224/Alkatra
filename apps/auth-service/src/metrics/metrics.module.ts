@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
-import { MetricsController } from './metrics.controller';
-import { MetricsService } from './metrics.service';
+import { AuthMetricsService } from './auth-metrics.service';
 
+/**
+ * Métriques métier d'auth-service. L'exposition `/metrics` (registre,
+ * intercepteur HTTP, métriques par défaut Node) est fournie par
+ * `ObservabilityModule.forRoot({ prefix: 'auth' })` dans `AppModule`.
+ */
 @Module({
-  controllers: [MetricsController],
-  providers: [MetricsService],
-  exports: [MetricsService],
+  providers: [AuthMetricsService],
+  exports: [AuthMetricsService],
 })
 export class MetricsModule {}

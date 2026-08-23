@@ -8,6 +8,7 @@ import { AuthService } from '../src/auth/auth.service';
 import { UserEntity } from '../src/auth/entities/user.entity';
 import { OtpService } from '../src/otp/otp.service';
 import { SmsProviderService } from '../src/otp/sms-provider.service';
+import { AuthMetricsService } from '../src/metrics/auth-metrics.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -15,6 +16,7 @@ describe('AuthService', () => {
   let otpService: jest.Mocked<OtpService>;
   let smsProviderService: jest.Mocked<SmsProviderService>;
   let jwtService: jest.Mocked<JwtService>;
+  let metrics: jest.Mocked<AuthMetricsService>;
 
   const mockUser: UserEntity = {
     id: 'uuid-1',
@@ -52,6 +54,7 @@ describe('AuthService', () => {
             findOne: jest.fn(),
             create: jest.fn(),
             save: jest.fn(),
+            count: jest.fn().mockResolvedValue(1),
           },
         },
         {
@@ -71,6 +74,16 @@ describe('AuthService', () => {
           useValue: { sign: jest.fn(), verify: jest.fn() },
         },
         { provide: ConfigService, useValue: configMock },
+        {
+          provide: AuthMetricsService,
+          useValue: {
+            recordOtpRequest: jest.fn(),
+            recordOtpVerified: jest.fn(),
+            recordOtpFailed: jest.fn(),
+            recordLogin: jest.fn(),
+            setUsersTotal: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -79,6 +92,7 @@ describe('AuthService', () => {
     otpService = module.get(OtpService);
     smsProviderService = module.get(SmsProviderService);
     jwtService = module.get(JwtService);
+    metrics = module.get(AuthMetricsService);
   });
 
   afterEach(() => {

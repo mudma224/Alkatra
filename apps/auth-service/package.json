@@ -14,6 +14,7 @@
     "test:cov": "jest --coverage"
   },
   "dependencies": {
+    "@alkatra/observability": "*",
     "@nestjs/axios": "^4.0.0",
     "@nestjs/common": "^11.1.26",
     "@nestjs/config": "^4.0.0",

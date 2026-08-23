@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { UserEntity } from './entities/user.entity';
 import { OtpService } from '../otp/otp.service';
 import { SmsProviderService } from '../otp/sms-provider.service';
+import { AuthMetricsService } from '../metrics/auth-metrics.service';
 
 export interface TokenPair {
   accessToken: string;
@@ -30,7 +31,7 @@ export interface AuthResult extends TokenPair {
 }
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
@@ -40,11 +41,23 @@ export class AuthService {
     private readonly smsProviderService: SmsProviderService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly metrics: AuthMetricsService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      this.metrics.setUsersTotal(await this.userRepository.count());
+    } catch (error) {
+      this.logger.warn(
+        `Impossible d'initialiser auth_users_total : ${(error as Error).message}`,
+      );
+    }
+  }
 
   async requestOtp(phone: string): Promise<{ expiresAt: Date }> {
     const code = await this.otpService.generateAndStore(phone);
     await this.smsProviderService.sendOtp(phone, code);
+    this.metrics.recordOtpRequest();
 
     const ttlSeconds = this.configService.get<number>('otp.ttlSeconds') ?? 300;
     return { expiresAt: new Date(Date.now() + ttlSeconds * 1000) };
@@ -52,6 +65,7 @@ export class AuthService {
 
   async verifyOtpAndAuthenticate(phone: string, otp: string): Promise<AuthResult> {
     if (await this.otpService.isBlocked(phone)) {
+      this.metrics.recordOtpFailed();
       throw new UnauthorizedException(
         'Trop de tentatives échouées. Veuillez réessayer plus tard.',
       );
@@ -59,6 +73,7 @@ export class AuthService {
 
     const isValid = await this.otpService.verify(phone, otp);
     if (!isValid) {
+      this.metrics.recordOtpFailed();
       throw new UnauthorizedException('Code OTP invalide ou expiré');
     }
 
@@ -67,10 +82,14 @@ export class AuthService {
       user = this.userRepository.create({ phone });
       user = await this.userRepository.save(user);
       this.logger.log(`Nouvel utilisateur créé : ${user.id}`);
+      this.metrics.setUsersTotal(await this.userRepository.count());
     }
 
     user.lastLoginAt = new Date();
     await this.userRepository.save(user);
+
+    this.metrics.recordOtpVerified();
+    this.metrics.recordLogin();
 
     const tokens = this.generateTokenPair(user);
     return { ...tokens, user: this.toUserResponse(user) };
@@ -87,6 +106,8 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Utilisateur introuvable');
     }
+
+    this.metrics.recordLogin();
 
     const tokens = this.generateTokenPair(user);
     return { ...tokens, user: this.toUserResponse(user) };

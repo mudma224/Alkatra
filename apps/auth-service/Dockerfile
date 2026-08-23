@@ -1,47 +1,80 @@
-# ============================================
-# Stage 1 : Builder — compile le TypeScript
-# ============================================
-FROM node:20-alpine AS builder
+# ============================================================
+# Stage 1 : deps — Installer les dépendances
+# ============================================================
+FROM node:20-alpine AS deps
 
-WORKDIR /app
+WORKDIR /workspace
 
-COPY package*.json ./
-RUN npm install
+# Copier les manifestes (racine + service + package workspace @alkatra/observability)
+COPY package.json ./
+COPY tsconfig.json ./
+COPY apps/auth-service/package.json ./apps/auth-service/
+COPY apps/auth-service/tsconfig.json ./apps/auth-service/tsconfig.json
+COPY packages/observability/package.json ./packages/observability/package.json
+COPY packages/observability/tsconfig.json ./packages/observability/tsconfig.json
 
-COPY . .
-RUN npm run build
+# Filtrer le package.json racine pour ne garder que les workspaces nécessaires
+# (le service + @alkatra/observability qu'il consomme)
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./package.json','utf8'));p.workspaces=['apps/auth-service','packages/observability'];p.dependencies={};delete p.devDependencies;fs.writeFileSync('./package.json',JSON.stringify(p,null,2));"
 
-# ============================================
-# Stage 2 : Development — hot reload local
-# ============================================
-FROM node:20-alpine AS development
+RUN npm install --workspace @alkatra/auth-service
 
-WORKDIR /app
+# ============================================================
+# Stage 2 : builder — Compile le code TypeScript
+# ============================================================
+FROM deps AS builder
+WORKDIR /workspace
 
-COPY package*.json ./
-RUN npm install
+# @alkatra/observability doit être compilé en premier (main = dist/index.js)
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/observability
 
-COPY . .
+COPY apps/auth-service ./apps/auth-service
+
+RUN npm run build --workspace @alkatra/auth-service \
+    && npm prune --omit=dev
+
+# ============================================================
+# Stage 3 : development — Hot reload local
+# ============================================================
+FROM deps AS development
+WORKDIR /workspace
+
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/observability
+
+COPY apps/auth-service ./apps/auth-service
 
 EXPOSE 3001
 
-CMD ["npm", "run", "start:dev"]
+CMD ["npm", "run", "start:dev", "-w", "apps/auth-service"]
 
-# ============================================
-# Stage 3 : Production — image finale légère
-# ============================================
+# ============================================================
+# Stage 4 : runner — Exécute le code compilé (production)
+# ============================================================
 FROM node:20-alpine AS production
 
-WORKDIR /app
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nestjs -u 1001
 
-RUN addgroup -S nodegroup && adduser -S nodeuser -G nodegroup
+WORKDIR /workspace
+ENV NODE_ENV=production
 
-COPY package*.json ./
-RUN npm install --omit=dev
+COPY --from=builder /workspace/node_modules ./node_modules
 
-COPY --from=builder /app/dist ./dist
+# @alkatra/observability compilé (résolu via symlink workspace dans node_modules)
+COPY --from=builder /workspace/packages/observability/package.json ./packages/observability/package.json
+COPY --from=builder /workspace/packages/observability/dist ./packages/observability/dist
 
-USER nodeuser
+# Code compilé de auth-service
+COPY --from=builder /workspace/apps/auth-service/dist ./apps/auth-service/dist
+COPY --from=builder /workspace/apps/auth-service/package.json ./apps/auth-service/
+COPY --from=builder /workspace/apps/auth-service/node_modules ./apps/auth-service/node_modules
+
+RUN chown -R nestjs:nodejs /workspace
+
+USER nestjs
+WORKDIR /workspace/apps/auth-service
 
 EXPOSE 3001
 
