@@ -1,0 +1,119 @@
+{
+  "uid": "alkatra-services-http",
+  "title": "Al Katra — Services HTTP (générique)",
+  "tags": ["alkatra", "services", "http"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Dashboard générique : tout service suivant la convention de nommage (<prefix>_http_requests_total) est couvert automatiquement via la variable $service. Un nouveau service = une entrée de variable, pas un dashboard.",
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": { "query": "label_values(up{job=~\".+-(service)|iot-service\"}, job)", "refId": "q" },
+        "refresh": 1,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Cible UP",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "up{job=~\"$service\"}", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Requêtes / s",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "job:http_requests:rate5m{job=~\"$service\"}", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latence p95",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "job:http_request_duration_seconds:p95{job=~\"$service\"}", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Erreurs 5xx (ratio 5 m)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.05 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "job:http_request_errors:ratio_rate5m{job=~\"$service\"}", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Requêtes / s par route",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "B", "expr": "topk(10, sum by (job, route) (rate({__name__=~\".+_http_requests_total\"}[5m])))", "legendFormat": "{{job}} {{route}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Codes de réponse (par statut)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (job, status) (rate({__name__=~\".+_http_requests_total\"}[5m]))", "legendFormat": "{{job}} {{status}}" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Latence p50 / p95",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "job:http_request_duration_seconds:p50{job=~\"$service\"}", "legendFormat": "p50 {{job}}" },
+        { "refId": "B", "expr": "job:http_request_duration_seconds:p95{job=~\"$service\"}", "legendFormat": "p95 {{job}}" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Event loop lag",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "max by (job) (nodejs_eventloop_lag_seconds{job=~\"$service\"})", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Mémoire heap utilisée",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "max by (job) (nodejs_heap_size_used_bytes{job=~\"$service\"})", "legendFormat": "{{job}}" } ]
+    }
+  ]
+}

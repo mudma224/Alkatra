@@ -1,0 +1,184 @@
+{
+  "uid": "alkatra-overview",
+  "title": "Al Katra — Vue d'ensemble",
+  "tags": ["alkatra", "overview"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "État de la plateforme : golden signals (trafic, erreurs, latence), santé du pipeline capteur → Kafka → ML → recommandations, lag Kafka, alertes actives et infra. Point d'entrée de la supervision.",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Cibles UP (services applicatifs)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 7 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [
+        { "refId": "A", "expr": "sum(up{job=~\"auth-service|user-service|farm-service|recommendation-service|iot-service|alert-service|ml-inference-service\"})", "legendFormat": "UP" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Capteurs actifs (2 h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(alkatra_iot_active_sensors)", "legendFormat": "actifs" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Âge dernier message capteur",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 300 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "pipeline:last_message_age_seconds", "legendFormat": "âge" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Lag Kafka max",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 10000 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(kafka_consumergroup_lag)", "legendFormat": "lag" } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Alertes actives",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 3 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "count(ALERTS{alertstate=\"firing\",severity=~\"warning|critical\"})", "legendFormat": "firing" } ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Chaîne notification (Watchdog)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "description": "Firing = la chaîne Prometheus → Alertmanager → SMTP fonctionne. Si cet email cesse d'arriver (répétition 4 h), la chaîne est cassée.",
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "OK", "color": "green" }, "0": { "text": "CASSÉE", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(ALERTS{alertname=\"Watchdog\", alertstate=\"firing\"})", "legendFormat": "watchdog" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Trafic HTTP (req/s par service)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "job:http_requests:rate5m", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Taux d'erreurs 5xx",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.05 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "job:http_request_errors:ratio_rate5m", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Latence HTTP p95",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "job:http_request_duration_seconds:p95", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Pipeline — débits (msg/s)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "description": "Chaîne complète : MQTT reçu → Kafka brut → prédictions → recommandations persistées.",
+      "fieldConfig": { "defaults": { "unit": "rps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "pipeline:iot_messages:rate5m", "legendFormat": "MQTT reçus" },
+        { "refId": "B", "expr": "pipeline:iot_forwarded:rate5m", "legendFormat": "→ Kafka brut" },
+        { "refId": "C", "expr": "pipeline:predictions:rate5m", "legendFormat": "prédictions" },
+        { "refId": "D", "expr": "pipeline:recommendations:rate5m", "legendFormat": "recommandations persistées" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Pipeline — fraîcheur des données capteurs",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 300 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "pipeline:last_message_age_seconds", "legendFormat": "âge (s)" } ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Lag Kafka par consumer group",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 10000 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (consumergroup) (kafka_consumergroup_lag)", "legendFormat": "{{consumergroup}}" } ]
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Messages en DLQ (alert-service, 10 min)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "drawStyle": "bars" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "sum(increase(alert_kafka_dlq_total[10m]))", "legendFormat": "DLQ" } ]
+    },
+    {
+      "id": 40,
+      "type": "stat",
+      "title": "Infrastructure",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 29 },
+      "description": "Postgres, MongoDB, Redis, brokers Kafka vus par les exporters.",
+      "fieldConfig": {
+        "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "orientation": "horizontal" },
+      "targets": [
+        { "refId": "A", "expr": "max(pg_up)", "legendFormat": "PostgreSQL" },
+        { "refId": "B", "expr": "max(mongodb_up)", "legendFormat": "MongoDB" },
+        { "refId": "C", "expr": "max(redis_up)", "legendFormat": "Redis" },
+        { "refId": "D", "expr": "sum(kafka_brokers)", "legendFormat": "Kafka" },
+        { "refId": "E", "expr": "max(alkatra_iot_mqtt_connected)", "legendFormat": "MQTT (iot→Mosquitto)" }
+      ]
+    }
+  ]
+}

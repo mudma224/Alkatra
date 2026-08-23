@@ -1,0 +1,61 @@
+{
+  "name": "alkatra",
+  "nodes": [
+    {
+      "id": "100:2082",
+      "name": "Farms",
+      "type": "FRAME",
+      "layout": {
+        "mode": "row",
+        "padding": "12px 591px 11px",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "gap": "10px",
+        "sizing": {
+          "horizontal": "contextual",
+          "vertical": "contextual"
+        },
+        "designedWidth": "1250px",
+        "designedHeight": "85px"
+      },
+      "fills": [
+        "#D9D9D9"
+      ],
+      "children": [
+        {
+          "id": "100:2083",
+          "name": "Farms",
+          "type": "TEXT",
+          "layout": {
+            "mode": "none",
+            "sizing": {
+              "horizontal": "fixed",
+              "vertical": "hug"
+            },
+            "dimensions": {
+              "width": 864
+            }
+          },
+          "text": "Farms ",
+          "textStyle": {
+            "fontFamily": "Inter",
+            "fontStyle": "Semi Bold",
+            "fontWeight": 600,
+            "fontSize": 50,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP"
+          },
+          "fills": [
+            "#269C38"
+          ]
+        }
+      ]
+    }
+  ],
+  "components": {},
+  "componentSets": {},
+  "globalVars": {
+    "styles": {}
+  },
+  "elements": {}
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-08-23T14:13:04.894Z",
+  "sessionId": "sess_62d86047-8ae7-4e44-a7fb-8871167101f4",
+  "event": "PostToolUse",
+  "toolName": "Edit",
+  "file": "C:\\Users\\Mahmoud\\Desktop\\alkatra-platform-stage\\apps\\user-service\\src\\user\\user.service.ts",
+  "outcome": "inconclusive",
+  "coverage": "partial",
+  "findingCount": 0,
+  "durationMs": 12,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

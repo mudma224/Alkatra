@@ -1,0 +1,33 @@
+import { RouteNormalizerUtil } from '../src/route-normalizer.util';
+
+describe('RouteNormalizerUtil', () => {
+  it('remonte le pattern Express pour une route string', () => {
+    expect(
+      RouteNormalizerUtil.normalize({ route: { path: '/api/v1/farms/:id' } }),
+    ).toBe('/api/v1/farms/:id');
+  });
+
+  it('remonte la première entrée pour une route multi-chemins', () => {
+    expect(
+      RouteNormalizerUtil.normalize({
+        route: { path: ['/api/v1/health/live', '/api/v1/health/ready'] },
+      }),
+    ).toBe('/api/v1/health/live');
+  });
+
+  it('préfixe les routes RegExp pour rester un label valide', () => {
+    expect(
+      RouteNormalizerUtil.normalize({
+        route: { path: /^\/api\/v1\/(farms|parcels)(\/.*)?$/ },
+      }),
+    ).toBe('regex:^\\/api\\/v1\\/(farms|parcels)(\\/.*)?$');
+  });
+
+  it('agrège les requêtes sans route résolue sous unmatched', () => {
+    expect(RouteNormalizerUtil.normalize({})).toBe('unmatched');
+    expect(RouteNormalizerUtil.normalize({ route: {} })).toBe('unmatched');
+    expect(RouteNormalizerUtil.normalize({ route: { path: '' } })).toBe(
+      'unmatched',
+    );
+  });
+});

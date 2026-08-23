@@ -1,0 +1,99 @@
+{
+  "uid": "alkatra-ml-inference",
+  "title": "Al Katra — ML Inference",
+  "tags": ["alkatra", "ml", "inference", "xgboost"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "15s",
+  "description": "ml-inference-service (FastAPI + XGBoost) : prédictions HTTP et Kafka, latence par chemin, features manquantes, état des modèles MLflow.",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Service UP",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(up{job=\"ml-inference-service\"})", "legendFormat": "up" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Modèles chargés",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "description": "2 = classifier + regressor MLflow Production.",
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "2": { "text": "2/2 MLflow", "color": "green" }, "0": { "text": "AUCUN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 2 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(ml_models_loaded)", "legendFormat": "modèles" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Mode démo",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "0": { "text": "NON", "color": "green" }, "1": { "text": "OUI", "color": "orange" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(ml_demo_mode)", "legendFormat": "démo" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Prédictions (cumul)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(ml_predictions_total)", "legendFormat": "prédictions" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Prédictions / min (source × résultat)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (source, result) (rate(ml_predictions_total[5m])) * 60", "legendFormat": "{{source}} · {{result}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Messages Kafka / min (par statut)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (status) (rate(ml_kafka_messages_total[5m])) * 60", "legendFormat": "{{status}}" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Latence de prédiction — p95 par chemin",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "description": "HTTP (/predict) et Kafka (consumer) mesurés séparément.",
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum(rate(ml_prediction_latency_seconds_bucket[5m])))", "legendFormat": "p95 HTTP" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(ml_prediction_kafka_latency_seconds_bucket[5m])))", "legendFormat": "p95 Kafka" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Features manquantes (rejets, 15 min)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "description": "Validation stricte : une feature absente rejette le message Spark.",
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "drawStyle": "bars" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (feature) (increase(ml_missing_features_total[15m]))", "legendFormat": "{{feature}}" } ]
+    }
+  ]
+}
