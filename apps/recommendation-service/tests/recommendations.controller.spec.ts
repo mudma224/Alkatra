@@ -15,7 +15,7 @@ describe('RecommendationsController', () => {
     authorization: 'Bearer token',
   };
 
-  const parcelId = '11111111-1111-1111-1111-111111111111';
+  const parcelId = '11111111-1111-4111-8111-111111111111';
   const recoId = '22222222-2222-2222-2222-222222222222';
 
   beforeEach(async () => {

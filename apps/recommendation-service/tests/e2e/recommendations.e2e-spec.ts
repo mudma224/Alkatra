@@ -10,6 +10,7 @@ import { AllExceptionsFilter } from '../../src/common/filters/http-exception.fil
 import { RecommendationsModule } from '../../src/recommendations/recommendations.module';
 import { FarmClientService } from '../../src/recommendations/farm-client.service';
 import { MetricsModule } from '../../src/metrics/metrics.module';
+import { ObservabilityModule } from '@alkatra/observability';
 import { SyncConsumerService } from '../../src/sync/sync-consumer.service';
 
 /**
@@ -26,7 +27,7 @@ describe('Recommendations E2E', () => {
   let repo: Record<string, jest.Mock>;
   let token: string;
 
-  const parcelId = '11111111-1111-1111-1111-111111111111';
+  const parcelId = '11111111-1111-4111-8111-111111111111';
   const recoId = '22222222-2222-2222-2222-222222222222';
   const userId = 'user-e2e-1';
 
@@ -69,6 +70,7 @@ describe('Recommendations E2E', () => {
             }),
           ],
         }),
+        ObservabilityModule.forRoot({ prefix: 'recommendation' }),
         MetricsModule,
         RecommendationsModule,
       ],

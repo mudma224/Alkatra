@@ -17,7 +17,7 @@ describe('SyncConsumerService', () => {
   let metrics: jest.Mocked<MetricsService>;
 
   const validPayload = {
-    parcel_id: '11111111-1111-1111-1111-111111111111',
+    parcel_id: '11111111-1111-4111-8111-111111111111',
     should_irrigate: true,
     irrigation_probability: 0.8,
     water_amount_mm: 5.0,
@@ -30,6 +30,7 @@ describe('SyncConsumerService', () => {
     doubleWrite = { persist: jest.fn().mockResolvedValue({}) } as unknown as jest.Mocked<DoubleWriteService>;
     metrics = {
       recordKafkaMessage: jest.fn(),
+      recordRecommendationPersisted: jest.fn(),
       recordPersistenceError: jest.fn(),
       recordHttpRequest: jest.fn(),
       recordHttpDuration: jest.fn(),

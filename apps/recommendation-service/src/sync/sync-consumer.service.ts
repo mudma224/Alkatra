@@ -106,6 +106,7 @@ export class SyncConsumerService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.doubleWrite.persist(dto);
       this.metrics.recordKafkaMessage('ok');
+      this.metrics.recordRecommendationPersisted();
     } catch (err) {
       this.logger.error(
         `Échec persistance recommandation parcel=${dto.parcel_id} : ${(err as Error).message}`,

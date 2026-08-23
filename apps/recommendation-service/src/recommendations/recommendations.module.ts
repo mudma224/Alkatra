@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Recommendation } from '../entities/recommendation.entity';
+import { MetricsModule } from '../metrics/metrics.module';
 import { JwtStrategy } from '../common/strategies/jwt.strategy';
 import { FarmClientService } from './farm-client.service';
 import { RecommendationsController } from './recommendations.controller';
@@ -13,6 +14,7 @@ import { RecommendationsService } from './recommendations.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Recommendation]),
+    MetricsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

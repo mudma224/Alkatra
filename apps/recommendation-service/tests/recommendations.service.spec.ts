@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from '../src/entities/recommendation.entity';
+import { MetricsService } from '../src/metrics/metrics.service';
 import { RecommendationsService } from '../src/recommendations/recommendations.service';
 
 describe('RecommendationsService', () => {
@@ -11,7 +12,7 @@ describe('RecommendationsService', () => {
 
   const baseReco = {
     id: '22222222-2222-2222-2222-222222222222',
-    parcelId: '11111111-1111-1111-1111-111111111111',
+    parcelId: '11111111-1111-4111-8111-111111111111',
     generatedAt: new Date(),
     irrigate: true,
     confidenceScore: 0.88,
@@ -35,6 +36,7 @@ describe('RecommendationsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecommendationsService,
+        { provide: MetricsService, useValue: { recordFeedback: jest.fn() } },
         {
           provide: getRepositoryToken(Recommendation),
           useValue: {

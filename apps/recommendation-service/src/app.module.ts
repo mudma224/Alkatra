@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ObservabilityModule } from '@alkatra/observability';
 import configuration from './config/configuration';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
@@ -14,6 +15,7 @@ import { SyncModule } from './sync/sync.module';
       load: [configuration],
       envFilePath: ['.env.local', '.env'],
     }),
+    ObservabilityModule.forRoot({ prefix: 'recommendation' }),
     DatabaseModule,
     MetricsModule,
     RecommendationsModule,

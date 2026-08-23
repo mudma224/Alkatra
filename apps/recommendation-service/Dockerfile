@@ -20,12 +20,14 @@ COPY apps/recommendation-service/tsconfig.build.json ./apps/recommendation-servi
 # Copier le package.json + tsconfig de @alkatra/shared-types (dépendance workspace)
 COPY packages/shared-types/package.json ./packages/shared-types/package.json
 COPY packages/shared-types/tsconfig.json ./packages/shared-types/tsconfig.json
+COPY packages/observability/package.json ./packages/observability/package.json
+COPY packages/observability/tsconfig.json ./packages/observability/tsconfig.json
 
 # Filtrer le package.json racine pour ne garder que les workspaces nécessaires
 # au recommendation-service (le service + @alkatra/shared-types qu'il consomme)
 # et supprimer les dépendances racine non nécessaires au service
 # (ioredis, prom-client, mongodb, mqtt, turbo, eslint, prettier, etc. sont pour d'autres services)
-RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./package.json','utf8'));p.workspaces=['apps/recommendation-service','packages/shared-types'];p.dependencies={};delete p.devDependencies;fs.writeFileSync('./package.json',JSON.stringify(p,null,2));"
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./package.json','utf8'));p.workspaces=['apps/recommendation-service','packages/shared-types','packages/observability'];p.dependencies={};delete p.devDependencies;fs.writeFileSync('./package.json',JSON.stringify(p,null,2));"
 
 # Installer uniquement les dépendances nécessaires au recommendation-service
 # (deps + devDeps du service, sans les deps racine inutiles)
@@ -40,7 +42,8 @@ WORKDIR /workspace
 # Copier le code source de @alkatra/shared-types et le compiler en premier
 # (le recommendation-service importe ses types ; main = dist/index.js)
 COPY packages/shared-types ./packages/shared-types
-RUN npm run build --workspace @alkatra/shared-types
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/shared-types && npm run build --workspace @alkatra/observability
 
 # Copier le code source de recommendation-service uniquement
 COPY apps/recommendation-service ./apps/recommendation-service
@@ -58,7 +61,8 @@ WORKDIR /workspace
 
 # shared-types doit être compilé pour que nest start --watch résolve les imports
 COPY packages/shared-types ./packages/shared-types
-RUN npm run build --workspace @alkatra/shared-types
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/shared-types && npm run build --workspace @alkatra/observability
 
 COPY apps/recommendation-service ./apps/recommendation-service
 
@@ -90,6 +94,10 @@ COPY --from=builder /workspace/node_modules ./node_modules
 # Copier @alkatra/shared-types compilé (résolu via symlink workspace dans node_modules)
 COPY --from=builder /workspace/packages/shared-types/package.json ./packages/shared-types/package.json
 COPY --from=builder /workspace/packages/shared-types/dist ./packages/shared-types/dist
+
+# @alkatra/observability compilé (socle métriques Prometheus)
+COPY --from=builder /workspace/packages/observability/package.json ./packages/observability/package.json
+COPY --from=builder /workspace/packages/observability/dist ./packages/observability/dist
 
 # Copier le code compilé de recommendation-service
 COPY --from=builder /workspace/apps/recommendation-service/dist ./apps/recommendation-service/dist

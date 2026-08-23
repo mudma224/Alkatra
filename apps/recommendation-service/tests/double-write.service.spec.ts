@@ -11,7 +11,7 @@ describe('DoubleWriteService', () => {
   let repo: jest.Mocked<Repository<Recommendation>>;
 
   const event: PredictionEventDto = {
-    parcel_id: '11111111-1111-1111-1111-111111111111',
+    parcel_id: '11111111-1111-4111-8111-111111111111',
     should_irrigate: true,
     irrigation_probability: 0.87654,
     water_amount_mm: 12.5,

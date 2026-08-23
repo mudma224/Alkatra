@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { MetricsController } from './metrics.controller';
 import { MetricsService } from './metrics.service';
 
+/**
+ * Métriques métier de recommendation-service. L'exposition `/metrics`
+ * (registre, intercepteur HTTP, métriques par défaut Node) est fournie par
+ * `ObservabilityModule.forRoot({ prefix: 'recommendation' })` dans `AppModule`.
+ */
 @Module({
-  controllers: [MetricsController],
   providers: [MetricsService],
   exports: [MetricsService],
 })

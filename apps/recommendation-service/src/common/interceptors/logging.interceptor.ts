@@ -35,27 +35,15 @@ export class LoggingInterceptor implements NestInterceptor {
         next: () => {
           const duration = Date.now() - startedAt;
           this.logger.log(`${method} ${url} → ${res.statusCode} (${duration}ms)`);
-          this.recordMetrics(method, req, res.statusCode, duration);
+          this.metrics?.recordHttpDuration(duration);
         },
         error: (err) => {
           const duration = Date.now() - startedAt;
           const status = err?.status ?? 500;
           this.logger.warn(`${method} ${url} → ${status} (${duration}ms)`);
-          this.recordMetrics(method, req, status, duration);
+          this.metrics?.recordHttpDuration(duration);
         },
       }),
     );
-  }
-
-  private recordMetrics(
-    method: string,
-    req: Request,
-    status: number,
-    durationMs: number,
-  ): void {
-    if (!this.metrics) return;
-    const route = (req.route?.path ?? req.url) as string;
-    this.metrics.recordHttpRequest(method, route, status);
-    this.metrics.recordHttpDuration(durationMs);
   }
 }

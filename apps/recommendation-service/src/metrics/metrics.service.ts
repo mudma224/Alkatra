@@ -1,101 +1,110 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as promClient from 'prom-client';
+import {
+  KafkaMetrics,
+  MetricsRegistryService,
+} from '@alkatra/observability';
 
 /**
- * Registre de métriques en mémoire, exposé au format Prometheus texte via
- * {@link MetricsController}. Suit le même pattern maison que l'iot-service
- * (pas de dépendance `prom-client`) pour rester cohérent avec le reste du
- * monorepo.
+ * Métriques de recommendation-service, migrées sur le registre partagé
+ * (`@alkatra/observability`), en conservant les noms historiques :
  *
- * Les compteurs sont incrémentés par le `LoggingInterceptor` (HTTP) et le
- * `SyncConsumerService` (Kafka). Le service étant un singleton NestJS, l'état
- * est partagé sans condition de course problématique (boucle événementielle
- * Node.js mono-thread).
+ *  - `recommendation_kafka_messages_consumed_total{topic, status}` (label
+ *    `topic` ajouté au standard)
+ *  - `recommendation_kafka_consumer_connected`
+ *  - `recommendation_persistence_errors_total`
+ *  - `recommendation_http_request_duration_ms_avg` (gauge historique de
+ *    latence moyenne — conservée pour compatibilité ; l'histogramme standard
+ *    `recommendation_http_request_duration_seconds` et le compteur
+ *    `recommendation_http_requests_total` sont produits par l'intercepteur
+ *    HTTP du package partagé)
+ *
+ * Ajouts : `recommendations_persisted_total` et
+ * `recommendation_feedback_total{decision}`.
  */
 @Injectable()
-export class MetricsService {
-  // --- HTTP ---
-  private httpRequests = new Map<string, number>(); // clé "METHOD|ROUTE|STATUS"
+export class MetricsService implements OnModuleInit {
+  private kafka!: KafkaMetrics;
+  private httpDurationAvg!: promClient.Gauge<string>;
+  private persistenceErrors!: promClient.Counter<string>;
+  private recommendationsPersisted!: promClient.Counter<string>;
+  private feedbackTotal!: promClient.Counter<string>;
+
+  private topic = 'recommendations-generated';
   private httpDurationSum = 0;
   private httpDurationCount = 0;
 
-  // --- Kafka ---
-  private kafkaMessages = new Map<string, number>(); // clé status: ok|error|invalid
-  private kafkaConsumerConnected = 0;
+  constructor(
+    private readonly metricsRegistry: MetricsRegistryService,
+    private readonly config: ConfigService,
+  ) {}
 
-  // --- Persistance ---
-  private persistenceErrors = 0;
+  onModuleInit(): void {
+    const register = this.metricsRegistry.registry;
+    this.topic =
+      this.config.get<string>('app.kafka.topicRecommendations') ??
+      this.topic;
 
-  /** Incrémente le compteur de requêtes HTTP pour un triplet method/route/status. */
-  recordHttpRequest(method: string, route: string, status: number): void {
-    const key = `${method}|${route}|${status}`;
-    this.httpRequests.set(key, (this.httpRequests.get(key) ?? 0) + 1);
+    this.kafka = new KafkaMetrics(register, 'recommendation');
+
+    this.httpDurationAvg = new promClient.Gauge({
+      name: 'recommendation_http_request_duration_ms_avg',
+      help: 'Average HTTP request duration in milliseconds (legacy gauge).',
+      registers: [register],
+    });
+
+    this.persistenceErrors = new promClient.Counter({
+      name: 'recommendation_persistence_errors_total',
+      help: 'PostgreSQL persistence errors.',
+      registers: [register],
+    });
+
+    this.recommendationsPersisted = new promClient.Counter({
+      name: 'recommendations_persisted_total',
+      help: 'Recommendations successfully persisted to PostgreSQL.',
+      registers: [register],
+    });
+
+    this.feedbackTotal = new promClient.Counter({
+      name: 'recommendation_feedback_total',
+      help: 'Farmer feedback received, by decision.',
+      labelNames: ['decision'],
+      registers: [register],
+    });
   }
 
-  /** Enregistre la durée d'une requête HTTP (ms) pour le calcul de latence moyenne. */
+  /** Enregistre la durée d'une requête HTTP (ms) — gauge moyenne historique. */
   recordHttpDuration(durationMs: number): void {
     this.httpDurationSum += durationMs;
     this.httpDurationCount++;
+    const avg =
+      this.httpDurationCount > 0 ? this.httpDurationSum / this.httpDurationCount : 0;
+    this.httpDurationAvg.set(Math.round(avg * 100) / 100);
   }
 
   /** Incrémente le compteur de messages Kafka par statut. */
   recordKafkaMessage(status: 'ok' | 'error' | 'invalid'): void {
-    this.kafkaMessages.set(status, (this.kafkaMessages.get(status) ?? 0) + 1);
+    this.kafka.recordMessage(this.topic, status);
   }
 
-  /** Définit l'état de connexion du consumer Kafka (1 connecté, 0 déconnecté). */
+  /** Définit l'état de connexion du consumer Kafka. */
   setKafkaConsumerConnected(connected: boolean): void {
-    this.kafkaConsumerConnected = connected ? 1 : 0;
+    this.kafka.setConnected(connected);
   }
 
   /** Incrémente le compteur d'erreurs de persistance PostgreSQL. */
   recordPersistenceError(): void {
-    this.persistenceErrors++;
+    this.persistenceErrors.inc();
   }
 
-  /**
-   * Sérialise l'ensemble des métriques au format d'exposition Prometheus
-   * (text/plain ; version=0.0.4).
-   */
-  format(): string {
-    const lines: string[] = [];
+  /** Une recommandation a été persistée avec succès. */
+  recordRecommendationPersisted(): void {
+    this.recommendationsPersisted.inc();
+  }
 
-    // --- HTTP requests total ---
-    lines.push('# HELP recommendation_http_requests_total Total HTTP requests by method, route and status.');
-    lines.push('# TYPE recommendation_http_requests_total counter');
-    for (const [key, value] of this.httpRequests.entries()) {
-      const [method, route, status] = key.split('|');
-      const labels = `{method="${method}",route="${route}",status="${status}"}`;
-      lines.push(`recommendation_http_requests_total${labels} ${value}`);
-    }
-
-    // --- HTTP average latency ---
-    lines.push('# HELP recommendation_http_request_duration_ms_avg Average HTTP request duration in milliseconds.');
-    lines.push('# TYPE recommendation_http_request_duration_ms_avg gauge');
-    const avgDuration =
-      this.httpDurationCount > 0
-        ? Math.round((this.httpDurationSum / this.httpDurationCount) * 100) / 100
-        : 0;
-    lines.push(`recommendation_http_request_duration_ms_avg ${avgDuration}`);
-
-    // --- Kafka messages consumed total ---
-    lines.push('# HELP recommendation_kafka_messages_consumed_total Kafka messages consumed by status.');
-    lines.push('# TYPE recommendation_kafka_messages_consumed_total counter');
-    for (const [status, value] of this.kafkaMessages.entries()) {
-      lines.push(
-        `recommendation_kafka_messages_consumed_total{status="${status}"} ${value}`,
-      );
-    }
-
-    // --- Kafka consumer connected ---
-    lines.push('# HELP recommendation_kafka_consumer_connected Kafka consumer connection status (1=connected, 0=disconnected).');
-    lines.push('# TYPE recommendation_kafka_consumer_connected gauge');
-    lines.push(`recommendation_kafka_consumer_connected ${this.kafkaConsumerConnected}`);
-
-    // --- Persistence errors ---
-    lines.push('# HELP recommendation_persistence_errors_total PostgreSQL persistence errors.');
-    lines.push('# TYPE recommendation_persistence_errors_total counter');
-    lines.push(`recommendation_persistence_errors_total ${this.persistenceErrors}`);
-
-    return `${lines.join('\n')}\n`;
+  /** Un feedback agriculteur a été enregistré. */
+  recordFeedback(decision: 'accepted' | 'rejected' | 'ignored'): void {
+    this.feedbackTotal.inc({ decision });
   }
 }

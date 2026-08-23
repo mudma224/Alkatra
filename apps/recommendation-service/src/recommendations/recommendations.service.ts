@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { FeedbackDto } from '../dto/feedback.dto';
+import { MetricsService } from '../metrics/metrics.service';
 import { RecommendationResponseDto } from '../dto/recommendation-response.dto';
 import {
   Recommendation,
@@ -42,6 +43,7 @@ export class RecommendationsService {
   constructor(
     @InjectRepository(Recommendation)
     private readonly repo: Repository<Recommendation>,
+    private readonly metrics: MetricsService,
   ) {}
 
   /** Dernière recommandation du jour pour une parcelle */
@@ -113,6 +115,7 @@ export class RecommendationsService {
     reco.status = dto.feedback === 'ignored' ? 'expired' : dto.feedback;
 
     const saved = await this.repo.save(reco);
+    this.metrics.recordFeedback(dto.feedback);
     return this.toDto(saved);
   }
 
