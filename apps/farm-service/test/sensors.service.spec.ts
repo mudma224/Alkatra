@@ -5,6 +5,7 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { SensorsService } from '../src/modules/sensors/sensors.service';
 import { Sensor } from '../src/database/entities/sensor.entity';
 import { Parcel } from '../src/database/entities/parcel.entity';
+import { FarmMetricsService } from '../src/metrics/farm-metrics.service';
 
 describe('SensorsService', () => {
   let service: SensorsService;
@@ -75,6 +76,7 @@ describe('SensorsService', () => {
         SensorsService,
         { provide: getRepositoryToken(Sensor), useValue: mockSensorRepo },
         { provide: getRepositoryToken(Parcel), useValue: mockParcelRepo },
+        { provide: FarmMetricsService, useValue: { recordHeartbeatOk: jest.fn(), recordHeartbeatError: jest.fn() } },
       ],
     }).compile();
 

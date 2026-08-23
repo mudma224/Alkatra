@@ -5,6 +5,7 @@ import { Sensor } from '../../database/entities/sensor.entity';
 import { Parcel } from '../../database/entities/parcel.entity';
 import { AssociateSensorDto } from './dto/associate-sensor.dto';
 import { SensorHeartbeatDto } from './dto/sensor-heartbeat.dto';
+import { FarmMetricsService } from '../../metrics/farm-metrics.service';
 
 @Injectable()
 export class SensorsService {
@@ -14,7 +15,8 @@ export class SensorsService {
     @InjectRepository(Sensor)
     private sensorsRepository: Repository<Sensor>,
     @InjectRepository(Parcel)
-    private parcelsRepository: Repository<Parcel>
+    private parcelsRepository: Repository<Parcel>,
+    private readonly metrics: FarmMetricsService,
   ) {}
 
   async associate(associateDto: AssociateSensorDto, userId: string): Promise<Sensor> {
@@ -99,13 +101,17 @@ export class SensorsService {
    */
   async recordHeartbeat(deviceId: string, heartbeat: SensorHeartbeatDto): Promise<Sensor> {
     const sensor = await this.sensorsRepository.findOne({ where: { deviceId } });
-    if (!sensor) throw new HttpException(`Capteur inconnu : ${deviceId}.`, HttpStatus.NOT_FOUND);
+    if (!sensor) {
+      this.metrics.recordHeartbeatError();
+      throw new HttpException(`Capteur inconnu : ${deviceId}.`, HttpStatus.NOT_FOUND);
+    }
 
     sensor.lastSeenAt = new Date();
     sensor.healthStatus = 'active';
     if (heartbeat.batteryPct !== undefined) sensor.batteryPct = heartbeat.batteryPct;
     if (heartbeat.firmwareVersion !== undefined) sensor.firmwareVersion = heartbeat.firmwareVersion;
 
+    this.metrics.recordHeartbeatOk();
     this.logger.log(`Heartbeat reçu du capteur ${deviceId}`);
     return this.sensorsRepository.save(sensor);
   }

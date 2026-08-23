@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@alkatra/shared-types": "*",
+    "@alkatra/observability": "*",
     "@nestjs/axios": "^4.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.1.26",

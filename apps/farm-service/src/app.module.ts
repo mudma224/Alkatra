@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ObservabilityModule } from '@alkatra/observability';
 import { DatabaseModule } from './database/database.module';
 import { FarmsModule } from './modules/farms/farms.module';
 import { ParcelsModule } from './modules/parcels/parcels.module';
@@ -16,6 +17,7 @@ import appConfig from './config/configuration';
       isGlobal: true,
       load: [appConfig],
     }),
+    ObservabilityModule.forRoot({ prefix: 'farm' }),
     DatabaseModule,
     AuthClientModule,
     FarmsModule,

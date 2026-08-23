@@ -11,8 +11,9 @@ WORKDIR /workspace
 COPY package*.json ./
 COPY tsconfig.json ./
 COPY apps/farm-service/package*.json ./apps/farm-service/
-COPY apps/farm-service/tsconfig.json ./apps/farm-service/
+COPY apps/farm-service/tsconfig.json ./apps/farm-service/tsconfig.json
 COPY packages/shared-types ./packages/shared-types
+COPY packages/observability ./packages/observability
 
 # Installer uniquement les dépendances de farm-service
 RUN npm install -g npm@11.9.0
@@ -26,6 +27,9 @@ WORKDIR /workspace
 
 # Copier le code source de farm-service uniquement
 COPY apps/farm-service ./apps/farm-service
+
+# @alkatra/observability doit être compilé en premier (main = dist/index.js)
+RUN npm run build --workspace @alkatra/observability
 
 # Build farm-service
 RUN npm run build --workspace @alkatra/farm-service \
@@ -50,6 +54,10 @@ COPY --from=builder /workspace/node_modules ./node_modules
 COPY --from=builder /workspace/apps/farm-service/dist ./apps/farm-service/dist
 COPY --from=builder /workspace/apps/farm-service/package*.json ./apps/farm-service/
 COPY --from=builder /workspace/apps/farm-service/node_modules ./apps/farm-service/node_modules
+
+# @alkatra/observability compilé (résolu via symlink workspace dans node_modules)
+COPY --from=builder /workspace/packages/observability/package.json ./packages/observability/package.json
+COPY --from=builder /workspace/packages/observability/dist ./packages/observability/dist
 
 # Changer le propriétaire des fichiers
 RUN chown -R nestjs:nodejs /workspace

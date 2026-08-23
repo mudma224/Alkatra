@@ -7,10 +7,12 @@ import { SensorActivityService } from './sensor-activity.service';
 import { AlertNotifierService } from './alert-notifier.service';
 import { Sensor } from '../../database/entities/sensor.entity';
 import { Parcel } from '../../database/entities/parcel.entity';
+import { MetricsModule } from '../../metrics/metrics.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Sensor, Parcel]),
+    MetricsModule,
   ],
   controllers: [SensorsController, InternalSensorsController],
   providers: [SensorsService, SensorActivityService, AlertNotifierService],
