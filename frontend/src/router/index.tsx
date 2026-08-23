@@ -2,7 +2,6 @@
 import { createBrowserRouter, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { LoginScreen } from '../screens/auth/LoginScreen/LoginScreen';
 import { OTPScreen } from '../screens/auth/OTPScreen/OTPScreen';
-import { PlaceholderScreen } from '../components/ui/PlaceholderScreen/PlaceholderScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen/ProfileScreen';
 import { FarmListScreen } from '../screens/farm/FarmListScreen/FarmListScreen';
 import { FarmCreateScreen } from '../screens/farm/FarmCreateScreen/FarmCreateScreen';
@@ -17,6 +16,9 @@ import { RequireAuth } from './RequireAuth';
 import { useAuthStore } from '../store/auth.store';
 import type { VerifyOtpResponse } from '../types/auth.types';
 import { EditProfileScreen } from '../screens/profile/EditProfileScreen/EditProfileScreen';
+import { FeedbackScreen } from '../screens/recommendations/FeedbackScreen/FeedbackScreen';
+import { RecommendationOverviewScreen } from '../screens/recommendations/RecommendationOverviewScreen/RecommendationOverviewScreen';
+import { RecommendationScreen } from '../screens/recommendations/RecommendationScreen/RecommendationScreen';
 
 /**
  * Wrapper that reads the OTP navigation state (phone + expiresAt) passed
@@ -109,25 +111,20 @@ export const router = createBrowserRouter([
         element: <SensorListScreen />,
       },
       {
-        path: '/farms/:farmId/parcels/:parcelId/recommendation',
-        element: (
-          <PlaceholderScreen
-            title="Recommandation du jour"
-            description="Recommandation d'irrigation du jour pour cette parcelle."
-            phase="Phase 5"
-          />
-        ),
-      },
-      {
-        path: '/recommendations',
-        element: (
-          <PlaceholderScreen
-            title="Recommandations"
-            description="Recommandations d'irrigation du jour et historique."
-            phase="Phase 5"
-          />
-        ),
-      },
+            // Replace the Phase 5 placeholder with the real parcel recommendation flow.
+            path: '/farms/:farmId/parcels/:parcelId/recommendation',
+            element: <RecommendationScreen />,
+          },
+          {
+            // Feedback keeps every parent id in the URL for deterministic navigation.
+            path: '/farms/:farmId/parcels/:parcelId/recommendation/:recommendationId/feedback',
+            element: <FeedbackScreen />,
+          },
+          {
+            // The global navigation first lets the user choose an existing parcel.
+            path: '/recommendations',
+            element: <RecommendationOverviewScreen />,
+          },
       {
         path: '/profile',
         element: <ProfileScreen/>,

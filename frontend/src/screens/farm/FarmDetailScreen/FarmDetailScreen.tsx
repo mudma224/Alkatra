@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Plus } from 'lucide-react';
+import { AlertCircle, Plus } from 'lucide-react';
+import { BackNavigation } from '../../../components/layout/BackNavigation/BackNavigation';
 
 import { Button } from '../../../components/ui/Button/Button';
 import { Card } from '../../../components/ui/Card/Card';
@@ -70,7 +71,7 @@ export function FarmDetailScreen() {
     <section className={styles.screen}>
       <div className={styles.topBar}>
         <Button variant="ghost" size="sm" aria-label="Retour" onClick={backToFarms}>
-          <ArrowLeft aria-hidden="true" />
+          <BackNavigation />
         </Button>
 
         {status === 'loading' ? (

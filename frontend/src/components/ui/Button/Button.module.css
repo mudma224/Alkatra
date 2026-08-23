@@ -3,11 +3,10 @@
    L'attribut [data-block] gère la largeur pleine (fill).
    ========================================================================= */
 .button {
-  display: inline-flex;
+  display:block;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-
+  gap :10px;
   font-family: var(--font-family-base);
   font-weight: var(--font-weight-button);
   font-size: var(--font-size-button);
@@ -140,6 +139,7 @@
   background-color: transparent;
   border-color: transparent;
   color: var(--color-primary-500);
+  
 }
 
 .ghost:not(:disabled):not([aria-busy='true']):hover {

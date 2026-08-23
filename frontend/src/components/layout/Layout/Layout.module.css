@@ -1,10 +1,20 @@
 .shell {
+  /* Preserve the existing full-height application shell. */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
 .content {
+  /* Keep the existing page spacing while allowing responsive adjustment. */
   flex: 1;
+  width: 100%;
   padding: var(--spacing-lg);
+}
+
+@media (max-width: 639px) {
+  .content {
+    /* Reduce page padding on mobile without changing the global design system. */
+    padding: var(--spacing-md);
+  }
 }

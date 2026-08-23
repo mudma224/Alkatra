@@ -35,13 +35,17 @@ describe('auth.store', () => {
     const state = useAuthStore.getState();
 
     expect(state.accessToken).toBe('access-token');
+
+    // Refresh token remains available to the in-memory auth flow.
     expect(state.refreshToken).toBe('refresh-token');
+
     expect(state.phone).toBe('+212617503677');
     expect(state.user).toEqual(result.user);
     expect(state.expiresAt).toBeTruthy();
 
     const expiresAt = new Date(state.expiresAt as string).getTime();
     const now = Date.now();
+
     expect(expiresAt).toBeGreaterThan(now);
     expect(expiresAt).toBeLessThanOrEqual(now + 3600 * 1000);
   });
@@ -52,6 +56,7 @@ describe('auth.store', () => {
     useAuthStore.getState().clearAuth();
 
     const state = useAuthStore.getState();
+
     expect(state.accessToken).toBeNull();
     expect(state.refreshToken).toBeNull();
     expect(state.phone).toBeNull();
@@ -64,7 +69,11 @@ describe('auth.store', () => {
   });
 
   it('isAuthenticated returns true when a non-expired token is present', () => {
-    useAuthStore.getState().setAuth(makeAuthResult({ expiresIn: 3600 }));
+    useAuthStore.getState().setAuth(
+      makeAuthResult({
+        expiresIn: 3600,
+      }),
+    );
 
     expect(useAuthStore.getState().isAuthenticated()).toBe(true);
   });
@@ -79,14 +88,19 @@ describe('auth.store', () => {
     expect(useAuthStore.getState().isAuthenticated()).toBe(false);
   });
 
-  it('persists the state to localStorage under the alkatra-auth key', () => {
+  it('persists the non-sensitive authentication state under the alkatra-auth key', () => {
     useAuthStore.getState().setAuth(makeAuthResult());
 
     const raw = localStorage.getItem(STORAGE_KEY);
+
     expect(raw).toBeTruthy();
 
     const persisted = JSON.parse(raw as string);
+
     expect(persisted.state.accessToken).toBe('access-token');
     expect(persisted.state.phone).toBe('+212617503677');
+
+    // Refresh tokens must never be persisted in browser storage.
+    expect(persisted.state.refreshToken).toBeUndefined();
   });
 });

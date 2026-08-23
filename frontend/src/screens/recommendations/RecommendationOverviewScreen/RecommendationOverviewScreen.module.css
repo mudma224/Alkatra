@@ -1,0 +1,192 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.heading h1,
+.emptyHeading h1 {
+  margin: 0;
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-title);
+  color: var(--color-primary-500);
+}
+
+.heading p {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--color-neutral-grey);
+}
+
+.emptyCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-card);
+  background-color: var(--color-secondary-100);
+}
+
+.emptyHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.dropIcon,
+.plusIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-button);
+  color: var(--color-primary-700);
+}
+
+.dropIcon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  background-color: var(--color-secondary-500);
+}
+
+.plusIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--color-secondary-100);
+}
+
+.dropIcon svg,
+.plusIcon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.emptyPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xl) var(--spacing-lg);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-card);
+  background-color: var(--color-neutral-0);
+  text-align: center;
+}
+
+.emptyPanel h2,
+.emptyPanel p {
+  margin: 0;
+}
+
+.emptyPanel h2 {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-label);
+}
+
+.emptyPanel p {
+  max-width: 320px;
+  color: var(--color-neutral-grey);
+}
+
+.parcelList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parcelLink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  min-height: 88px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-card);
+  background-color: var(--color-neutral-0);
+  color: var(--color-primary-500);
+  text-decoration: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.parcelLink:hover {
+  border-color: var(--color-primary-300);
+  background-color: var(--color-secondary-100);
+}
+
+.parcelLink:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.parcelLink span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.parcelLink strong,
+.parcelLink small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parcelLink small {
+  color: var(--color-neutral-grey);
+}
+
+.parcelLink svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.skeletonTitle {
+  width: 55%;
+  height: 32px;
+}
+
+.skeletonCard {
+  height: 280px;
+  border-radius: var(--radius-card);
+}
+
+.skeletonRow {
+  height: 88px;
+  border-radius: var(--radius-card);
+}
+
+@media (max-width: 639px) {
+  .screen {
+    max-width: 480px;
+  }
+
+  .parcelList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 375px) {
+  .emptyCard,
+  .emptyPanel {
+    padding: var(--spacing-md);
+  }
+}

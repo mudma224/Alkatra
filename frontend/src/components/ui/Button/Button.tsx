@@ -6,7 +6,7 @@ import styles from './Button.module.css';
 export interface ButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
   /** Contenu textuel du bouton. Obligatoire pour l'accessibilité. */
-  children: ReactNode;
+  children?: ReactNode;
   /**
    * Variante visuelle, alignée sur le Button system Figma.
    * `primary` (CTA principal), `secondary` (alternative), `outline` (léger),

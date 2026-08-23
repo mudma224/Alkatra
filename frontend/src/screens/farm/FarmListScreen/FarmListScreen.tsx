@@ -58,7 +58,7 @@ export function FarmListScreen() {
           <Button
             variant="primary"
             block
-            iconLeft={<Plus />}
+            iconLeft={<Plus style={{ transform: 'translateY(-1px)' }}/>}
             onClick={openCreateFarm}
           >
             Créer une ferme

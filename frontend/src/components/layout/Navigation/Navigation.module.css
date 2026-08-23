@@ -1,20 +1,100 @@
 .nav {
-  display: flex;
-  justify-content: center;
-  gap: var(--spacing-lg);
+  /* Même drawer partagé sur mobile et laptop. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 30;
+
+  width: min(320px, 86vw);
+  height: 100vh;
   padding: var(--spacing-md);
+
   background-color: var(--color-neutral-0);
-  border-top: 1px solid var(--color-neutral-200);
+  border-right: 1px solid var(--color-neutral-200);
+
+  transform: translateX(-100%);
+  visibility: hidden;
+
+  transition:
+    transform var(--transition-base),
+    visibility var(--transition-base);
+}
+
+.open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  min-height: 44px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.drawerTitle {
+  color: var(--color-primary-500);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-heading-sm);
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
 }
 
 .link {
+  display: block;
+  padding: var(--spacing-md);
+  border-radius: var(--radius-button);
+
   font-family: var(--font-family-base);
-  font-size: var(--font-size-footer);
+  font-size: var(--font-size-body);
   color: var(--color-neutral-grey);
   text-decoration: none;
+
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.link:hover {
+  /* Utilise un token réellement défini dans tokens.css. */
+  background-color: var(--color-secondary-100);
+  color: var(--color-primary-500);
 }
 
 .active {
+  background-color: var(--color-secondary-100);
   color: var(--color-primary-500);
   font-weight: var(--font-weight-button);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.overlay {
+  /* Bloque les interactions avec le contenu derrière le drawer. */
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+
+  padding: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+
+
+@media (min-width: 640px) {
+  .nav {
+    width: 320px;
+  }
 }

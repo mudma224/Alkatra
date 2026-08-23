@@ -649,7 +649,7 @@ services:
       KAFKA_CONSUMER_ENABLED: "true"
       FARM_SERVICE_URL: http://farm-service:3003
       FARM_SERVICE_TIMEOUT_MS: "5000"
-      CORS_ORIGINS: "*"
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy

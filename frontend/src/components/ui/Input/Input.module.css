@@ -1,7 +1,7 @@
 .wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-xs);
   width: 100%;
 }
 
@@ -12,102 +12,54 @@
   color: var(--color-neutral-black);
 }
 
-/* =========================================================================
-   Champ — conteneur flexible (input + prefix + icônes).
-   La hauteur passe de 52px à 49px pour s'aligner sur la maquette Figma
-   (4:938 qui dimensionne les inputs à height: 49).
-   ========================================================================= */
 .field {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  height: 49px;
+  width: 100%;
+  min-height: 48px;
   padding: 0 var(--spacing-md);
+  background-color: var(--color-neutral-0);
+  border: 1px solid var(--color-neutral-200);
   border-radius: var(--radius-input);
-  border: 1px solid var(--color-neutral-grey);
-  background: var(--color-neutral-0);
-  transition: border-color var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.field:hover {
+  border-color: var(--color-primary-300);
 }
 
 .field:focus-within {
   border-color: var(--color-primary-500);
-  border-width: 1.5px;
+  box-shadow: 0 0 0 2px var(--color-secondary-100);
 }
 
-/* =========================================================================
-   États visuels (variants d'apparence) — alignés sur l'Input system Figma.
-   ========================================================================= */
-.default {
-  border-color: var(--color-neutral-grey);
+.field.error {
+  border-color: var(--color-error-500);
 }
 
-.filled {
-  border-color: var(--color-primary-500);
+.field.error:focus-within {
+  box-shadow: 0 0 0 2px var(--color-destructive-100);
 }
 
-.error {
-  border-color: var(--color-destructive-500);
+.field:has(.input:disabled) {
+  background-color: var(--color-neutral-200);
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
-/* =========================================================================
-   Variante search — icône loupe à gauche, bouton clear à droite.
-   Le bouton clear n'est affiché que si une valeur est présente.
-   ========================================================================= */
-.searchIcon {
-  flex-shrink: 0;
-  width: 19px;
-  height: 19px;
-  color: var(--color-neutral-grey);
-}
-
-.clearButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 19px;
-  height: 19px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  color: var(--color-neutral-grey);
-  cursor: pointer;
-  border-radius: 50%;
-  transition: color var(--transition-fast);
-}
-
-.clearButton:hover {
-  color: var(--color-primary-500);
-}
-
-.clearButton:focus-visible {
-  outline: 2px solid var(--color-primary-500);
-  outline-offset: 2px;
-}
-
-/* =========================================================================
-   Préfixe (ex. "+212" pour le champ téléphone) — variante text uniquement.
-   ========================================================================= */
-.prefix {
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-body);
-  color: var(--color-neutral-black);
-  flex-shrink: 0;
-}
-
-/* =========================================================================
-   Input nu — hérite du style du champ conteneur.
-   ========================================================================= */
 .input {
-  flex: 1;
   min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
+  flex: 1;
+  padding: 0;
   font-family: var(--font-family-base);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-body);
   color: var(--color-neutral-black);
+  background: transparent;
+  border: 0;
+  outline: 0;
 }
 
 .input::placeholder {
@@ -115,6 +67,52 @@
 }
 
 .input:disabled {
-  color: var(--color-neutral-grey);
   cursor: not-allowed;
+}
+
+.prefix {
+  flex-shrink: 0;
+  margin-right: var(--spacing-sm);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  color: var(--color-neutral-black);
+}
+
+.searchIcon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-right: var(--spacing-sm);
+  color: var(--color-neutral-grey);
+}
+
+.clearButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  margin-right: calc(var(--spacing-xs) * -1);
+  padding: 0;
+  color: var(--color-neutral-grey);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.clearButton:hover {
+  color: var(--color-primary-500);
+  background-color: var(--color-secondary-100);
+}
+
+.clearButton:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 1px;
+}
+
+.clearButton svg {
+  width: 18px;
+  height: 18px;
 }

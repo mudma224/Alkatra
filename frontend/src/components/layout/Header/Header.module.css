@@ -1,15 +1,86 @@
 .header {
+  /* Le Header reste visible au-dessus du contenu pendant le scroll. */
+  position: sticky;
+  top: 0;
+  z-index: 20;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--spacing-md);
+
+  width: 100%;
+  min-height: 68px;
   padding: var(--spacing-md) var(--spacing-lg);
+
   background-color: var(--color-neutral-0);
   border-bottom: 1px solid var(--color-neutral-200);
 }
 
+.leadingGroup {
+  /* Regroupe le hamburger et le nom de l’application. */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.menuButton,
+.logoutButton {
+  flex-shrink: 0;
+}
+
+.menuLabel {
+  display: inline;
+}
+
 .title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
   font-family: var(--font-family-base);
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-title);
   color: var(--color-primary-500);
+}
+
+@media (max-width: 639px) {
+  .header {
+    /* Même padding horizontal que le contenu mobile de Layout. */
+    min-height: 60px;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .menuLabel {
+    /* Le aria-label garde le nom accessible du bouton sur mobile. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .title,
+  .logoutButton {
+    font-size: var(--font-size-footer);
+  }
+
+  .logoutButton {
+    padding-left: var(--spacing-sm);
+    padding-right: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 375px) {
+  .title {
+    /* Priorise les actions interactives sur les écrans très étroits. */
+    max-width: 104px;
+  }
 }
