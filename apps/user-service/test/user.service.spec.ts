@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserService } from '../src/user/user.service';
+import { UserMetricsService } from '../src/metrics/user-metrics.service';
 
 // Mock axios
 jest.mock('axios', () => ({
@@ -39,6 +40,14 @@ describe('UserService', () => {
       providers: [
         UserService,
         { provide: ConfigService, useValue: configMock },
+        {
+          provide: UserMetricsService,
+          useValue: {
+            recordProfileRequest: jest.fn(),
+            recordProfileUpdate: jest.fn(),
+            recordAuthCall: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

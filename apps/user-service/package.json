@@ -14,7 +14,8 @@
     "test:cov": "jest --coverage"
   },
   "dependencies": {
-    "@alkatra/shared-types": "file:../../packages/shared-types",
+    "@alkatra/shared-types": "*",
+    "@alkatra/observability": "*",
     "@nestjs/common": "^11.1.26",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.26",

@@ -1,5 +1,6 @@
 // apps/user-service/src/main.ts
 
+import { RequestMethod } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
@@ -7,7 +8,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.setGlobalPrefix('api/v1');
+  // `/metrics` reste à la racine (scrape Prometheus) ; les endpoints health
+  // restent sous /api/v1/health/* — le healthcheck Docker les utilise.
+  app.setGlobalPrefix('api/v1', {
+    exclude: [{ path: 'metrics', method: RequestMethod.GET }],
+  });
 
   // Activer CORS pour le frontend web (même pattern que farm-service) :
   // origins autorisées via CORS_ORIGINS (séparées par des virgules).
