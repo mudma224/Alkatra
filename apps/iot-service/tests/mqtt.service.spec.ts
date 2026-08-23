@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { MqttService } from '../src/mqtt/mqtt.service';
+import { IotMetricsService } from '../src/metrics/iot-metrics.service';
 import { KafkaService } from '../src/kafka/kafka.service';
 
 jest.mock('mqtt', () => ({
@@ -31,7 +32,16 @@ describe('MqttService', () => {
   let kafkaService: jest.Mocked<KafkaService>;
 
   beforeEach(async () => {
-    const mockKafkaService = {
+    const mockMetrics = {
+    recordMessageReceived: jest.fn(),
+    recordMessageForwarded: jest.fn(),
+    recordAnomaly: jest.fn(),
+    recordMessageInvalid: jest.fn(),
+    setMqttConnected: jest.fn(),
+    setKafkaReady: jest.fn(),
+    recordValidReading: jest.fn(),
+  };
+  const mockKafkaService = {
       send: jest.fn().mockResolvedValue(undefined),
       isReady: jest.fn().mockReturnValue(true),
     };
@@ -41,6 +51,7 @@ describe('MqttService', () => {
         MqttService,
         { provide: ConfigService, useValue: { get: jest.fn(() => 'mqtt://localhost:1883') } },
         { provide: KafkaService, useValue: mockKafkaService },
+        { provide: IotMetricsService, useValue: mockMetrics },
       ],
     }).compile();
 

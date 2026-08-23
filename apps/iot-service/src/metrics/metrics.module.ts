@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
-import { KafkaModule } from '../kafka/kafka.module';
-import { MqttModule } from '../mqtt/mqtt.module';
-import { MetricsController } from './metrics.controller';
+import { IotMetricsService } from './iot-metrics.service';
 
+/**
+ * Métriques métier d'iot-service. L'exposition `/metrics` (registre,
+ * intercepteur HTTP, métriques par défaut Node) est fournie par
+ * `ObservabilityModule.forRoot({ prefix: 'iot' })` dans `AppModule`.
+ */
 @Module({
-  imports: [MqttModule, KafkaModule],
-  controllers: [MetricsController],
+  providers: [IotMetricsService],
+  exports: [IotMetricsService],
 })
 export class MetricsModule {}

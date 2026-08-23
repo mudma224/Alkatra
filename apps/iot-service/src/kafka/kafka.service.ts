@@ -6,6 +6,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Kafka, Producer, CompressionTypes, logLevel, Consumer } from 'kafkajs';
+import { IotMetricsService } from '../metrics/iot-metrics.service';
 
 @Injectable()
 export class KafkaService implements OnModuleInit, OnModuleDestroy {
@@ -14,7 +15,10 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
   private producer: Producer;
   private isConnected = false;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly metrics: IotMetricsService,
+  ) {}
 
   async onModuleInit() {
     const brokers = (this.configService.get<string>('KAFKA_BROKERS') || 'localhost:9094').split(
@@ -44,14 +48,17 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       await this.producer.disconnect();
       this.logger.log('Kafka producer déconnecté');
     }
+    this.metrics.setKafkaReady(false);
   }
 
   private async connect() {
     try {
       await this.producer.connect();
       this.isConnected = true;
+      this.metrics.setKafkaReady(true);
       this.logger.log('✅ Kafka producer connecté');
     } catch (error: unknown) {
+      this.metrics.setKafkaReady(false);
       this.logger.error(`❌ Kafka connexion échouée: ${(error as Error).message}`);
       this.logger.warn('Retry dans 5 secondes...');
       setTimeout(() => this.connect(), 5000);

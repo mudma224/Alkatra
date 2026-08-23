@@ -28,7 +28,7 @@ export class SensorDataConsumer
   private readonly logger = new Logger(SensorDataConsumer.name);
   private kafka: Kafka;
   private consumer: Consumer;
-  private isRunning = false;
+  isRunning = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -56,6 +56,11 @@ export class SensorDataConsumer
     });
 
     await this.connect();
+  }
+
+  /** État du consumer (utilisé par le health check). */
+  isConnected(): boolean {
+    return this.isRunning;
   }
 
   private async connect(): Promise<void> {

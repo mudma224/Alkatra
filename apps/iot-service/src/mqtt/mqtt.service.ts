@@ -6,6 +6,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import * as mqtt from 'mqtt';
 import { KafkaService } from '../kafka/kafka.service';
+import { IotMetricsService } from '../metrics/iot-metrics.service';
 
 const MQTT_TOPIC = 'alkatra/farm/+/parcel/+/sensor/+/data';
 const KAFKA_RAW_TOPIC = 'raw-sensor-data';
@@ -72,6 +73,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly kafkaService: KafkaService,
+    private readonly metrics: IotMetricsService,
   ) {}
 
   async onModuleInit() {
@@ -102,6 +104,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
   private setupEventHandlers() {
     this.client.on('connect', () => {
+      this.metrics.setMqttConnected(true);
       this.logger.log('MQTT connecte a Mosquitto');
       this.client.subscribe(MQTT_TOPIC, { qos: 1 }, (err) => {
         if (err) {
@@ -121,6 +124,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.client.on('offline', () => {
+      this.metrics.setMqttConnected(false);
       this.logger.warn('MQTT hors ligne - tentative reconnexion...');
     });
 
@@ -131,12 +135,14 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
   private async handleMessage(topic: string, payload: Buffer): Promise<void> {
     this.messagesReceived++;
+    this.metrics.recordMessageReceived();
 
     let rawData: Record<string, unknown>;
 
     try {
       rawData = JSON.parse(payload.toString());
     } catch {
+      this.metrics.recordMessageInvalid();
       this.logger.warn(
         `Message JSON invalide sur topic ${topic}: ${payload.toString().substring(0, 100)}`,
       );
@@ -145,6 +151,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
     const enrichedReading = this.buildSensorReading(topic, rawData);
     if (!enrichedReading) {
+      this.metrics.recordMessageInvalid();
       this.logger.warn(`Payload invalide sur ${topic}: les 7 variables IA sont obligatoires`);
       return;
     }
@@ -157,6 +164,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
     if (isAnomaly) {
       this.anomaliesDetected++;
+      this.metrics.recordAnomaly();
       this.logger.warn(
         `Anomalie detectee [${enrichedReading.device_id}]: ${anomalyReasons.join(', ')}`,
       );
@@ -169,6 +177,8 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     );
 
     this.messagesForwarded++;
+    this.metrics.recordMessageForwarded();
+    this.metrics.recordValidReading(enrichedReading);
 
     if (this.messagesReceived % 10 === 0) {
       this.logger.log(

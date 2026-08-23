@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config'; // Ajout de ConfigService
 import { MongooseModule } from '@nestjs/mongoose'; // Import manquant
+import { ObservabilityModule } from '@alkatra/observability';
 import { HealthModule } from './health/health.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { MetricsModule } from './metrics/metrics.module';
@@ -13,6 +14,8 @@ import { KafkaConsumerModule } from './kafka-consumer/kafka-consumer.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+
+    ObservabilityModule.forRoot({ prefix: 'iot' }),
 
     // Utilisation de useFactory pour attendre le chargement de la config
     MongooseModule.forRootAsync({

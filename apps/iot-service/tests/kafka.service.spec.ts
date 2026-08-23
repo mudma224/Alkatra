@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { KafkaService } from '../src/kafka/kafka.service';
+import { IotMetricsService } from '../src/metrics/iot-metrics.service';
 
 // Mock de KafkaJS — simule Kafka sans avoir besoin d'un vrai broker
 jest.mock('kafkajs', () => ({
@@ -22,6 +23,7 @@ describe('KafkaService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KafkaService,
+        { provide: IotMetricsService, useValue: { setKafkaReady: jest.fn() } },
         {
           provide: ConfigService,
           useValue: {
