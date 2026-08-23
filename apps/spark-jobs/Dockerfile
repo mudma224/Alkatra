@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Dépendances Python (runtime minimal — PySpark est fourni par l'image de base)
-RUN pip install --no-cache-dir redis==5.3.1
+RUN pip install --no-cache-dir redis==5.3.1 prometheus-client==0.20.0
 
 # Code des jobs
 COPY jobs/ ./jobs/

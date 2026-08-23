@@ -6,10 +6,11 @@ Compatible avec le contrat capteur sensor-ai-v2 (iot-sensor-payload.md).
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json
+from pyspark.sql.functions import col
 from pyspark.sql.types import (
     BooleanType,
     FloatType,
@@ -20,6 +21,7 @@ from pyspark.sql.types import (
 
 from feature_engineering import compute_derived_features
 from state_manager import get_parcel_state, update_parcel_state
+from stream_metrics import push_batch_metrics
 
 logging.basicConfig(
     level=logging.INFO,
@@ -138,17 +140,24 @@ def process_batch(df, epoch_id: int) -> None:
     """
     Micro-batch Spark : enrichit chaque message avec les features ML
     et publie dans processed-sensor-data.
+
+    Les métriques du batch (durée, lignes, rejets) sont poussées vers le
+    PushGateway à chaque exécution — y compris les batches vides, dont le
+    push régulier prouve la vitalité du stream.
     """
+    started = time.monotonic()
     # Defensive logging + robust empty-check: use count() (more reliable across versions)
     try:
         count = df.count()
     except Exception as e:
         logger.exception(f"Error counting batch {epoch_id}: {e}")
+        push_batch_metrics(epoch_id, 0, 0, 0, time.monotonic() - started)
         return
 
     logger.info(f"Batch {epoch_id} — {count} message(s) reçus depuis {INPUT_TOPIC}")
 
     if count == 0:
+        push_batch_metrics(epoch_id, 0, 0, 0, time.monotonic() - started)
         return
 
     # Collect rows for processing
@@ -156,6 +165,7 @@ def process_batch(df, epoch_id: int) -> None:
         rows = df.collect()
     except Exception as e:
         logger.exception(f"Error collecting rows for batch {epoch_id}: {e}")
+        push_batch_metrics(epoch_id, count, 0, 0, time.monotonic() - started)
         return
     output_records = []
     rejected = 0
@@ -259,6 +269,7 @@ def process_batch(df, epoch_id: int) -> None:
         logger.warning(f"Batch {epoch_id} — {rejected} message(s) rejeté(s)")
 
     if not output_records:
+        push_batch_metrics(epoch_id, count, 0, rejected, time.monotonic() - started)
         return
 
     # ── Mode DRY_RUN : on logge sans écrire dans Kafka ─────────────────
@@ -266,12 +277,14 @@ def process_batch(df, epoch_id: int) -> None:
         for rec in output_records:
             logger.info(f"[DRY_RUN] {OUTPUT_TOPIC} <- {rec['value']}")
         logger.info(f"Batch {epoch_id} — {len(output_records)} records (DRY_RUN, non publiés)")
+        push_batch_metrics(epoch_id, count, len(output_records), rejected, time.monotonic() - started)
         return
 
     # ── Envoi vers Kafka processed-sensor-data ─────────────────────────
     spark = SparkSession.getActiveSession()
     if spark is None:
         logger.error("Pas de SparkSession active — impossible d'écrire dans Kafka")
+        push_batch_metrics(epoch_id, count, 0, rejected, time.monotonic() - started)
         return
 
     output_df = spark.createDataFrame(output_records)
@@ -286,6 +299,7 @@ def process_batch(df, epoch_id: int) -> None:
         f"Batch {epoch_id} — {len(output_records)} records "
         f"→ {OUTPUT_TOPIC}"
     )
+    push_batch_metrics(epoch_id, count, len(output_records), rejected, time.monotonic() - started)
 
 
 
