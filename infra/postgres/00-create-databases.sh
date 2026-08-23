@@ -142,6 +142,11 @@ REVOKE CONNECT ON DATABASE farm_db FROM mlflow_user;
 REVOKE CONNECT ON DATABASE recommendation_db FROM mlflow_user;
 REVOKE CONNECT ON DATABASE notification_db FROM mlflow_user;
 REVOKE CONNECT ON DATABASE keycloak_db FROM mlflow_user;
+
+-- postgres_exporter: lecture seule des statistiques cluster (pg_monitor),
+-- utilisée par postgres-exporter pour Prometheus. Aucun accès aux données.
+CREATE USER postgres_exporter WITH PASSWORD '${POSTGRES_EXPORTER_PASSWORD:-postgres_exporter_pass}';
+GRANT pg_monitor TO postgres_exporter;
 SQL
 
 # Phase 6: Execute schema SQL files in their respective databases

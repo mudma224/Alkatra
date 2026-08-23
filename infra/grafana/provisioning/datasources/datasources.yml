@@ -1,4 +1,10 @@
 apiVersion: 1
+# Datasources Al Katra — référencées par NOM dans les dashboards (ADR-0003 :
+# pas d'UID forcé, pour rester compatible avec un volume grafana_data
+# préexistant).
+#
+# NB : `timeInterval: 15s` correspond au scrape_interval global de Prometheus
+# (les jobs pipeline sont scrapés à 5 s).
 datasources:
   - name: Prometheus
     type: prometheus
@@ -8,3 +14,11 @@ datasources:
     editable: true
     jsonData:
       timeInterval: '15s'
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 1000
