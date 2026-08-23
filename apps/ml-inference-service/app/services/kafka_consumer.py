@@ -11,7 +11,12 @@ from kafka import KafkaConsumer
 from app.config import settings
 from app.schemas.prediction import FEATURE_NAMES, PredictionRequest
 from app.services.model_service import model_service
-from app.core.metrics import KAFKA_MESSAGES_TOTAL, MISSING_FEATURES_TOTAL, PREDICTIONS_TOTAL
+from app.core.metrics import (
+    KAFKA_MESSAGES_TOTAL,
+    MISSING_FEATURES_TOTAL,
+    PREDICTIONS_TOTAL,
+    PREDICTION_KAFKA_LATENCY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +70,8 @@ class MLKafkaConsumer:
         features = {f: payload[f] for f in FEATURE_NAMES}
         features["parcel_id"] = parcel_id
         req = PredictionRequest(**features)
-        response = model_service.predict(req)
+        with PREDICTION_KAFKA_LATENCY.time():
+            response = model_service.predict(req)
         # Count prediction regardless of source (HTTP vs Kafka)
         try:
             PREDICTIONS_TOTAL.labels(

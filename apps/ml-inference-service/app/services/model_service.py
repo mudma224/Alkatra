@@ -30,6 +30,8 @@ from app.schemas.prediction import PredictionRequest, PredictionResponse, ShapFa
 
 logger = logging.getLogger(__name__)
 
+from app.core.metrics import DEMO_MODE, MODELS_LOADED
+
 # ------------------------------------------------------------------
 # CONFIGURATION CENTRALE (source unique de vérité)
 # ------------------------------------------------------------------
@@ -230,6 +232,8 @@ def load() -> None:
         try:
             model_service.load_models()
             model_service.demo_mode = False
+            MODELS_LOADED.set(2)
+            DEMO_MODE.set(0)
             return
         except Exception as e:
             logger.warning(
@@ -243,6 +247,8 @@ def load() -> None:
 
     logger.error("Échec multiple du chargement des modèles → bascule en demo_mode")
     model_service.demo_mode = True
+    MODELS_LOADED.set(0)
+    DEMO_MODE.set(1)
 
 # Propriétés exposées
 model_service.load = load
