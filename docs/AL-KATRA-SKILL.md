@@ -95,7 +95,7 @@ La plateforme est un monorepo composé de 7 services applicatifs et d'une stack 
 | Streaming | Apache Kafka 3.7 (mode KRaft single-node) |
 | IoT | MQTT via Mosquitto 2.0 |
 | MLOps | MLflow (tracking + registry), MinIO (artifacts S3) |
-| Observabilité | Prometheus, Grafana |
+| Observabilité | Prometheus, Grafana, Alertmanager, Loki+Promtail, exporters (postgres/mongodb/redis/kafka/blackbox), PushGateway |
 | API Gateway | Nginx (template dynamique via envsubst) |
 | Orchestration locale | Docker Compose (profil `phase1` pour services métier) |
 | Monorepo | npm workspaces + Turborepo |
@@ -119,14 +119,18 @@ alkatra-platform/
 │   └── alert-service/          # ✅ Sprint 5 — NestJS notifications (in-app + FCM + Kafka)
 ├── packages/
 │   ├── shared-types/           Types TypeScript partagés (auth, farm, sensor, user)
+│   ├── observability/          @alkatra/observability — socle métriques Prometheus des services NestJS
 │   └── shared-utils/           (dossier réservé, vide)
 ├── infra/                      Infrastructure Docker
 │   ├── docker/                 docker-compose.yml central
 │   ├── postgres/               scripts d'init multi-bases + schémas SQL
 │   ├── nginx/                  API Gateway (Dockerfile + template)
 │   ├── kafka/                  création des topics
-│   ├── grafana/                dashboards + provisioning
-│   ├── prometheus/             configuration du scrape
+│   ├── grafana/                dashboards (dossiers par domaine) + provisioning
+│   ├── prometheus/             configuration du scrape + rules/ (recording + alertes)
+│   ├── alertmanager/           template envsubst + Dockerfile (alerting infra → email)
+│   ├── loki/                   configuration Loki + Promtail (logs centralisés)
+│   ├── blackbox/               configuration des probes HTTP de disponibilité
 │   ├── mosquitto/              configurations MQTT dev/prod
 │   ├── mlflow/                 image + script de démarrage
 │   └── kubernetes/             manifests K8s (partiel — ml-inference uniquement)
@@ -424,9 +428,18 @@ La stack complète est définie dans `infra/docker/docker-compose.yml` (project 
 | `alkatra-mosquitto` | `eclipse-mosquitto:2.0` | 1883, 9010 (WS) | Broker MQTT |
 | `alkatra-minio` | `minio/minio` | 9000 (API), 9001 (console) | Stockage S3 (artifacts MLflow) |
 | `alkatra-mlflow` | (build local) | 5001 | Tracking + registry ML |
-| `alkatra-mailhog` | `mailhog/mailhog` | 1025 (SMTP), 8025 (UI) | SMTP dev |
-| `alkatra-prometheus` | `prom/prometheus` | 9090 | Collecte métriques |
-| `alkatra-grafana` | `grafana/grafana` | 3000 | Dashboards |
+| `alkatra-mailhog` | `mailhog/mailhog` | 1025 (SMTP), 8025 (UI) | SMTP dev + réception des emails d'alertes Alertmanager |
+| `alkatra-prometheus` | `prom/prometheus` | 9090 | Collecte métriques + évaluation des règles |
+| `alkatra-grafana` | `grafana/grafana` | 3000 | Dashboards (14, dossiers par domaine) |
+| `alkatra-alertmanager` | (build local) | 9093 | Routage des alertes infra → email |
+| `alkatra-pushgateway` | `prom/pushgateway` | 9091 | Métriques spark-jobs |
+| `alkatra-blackbox` | `prom/blackbox-exporter` | — (interne) | Probes HTTP de disponibilité |
+| `alkatra-postgres-exporter` | `prometheuscommunity/postgres-exporter` | — (interne) | Métriques PostgreSQL |
+| `alkatra-mongodb-exporter` | `percona/mongodb_exporter` | — (interne) | Métriques MongoDB |
+| `alkatra-redis-exporter` | `oliver006/redis_exporter` | — (interne) | Métriques Redis |
+| `alkatra-kafka-exporter` | `danielqsj/kafka-exporter` | — (interne) | Lag des consumer groups Kafka |
+| `alkatra-loki` | `grafana/loki` | 3100 | Centralisation des logs |
+| `alkatra-promtail` | `grafana/promtail` | — (interne) | Collecte des logs conteneurs |
 
 ### Services applicatifs (profil `phase1`)
 
@@ -495,7 +508,7 @@ Le détail complet (config, ajouter une route) est dans [`docs/guides/api-gatewa
 
 ## 11. CI/CD
 
-Neuf workflows GitHub Actions dans `.github/workflows/`. Tous se déclenchent sur `push` et `pull_request` vers `main` et `develop`, avec filtres de chemins pour ne lancer que les jobs pertinents.
+Dix workflows GitHub Actions dans `.github/workflows/`. Tous se déclenchent sur `push` et `pull_request` vers `main` et `develop`, avec filtres de chemins pour ne lancer que les jobs pertinents.
 
 | Workflow | Cible | Jobs |
 |---|---|---|
@@ -508,6 +521,7 @@ Neuf workflows GitHub Actions dans `.github/workflows/`. Tous se déclenchent su
 | `ci-recommendation.yml` | `apps/recommendation-service/**`, `packages/shared-types/**` | Lint + tests unitaires (npm workspace), vérification build Docker |
 | `ci-alert.yml` | `apps/alert-service/**`, `packages/shared-types/**` | Lint + tests unitaires (npm workspace), vérification build Docker |
 | `ci-frontend.yml` | `frontend/**` | Lint + tests + build du frontend |
+| `ci-observability.yml` | `infra/{prometheus,alertmanager,grafana,loki,blackbox}/**`, `packages/observability/**`, compose | promtool + amtool + conventions dashboards + build/tests du package |
 
 Versions CI : **Node.js 20** pour les workflows TypeScript, **Python 3.11** pour les workflows ML/Spark.
 
@@ -525,8 +539,19 @@ Stack standard pour auth-service, user-service, farm-service, recommendation-ser
 - **TypeORM** pour la persistance Postgres (`synchronize: false`, entités explicites, `autoLoadEntities: true`)
 - **Passport + passport-jwt** pour l'authentification (stratégie HS256, secret partagé via `JWT_SECRET`)
 - **class-validator + class-transformer** pour la validation des DTOs (`ValidationPipe` global avec `whitelist`, `forbidNonWhitelisted`, `transform`, `enableImplicitConversion`)
-- **ioredis** pour Redis, **prom-client** pour Prometheus
-- Préfixe global `api/v1` via `app.setGlobalPrefix('api/v1')` (avec exceptions pour `/health` et `/metrics` quand non protégés)
+- **ioredis** pour Redis, **prom-client** pour Prometheus (via le package partagé `@alkatra/observability`)
+- Préfixe global `api/v1` via `app.setGlobalPrefix('api/v1')` (avec exceptions pour `/health` et `/metrics` quand non protégés — le package `@alkatra/observability` expose `/metrics` à la racine)
+
+#### Socle métriques standard (package `@alkatra/observability`)
+
+Tout service NestJS importe `ObservabilityModule.forRoot({ prefix: '<service>' })` :
+`GET /metrics` à la racine, métriques par défaut Node, intercepteur HTTP global
+(`<prefix>_http_requests_total{method,route,status}` + histogramme de latence,
+`route` = pattern Express pour borner la cardinalité), helpers Kafka. Convention
+de nommage : `<service>_<objet>_<unité>[_<type>]` — exceptions historiques
+conservées : `alkatra_iot_*`, `ml_*`. Tout service conforme est couvert
+automatiquement par les recording rules et le dashboard générique « Services
+HTTP ». Détail : [`docs/guides/observability.md`](guides/observability.md).
 
 #### Squelette standard d'un service NestJS
 
@@ -720,7 +745,8 @@ Map `statusCode → errorCode` : 400 `BAD_REQUEST`, 401 `UNAUTHORIZED`, 403 `FOR
 - [`docs/guides/local-ml.md`](guides/local-ml.md) — Stack ML locale + enregistrement modèles
 - [`docs/guides/api-gateway.md`](guides/api-gateway.md) — Configuration Nginx
 - [`docs/guides/ci-cd.md`](guides/ci-cd.md) — Pipelines GitHub Actions
-- [`docs/guides/observability.md`](guides/observability.md) — Prometheus, Grafana, MLflow
+- [`docs/guides/observability.md`](guides/observability.md) — Observabilité complète : Prometheus, règles, Alertmanager, Grafana, Loki, exporters
+- [`design_prometheus.md`](../design_prometheus.md) — Design de référence de la stack d'observabilité (racine du dépôt)
 - [`docs/guides/testing-and-quality.md`](guides/testing-and-quality.md) — Stratégie de test
 
 ### Références (contrats figés)
@@ -735,6 +761,7 @@ Map `statusCode → errorCode` : 400 `BAD_REQUEST`, 401 `UNAUTHORIZED`, 403 `FOR
 - [`docs/adr/0001-iot-ai-sensor-contract.md`](adr/0001-iot-ai-sensor-contract.md) — Contrat capteur
 - [`docs/adr/0002-docker-compose-env-file.md`](adr/0002-docker-compose-env-file.md) — `--env-file .env` explicite
 - [`docs/adr/0003-grafana-dashboard-provisioning.md`](adr/0003-grafana-dashboard-provisioning.md) — Provisioning Grafana
+- [`docs/adr/0005-alerting-prometheus-alertmanager.md`](adr/0005-alerting-prometheus-alertmanager.md) — Alerting Prometheus+Alertmanager, notifications MailHog, standardisation métriques
 - [`docs/adr/0004-mlflow-local-runtime.md`](adr/0004-mlflow-local-runtime.md) — Runtime MLflow local
 - [`docs/adr/ADR-001-monorepo.md`](adr/ADR-001-monorepo.md) — Choix monorepo Turborepo
 - [`docs/adr/ADR-003-malformed-kafka-messages.md`](adr/ADR-003-malformed-kafka-messages.md) — Messages Kafka malformés

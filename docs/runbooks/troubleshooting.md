@@ -280,3 +280,72 @@ S'assurer que `.gitattributes` contient :
 * text=auto eol=lf
 *.sh text eol=lf
 ```
+
+---
+
+## Observabilité : cible Prometheus DOWN (targets page)
+
+**Symptôme :** une cible est DOWN sur http://localhost:9090/targets
+(l'alerte `ServiceDown` / `BlackboxProbeFailed` peut fire).
+
+**Causes possibles :**
+
+1. Le conteneur du service est arrêté → `docker ps` + logs du service.
+2. Le endpoint `/metrics` a bougé (prefix global mal exclu — il doit rester à
+   la racine, cf. `@alkatra/observability` README).
+3. Le job de scrape pointe sur le mauvais port/chemin dans
+   `infra/prometheus/prometheus.yml`.
+
+**Correction :**
+
+```bash
+# Vérifier l'exposition locale du service
+docker exec alkatra-farm wget -qO- http://localhost:3003/metrics | head -5
+# Recharger la config Prometheus sans redémarrer (flag --web.enable-lifecycle)
+curl -X POST http://localhost:9090/-/reload
+```
+
+## Observabilité : une alerte fire mais aucun email n'arrive
+
+**Symptôme :** l'alerte est visible (firing) dans Prometheus/Alertmanager mais
+MailHog (http://localhost:8025) reste vide.
+
+**Diagnostic :**
+
+1. Vérifier l'alerte côté Alertmanager : http://localhost:9093 (elle doit y
+   apparaître — sinon le `alerting:` de `prometheus.yml` est fautif).
+2. Vérifier le rendu du template (variables `ALERT_*` manquantes → le
+   conteneur refuse de démarrer, `docker logs alkatra-alertmanager`).
+3. Le **Watchdog** (toujours firing, email toutes les 4 h) est le témoin
+   permanent de la chaîne : s'il n'arrive pas, la chaîne SMTP est cassée.
+
+**Test de bout en bout :**
+
+```bash
+docker stop alkatra-iot     # → ServiceDown (critical) ≤ 2 min
+docker start alkatra-iot    # → email de résolution
+```
+
+## Observabilité : PushGateway « stale » (SparkStreamStalled)
+
+**Symptôme :** l'alerte `SparkStreamStalled` fire ; le dashboard Spark montre
+un âge du dernier push > 3 min.
+
+**Causes possibles :** job Spark arrêté/bloqué (vérifier `docker logs
+alkatra-spark`), `PUSHGATEWAY_URL` absent de l'environnement du conteneur, ou
+pushgateway down. NB : les métriques PushGateway **persistent** après l'arrêt
+du job — c'est l'âge du push (`push_time_seconds`), pas la présence des
+séries, qui prouve la vitalité.
+
+## Grafana : dashboards vides après modification du provisioning
+
+Le provider rescanne les fichiers toutes les 30 s (`updateIntervalSeconds`).
+Si les changements ne se propagent pas :
+
+```bash
+docker compose --env-file .env -f infra/docker/docker-compose.yml up -d --force-recreate grafana
+```
+
+Rappel (ADR-0003) : les dashboards référencent les datasources **par nom**
+(`"Prometheus"`, `"Loki"`) — un UID forcé provoque le crash-loop
+« data source not found » avec un volume `grafana_data` préexistant.

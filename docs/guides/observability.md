@@ -1,128 +1,229 @@
 # Observabilité
 
-Ce document décrit la chaîne d'observation de la plateforme Al Katra Bel Qatra : collecte de métriques applicatives avec Prometheus, visualisation avec Grafana, suivi des expériences et des modèles avec MLflow, et sonde de santé des services.
+Ce document décrit la chaîne d'observation de la plateforme Al Katra Bel Qatra :
+métriques applicatives et d'infrastructure (Prometheus + exporters), dashboards
+(Grafana), alerting d'infrastructure (règles Prometheus → Alertmanager → email
+MailHog), logs centralisés (Loki + Promtail) et suivi ML (MLflow).
+
+Le design de référence complet est [`design_prometheus.md`](../../design_prometheus.md)
+(racine du dépôt). Les décisions d'alerting et de standardisation des métriques
+sont documentées dans [ADR-0005](../adr/0005-alerting-prometheus-alertmanager.md).
 
 ## Vue d'ensemble
 
-L'observabilité repose sur trois composants complémentaires :
+```
+Services (/metrics, package @alkatra/observability)  ─┐
+Exporters (postgres, mongodb, redis, kafka)          ─┼─▶ Prometheus ─▶ règles ─▶ Alertmanager ─▶ email (MailHog)
+Blackbox probes + PushGateway (spark-jobs)           ─┘        │
+                                                              ▼
+                                          Grafana (14 dashboards) ◀── Loki ◀── Promtail (logs conteneurs)
+```
 
-- **Prometheus** scrape les endpoints `/metrics` exposés par les services applicatifs et stocke les séries temporelles.
-- **Grafana** lit les données Prometheus et affiche les dashboards provisionnés depuis le dépôt.
-- **MLflow** suit les expériences d'entraînement et le registre de modèles, avec un backend Postgres et des artifacts stockés dans MinIO.
+- **Prometheus** scrape les endpoints `/metrics` des 7 services applicatifs et
+  des exporters d'infrastructure ; évalue les règles (`infra/prometheus/rules/`)
+  toutes les 15 s ; envoie les alertes à Alertmanager.
+- **Grafana** affiche les dashboards provisionnés depuis le dépôt, organisés en
+  dossiers par domaine. Identifiants : `GRAFANA_USER` / `GRAFANA_PASSWORD`
+  (obligatoire — le compose refuse de démarrer sans valeur).
+- **Alertmanager** route les alertes vers l'email ; en dev, le SMTP est MailHog
+  (vérification sur http://localhost:8025).
+- **Loki + Promtail** centralisent les logs de tous les conteneurs (exploration
+  dans Grafana → Explore, datasource `Loki`).
+- **MLflow** suit les expériences et le registre de modèles (backend Postgres,
+  artifacts MinIO).
 
-Les services d'infrastructure (Postgres, MongoDB, Kafka, Redis, etc.) sont surveillés via les healthchecks Docker et le script `scripts/health-check.sh`, et non par Prometheus.
+## URLs et accès
+
+| Outil | URL | Accès |
+| --- | --- | --- |
+| Grafana | http://localhost:3000 | `GRAFANA_USER` / `GRAFANA_PASSWORD` (.env) |
+| Prometheus | http://localhost:9090 | sans auth (réseau local) |
+| Alertmanager | http://localhost:9093 | sans auth — UI statut alertes/silences |
+| PushGateway | http://localhost:9091 | sans auth — métriques Spark |
+| Loki | http://localhost:3100 | API interne (via Grafana) |
+| MailHog (emails d'alertes) | http://localhost:8025 | sans auth |
 
 ## Prometheus
 
-URL locale :
+Configuration : `infra/prometheus/prometheus.yml`.
 
-```text
-http://localhost:9090
-```
+- `scrape_interval` global **15 s**, `evaluation_interval` **15 s** ;
+  override **5 s** pour les jobs pipeline (`iot-service`, `ml-inference-service`).
+- Règles : `rule_files: /etc/prometheus/rules/*.yml` (montage read-only).
+- Alertmanager : `alerting.alertmanagers → alertmanager:9093`.
 
-Configuration : `infra/prometheus/prometheus.yml`. Paramètres globaux :
+### Jobs scrapés
 
-- `scrape_interval: 5s`
-- `evaluation_interval: 5s`
-- `external_labels: { environment: development, project: alkatra }`
-
-Jobs scrapés :
-
-| Job | Cible | Chemin des métriques |
+| Job | Cible | Notes |
 | --- | --- | --- |
-| `prometheus` | `localhost:9090` | `/metrics` (défaut) |
-| `iot-service` | `iot-service:3005` | `/metrics` |
-| `ml-inference-service` | `ml-inference-service:8000` | `/metrics` |
-| `auth-service` | `auth-service:3001` | `/metrics` |
-| `user-service` | `user-service:3002` | `/metrics` |
+| `prometheus` | `localhost:9090` | auto-supervision |
+| `alertmanager` / `pushgateway` | `:9093` / `:9091` | chaîne d'alerting |
+| `iot-service` | `iot-service:3005` | **5 s** |
+| `ml-inference-service` | `ml-inference-service:8000` | **5 s** |
+| `auth-service` … `recommendation-service` | ports 3001–3006 | 15 s |
+| `postgres-exporter` | `postgres-exporter:9187` | rôle `pg_monitor` dédié |
+| `mongodb-exporter` | `mongodb-exporter:9216` | |
+| `redis-exporter` | `redis-exporter:9121` | |
+| `kafka-exporter` | `kafka-exporter:9308` | **lag par consumer group**, 30 s |
+| `blackbox-core` | via `blackbox-exporter:9115` | probes stack de base — **alertées** |
+| `blackbox-phase1` | via `blackbox-exporter:9115` | probes services métier — dashboard uniquement |
 
-Les services `farm-service`, `recommendation-service` et `spark-jobs` ne sont pas scrapés par Prometheus. Ils ne figurent donc pas dans `prometheus.yml` et n'exposent pas d'endpoint `/metrics` dans la configuration actuelle.
+Page **Status → Targets** : état up/down de chaque job.
 
-La page **Status → Targets** de Prometheus indique l'état (up/down) et l'heure du dernier scrape pour chaque job.
+### Règles (`infra/prometheus/rules/`)
+
+| Fichier | Contenu |
+| --- | --- |
+| `recording.yml` | agrégats standardisés (`job:http_requests:rate5m`, ratios d'erreurs, p95, débits pipeline) — interrogés par les dashboards |
+| `alerts-services.yml` | `ServiceDown`, `HighHttpErrorRate`, `HttpLatencyHigh`, `KafkaConsumerDisconnected`, `PersistenceErrorsIncreasing`, `MqttDisconnected`, `AlertmanagerDown`, `Watchdog` |
+| `alerts-infra.yml` | `PostgresDown`, `PostgresConnectionsHigh`, `MongodbDown`, `RedisDown`, `RedisMemoryHigh`, `KafkaBrokerDown`, `KafkaConsumerLagHigh` (warning/critical), `BlackboxProbeFailed` |
+| `alerts-pipeline.yml` | `NoSensorData`, `InvalidSensorMessagesIncreasing`, `PredictionsStalled`, `ModelsNotLoaded`, `SparkStreamStalled`, `DlqMessages`, `FcmFailuresIncreasing`, `HeartbeatErrorsIncreasing`… |
+
+L'alerte **`Watchdog`** est toujours firing : elle vérifie en continu la chaîne
+Prometheus → Alertmanager → SMTP. Si ses emails (répétition 4 h) n'arrivent
+plus dans MailHog, la chaîne de notification est cassée.
+
+### Ajouter une alerte
+
+1. Ajouter la règle dans le fichier thématique de `infra/prometheus/rules/`
+   (severities `warning` / `critical`, `summary` + `description` en français).
+2. Valider : `promtool check rules infra/prometheus/rules/<fichier>.yml`.
+3. Recharger sans redémarrer : `curl -X POST http://localhost:9090/-/reload`
+   (flag `--web.enable-lifecycle` actif).
+
+## Métriques des services — package `@alkatra/observability`
+
+Tous les services NestJS utilisent le package partagé
+`packages/observability` (`@alkatra/observability`) :
+
+- `GET /metrics` à la racine, registre prom-client dédié ;
+- métriques par défaut Node (`process_*`, `nodejs_*`) partout ;
+- intercepteur HTTP global :
+  `<prefix>_http_requests_total{method, route, status}` et
+  `<prefix>_http_request_duration_seconds` (histogramme) — `route` = pattern
+  Express (`/api/v1/farms/:id`), cardinalité bornée ;
+- helpers Kafka : `<prefix>_kafka_messages_consumed_total{topic, status}`,
+  `<prefix>_kafka_consumer_connected`.
+
+**Convention de nommage** : `<service>_<objet>_<unité>[_<type>]`. Exceptions
+historiques conservées : `alkatra_iot_*` (iot-service), `ml_*` (ml-inference,
+Python `prometheus_client`).
+
+**Le lag Kafka n'est pas instrumenté côté applicatif** : kafka-exporter le
+supervise au niveau des offsets broker (source de vérité unique).
+
+### Ajouter une métrique à un service
+
+1. Dans `<service>/src/metrics/`, déclarer la métrique sur le registre partagé
+   (cf. `README.md` du package) en suivant la convention de nommage.
+2. Incrémenter au point réel du flux (service, consumer, interceptor).
+3. Les recording rules et le dashboard « Services HTTP » couvrent
+   automatiquement toute métrique conforme à la convention — aucun changement
+   Prometheus/Grafana nécessaire pour les métriques HTTP standard.
+
+### Métriques spécifiques par service (extrait)
+
+| Service | Métriques métier |
+| --- | --- |
+| auth | `auth_otp_requests_total`, `auth_otp_verified_total`, `auth_otp_failed_total`, `auth_login_total`, `auth_users_total` |
+| user | `user_profile_requests_total`, `user_profile_updates_total`, `user_auth_calls_total{operation,status}` |
+| farm | `farm_entities{type}`, `farm_heartbeats_processed_total{result}`, `farm_sensor_health{status}` |
+| iot | `alkatra_iot_*` (reçus, transférés, invalides, anomalies, MQTT, Kafka, valeurs par capteur, capteurs actifs) |
+| recommendation | `recommendations_persisted_total`, `recommendation_feedback_total{decision}`, erreurs de persistance |
+| alert | `alerts_created_total{type}`, `alerts_dedup_skipped_total{type}`, `fcm_*`, `alert_kafka_dlq_total`, outbound |
+| ml-inference | `ml_predictions_total{source,result}`, latences HTTP **et** Kafka, `ml_missing_features_total`, `ml_models_loaded`, `ml_demo_mode` |
+| spark-jobs | `spark_stream_*` (durée batch, batch_id, lignes, rejets) → PushGateway |
+
+## Alertmanager
+
+- Configuration : `infra/alertmanager/alertmanager.yml.template`, rendu par
+  `entrypoint.sh` (envsubst — même convention que la gateway Nginx, ADR-0002).
+- Variables : `ALERT_SMTP_HOST`, `ALERT_SMTP_PORT`, `ALERT_EMAIL_FROM`,
+  `ALERT_EMAIL_TO` (dans `.env`).
+- Routage : groupement par `alertname`/`job`, `critical` re-notifiée toutes
+  les heures, `warning` toutes les 4 h ; inhibition warning ↔ critical.
+- **Passer en prod** : pointer `ALERT_SMTP_HOST/PORT` vers le SMTP réel et
+  activer `smtp_require_tls: true` dans le template.
+
+Test de bout en bout : `docker stop alkatra-iot` → email `ServiceDown` dans
+MailHog ≤ 2 min → `docker start alkatra-iot` → email de résolution.
 
 ## Grafana
 
-URL locale :
+### Provisioning
 
-```text
-http://localhost:3000
-```
+- Datasources (`infra/grafana/provisioning/datasources/datasources.yml`) :
+  `Prometheus` (défaut, `timeInterval: 15s`) et `Loki` — **référencées par
+  nom** dans les dashboards (ADR-0003, pas d'UID forcé).
+- Provider (`provisioning/dashboards/dashboards.yml`) :
+  `foldersFromFilesStructure: true` — l'arborescence du dépôt devient la
+  structure de dossiers Grafana.
 
-Identifiants : `GRAFANA_USER` (défaut `admin`) et `GRAFANA_PASSWORD` définis dans `.env`.
+### Dashboards (14)
 
-### Datasource
+| Dossier | Dashboards |
+| --- | --- |
+| `00-overview` | Vue d'ensemble (golden signals, pipeline, alertes, infra) |
+| `10-infrastructure` | PostgreSQL, MongoDB, Redis, Kafka (lag/DLQ), Probes |
+| `20-pipeline` | Pipeline IoT, Spark Streaming |
+| `30-services` | Services HTTP (générique, variable `$service`), Auth, Alertes & FCM |
+| `40-ml` | ML Inference, Recommandations |
+| `50-alerting` | Alertes métier (funnel) |
 
-La datasource Prometheus est provisionnée par fichier dans `infra/grafana/provisioning/datasources/datasources.yml` :
+Conventions : uid `alkatra-*`, `description` en tête, refresh 15–30 s,
+datasource par nom, seuils cohérents. Validées par
+`node scripts/validate-dashboards.mjs` (exécuté dans la CI).
 
-```yaml
-- name: Prometheus
-  type: prometheus
-  access: proxy
-  url: http://prometheus:9090
-  isDefault: true
-```
+### Ajouter un dashboard
 
-Les dashboards référencent la datasource par son **nom** (`"datasource": "Prometheus"`), et non par un UID imposé. Ce choix évite les conflits lorsqu'une datasource existe déjà dans le volume Grafana. Le détail de cette décision figure dans l'ADR-0003.
+1. Créer `infra/grafana/dashboards/<domaine>/<nom>.json` (uid `alkatra-*`,
+   description, refresh ≥ 15 s, datasource `"Prometheus"`/`"Loki"` par nom).
+2. `node scripts/validate-dashboards.mjs` pour vérifier les conventions.
+3. Recréer le conteneur Grafana si le provisioning ne se recharge pas :
+   `docker compose --env-file .env -f infra/docker/docker-compose.yml up -d grafana`
+   (le provider rescanne toutes les 30 s).
 
-### Dashboards provisionnés
+## Loki + Promtail
 
-Le dossier `infra/grafana/dashboards` est monté vers `/var/lib/grafana/dashboards` dans le conteneur. Le provider défini dans `infra/grafana/provisioning/dashboards/dashboards.yml` charge automatiquement les fichiers JSON de ce dossier.
+- Configurations : `infra/loki/loki-config.yml` (rétention 7 j) et
+  `infra/loki/promtail-config.yml` (découverte Docker, label `container`,
+  drop des logs loki/promtail).
+- Exploration : Grafana → Explore → datasource `Loki` →
+  `{container="alkatra-iot"}`. Les logs JSON de la gateway Nginx sont
+  directement structurés.
 
-| Fichier | Titre du dashboard | Contenu |
+## Exporters et probes
+
+| Composant | Image | Rôle |
 | --- | --- | --- |
-| `iot-pipeline.json` | Al Katra - IoT Pipeline | Connexions du pipeline IoT, compteurs MQTT/Kafka, anomalies, dernières valeurs capteur |
-| `ml-inference.json` | Al Katra - ML Inference | Prédictions par minute, total des prédictions, latence, état des modèles |
+| `postgres-exporter` | `prometheuscommunity/postgres-exporter:v0.16.0` | stats cluster (rôle `pg_monitor`, créé par `00-create-databases.sh`) |
+| `mongodb-exporter` | `percona/mongodb_exporter:0.43.1` | stats MongoDB |
+| `redis-exporter` | `oliver006/redis_exporter:v1.66.0` | mémoire, clés, évictions |
+| `kafka-exporter` | `danielqsj/kafka-exporter:v1.8.0` | **lag par consumer group × topic**, offsets |
+| `blackbox-exporter` | `prom/blackbox-exporter:v0.25.0` | probes HTTP (`http_2xx`) |
+| `pushgateway` | `prom/pushgateway:v1.8.0` | métriques spark-jobs (job non scrapable) |
 
-Les dashboards sont versionnés dans Git ; ils sont restaurés automatiquement après un reset du volume Grafana, sans import manuel. Après toute modification du provisioning, il faut recréer le conteneur Grafana pour recharger la configuration.
+### Ajouter un exporter
+
+1. Déclarer le service dans `infra/docker/docker-compose.yml` (image épinglée,
+   healthcheck, réseau `alkatra-net`, sans port host sauf UI).
+2. Ajouter le job de scrape dans `prometheus.yml`.
+3. Documenter dans ce guide et dans `docs/reference/ports-and-services.md`.
 
 ## MLflow
 
-URL locale :
+Inchangé : tracking + registry sur http://localhost:5001, backend Postgres
+(`mlflow_db`), artifacts MinIO. L'état du chargement des modèles est exposé par
+ml-inference-service via `ml_models_loaded` / `ml_demo_mode` (dashboard
+« ML Inference »).
 
-```text
-http://localhost:5001
-```
+## CI
 
-MLflow est construit depuis `infra/mlflow/Dockerfile` (image `python:3.11-slim`). Le script de démarrage `infra/mlflow/start.sh` configure :
+`.github/workflows/ci-observability.yml` valide à chaque modification des
+chemins concernés :
 
-- le **backend store** Postgres, base `mlflow_db` (utilisateur `mlflow_user`) ;
-- le **artifact store** dans MinIO à l'emplacement `s3://mlflow-artifacts`, via `MLFLOW_S3_ENDPOINT_URL=http://minio:9000` et les identifiants `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`.
-
-Le healthcheck Docker utilise l'interpréteur Python (`urllib.request`) plutôt que `curl`, absent de l'image slim. Le runtime local MLflow et ses contraintes (fichiers `.sh` en LF, partage des variables Postgres via `.env`) sont documentés dans l'ADR-0004.
-
-Le service `ml-inference-service` consomme les modèles depuis MLflow (`MLFLOW_TRACKING_URI`, `MLFLOW_CLASSIFIER_NAME`, `MLFLOW_REGRESSOR_NAME`, `MLFLOW_MODEL_STAGE`). En l'absence de MLflow, il bascule en mode DEMO sans modèles réels.
-
-## Health checks par service
-
-Chaque service applicatif expose un endpoint de santé utilisé par les healthchecks Docker, par le script `npm run health` et par la passerelle Nginx (pour ses dépendances).
-
-| Service | Endpoint | Vérifications |
-| --- | --- | --- |
-| iot-service | `GET /health` (port 3005) | Connexion MQTT, compteurs messages reçus / transférés / anomalies, état Kafka prêt |
-| auth-service | `GET /health` (port 3001) | État du service |
-| user-service | `GET /health/live` (port 3002) | Liveness (processus) |
-| user-service | `GET /health/ready` (port 3002) | Readiness : appel à `auth-service` `/health` |
-| farm-service | `GET /api/v1/health/live` (port 3003) | Liveness |
-| farm-service | `GET /api/v1/health/ready` (port 3003) | Readiness : `SELECT 1` sur Postgres |
-| recommendation-service | `GET /health` (port 3004) | Liveness |
-| recommendation-service | `GET /health/ready` (port 3004) | Readiness : Postgres (`SELECT 1`) + connexion consommateur Kafka |
-| ml-inference-service | `GET /health` (port 8000) | Modèles chargés, mode DEMO, URI MLflow |
-| API Gateway | `GET /health` (port 8080) | Nginx ready |
-
-Le script global de santé :
-
-```bash
-npm run health
-```
-
-Il interroge les healthchecks Docker des conteneurs (PostgreSQL, MongoDB, Redis, Kafka, Mosquitto, iot-service, spark-job) et les endpoints HTTP des interfaces web (Grafana, Kafka UI, Prometheus, MailHog, MLflow) et des services applicatifs (iot-service, ml-inference-service). Il affiche également le nombre de documents dans la collection MongoDB `ai_sensor_features`.
-
-## Métriques par service
-
-Le détail des métriques exposées (noms Prometheus, labels, types) se trouve dans le guide de chaque service :
-
-- `docs/guides/iot-service.md` — métriques du pipeline IoT (`alkatra_iot_messages_received_total`, `alkatra_iot_messages_forwarded_total`, `alkatra_iot_anomalies_detected_total`, `alkatra_iot_mqtt_connected`, `alkatra_iot_kafka_ready`, etc.).
-- `docs/guides/ml-inference-service.md` — métriques d'inférence (compteurs de prédictions, latence, état des modèles).
-- `docs/guides/auth-service.md` et `docs/guides/user-service.md` — métriques d'authentification et de gestion des utilisateurs.
-
-Les guides `farm-service.md` et `recommendation-service.md` décrivent les endpoints de santé de ces services, qui ne sont pas scrapés par Prometheus.
+1. `promtool check config` + règles ;
+2. rendu du template Alertmanager + `amtool check-config` ;
+3. conventions des dashboards (`scripts/validate-dashboards.mjs`) + YAML du
+   provisioning ;
+4. build + tests du package `@alkatra/observability`.

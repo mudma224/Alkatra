@@ -16,7 +16,10 @@ Le fichier `.env` local ne doit pas etre committe.
 | `MQTT_USER` | utilisateur MQTT (broker Mosquitto, port 1883 + WS 9010) |
 | `MQTT_PASSWORD` | mot de passe MQTT |
 | `GRAFANA_USER` | utilisateur admin Grafana |
-| `GRAFANA_PASSWORD` | mot de passe admin Grafana |
+| `GRAFANA_PASSWORD` | mot de passe admin Grafana — **obligatoire** (le compose refuse de démarrer sans valeur) |
+| `POSTGRES_EXPORTER_PASSWORD` | mot de passe du rôle `postgres_exporter` (lecture seule `pg_monitor`, créé par `00-create-databases.sh`) |
+| `ALERT_SMTP_HOST` / `ALERT_SMTP_PORT` | SMTP d'Alertmanager — dev : `mailhog` / `1025` ; prod : SMTP réel (+ `require_tls` dans le template) |
+| `ALERT_EMAIL_FROM` / `ALERT_EMAIL_TO` | expéditeur / destinataire des emails d'alertes infra |
 | `KEYCLOAK_ADMIN` | admin Keycloak |
 | `KEYCLOAK_ADMIN_PASSWORD` | mot de passe Keycloak |
 | `MLFLOW_TRACKING_URI` | URI MLflow locale (`http://localhost:5001`) |

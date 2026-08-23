@@ -31,8 +31,15 @@
 | **MailHog SMTP** | `alkatra-mailhog` | `localhost:1025` | SMTP de développement |
 | **MailHog UI** | `alkatra-mailhog` | `http://localhost:8025` | Interface email dev |
 | **Keycloak** | `alkatra-keycloak` | `http://localhost:8081` | Auth OIDC (intégration produit réservée), port changé à 8081 pour éviter conflit avec la gateway (8080) |
-| **Prometheus** | `alkatra-prometheus` | `http://localhost:9090` | Collecte de métriques |
-| **Grafana** | `alkatra-grafana` | `http://localhost:3000` | Dashboards |
+| **Prometheus** | `alkatra-prometheus` | `http://localhost:9090` | Collecte de métriques + évaluation des règles |
+| **Grafana** | `alkatra-grafana` | `http://localhost:3000` | Dashboards (14, dossiers par domaine) |
+| **Alertmanager** | `alkatra-alertmanager` | `http://localhost:9093` | Routage des alertes infra → email (UI statut/silences) |
+| **PushGateway** | `alkatra-pushgateway` | `http://localhost:9091` | Métriques spark-jobs (job non scrapable) |
+| **Loki** | `alkatra-loki` | `http://localhost:3100` | Centralisation des logs (via Grafana Explore) |
+
+Les exporters (`postgres-exporter:9187`, `mongodb-exporter:9216`,
+`redis-exporter:9121`, `kafka-exporter:9308`, `blackbox-exporter:9115` et
+`promtail:9080`) restent internes au réseau Docker — aucun port host exposé.
 
 ## Routage API Gateway (port 8080)
 
