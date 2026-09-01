@@ -157,7 +157,7 @@ temperature_yesterday_max_c, temperature_d2_max_c
 | Streaming | Apache Kafka (KRaft) | 3.7.0 |
 | IoT | MQTT | Mosquitto 2.0 |
 | MLOps | MLflow + MinIO (S3) | — |
-| Observabilité | Prometheus + Grafana | — |
+| Observabilité | Prometheus + Alertmanager + Grafana + Loki | — |
 | API Gateway | Nginx (envsubst) | alpine |
 | Orchestration | Docker Compose + Turborepo | — |
 | CI/CD | GitHub Actions | Node 20, Python 3.11 |
@@ -228,25 +228,28 @@ Initialisation : `infra/postgres/00-create-databases.sh` crée les bases et util
 
 ### Prometheus
 
-Le serveur Prometheus scrape les endpoints `/metrics` exposés par :
+Le serveur Prometheus (port 9090, `scrape_interval` global 15 s, `evaluation_interval` 15 s) scrape les endpoints `/metrics` de l'ensemble des services applicatifs et des exporters d'infrastructure :
 
-| Job | Cible | Format |
+| Job | Cible | Rythme |
 |---|---|---|
 | `prometheus` | `localhost:9090` | Self-monitoring |
-| `iot-service` | `iot-service:3005` | prom-client (Node) |
-| `ml-inference-service` | `ml-inference-service:8000` | prometheus_client (Python) |
-| `auth-service` | `auth-service:3001` | prom-client (Node) |
-| `user-service` | `user-service:3002` | prom-client (Node) |
+| `alertmanager` / `pushgateway` | `alertmanager:9093` / `pushgateway:9091` | Chaîne d'alerting / métriques Spark |
+| `iot-service` | `iot-service:3005` | **5 s** (temps réel) |
+| `ml-inference-service` | `ml-inference-service:8000` | **5 s** (temps réel) |
+| `auth-service`, `user-service`, `farm-service`, `recommendation-service`, `alert-service` | ports 3001–3006 | 15 s |
+| `postgres-exporter`, `mongodb-exporter`, `redis-exporter`, `kafka-exporter` | 9187 / 9216 / 9121 / 9308 | Infrastructure |
+| `blackbox-core` | via `blackbox-exporter:9115` | Probes stack de base — **alertées** |
+| `blackbox-phase1` | via `blackbox-exporter:9115` | Probes services métier — dashboards uniquement |
 
-Les services `farm-service`, `recommendation-service` et `spark-jobs` ne sont pas scrapés actuellement (leurs endpoints `/metrics` existent mais ne sont pas déclarés dans `prometheus.yml`).
+Tous les services (y compris `farm-service`, `recommendation-service` et `alert-service`) sont scrapés. Les règles de `infra/prometheus/rules/` (`recording.yml`, `alerts-infra.yml`, `alerts-pipeline.yml`, `alerts-services.yml`) sont évaluées toutes les 15 s ; les alertes sont routées vers **Alertmanager** puis envoyées par email (SMTP MailHog en dev). Voir [ADR-0005](../adr/0005-alerting-prometheus-alertmanager.md) et [guides/observability.md](../guides/observability.md).
 
 ### Grafana
 
-Deux dashboards provisionnés automatiquement (`infra/grafana/provisioning/`) :
-- `iot-pipeline.json` — métriques du pipeline IoT
-- `ml-inference.json` — métriques d'inférence
+14 dashboards provisionnés automatiquement (`infra/grafana/dashboards/`), organisés en dossiers par domaine : `00-overview`, `10-infrastructure`, `20-pipeline`, `30-services`, `40-ml`, `50-alerting`. Les datasources Prometheus et Loki sont référencées par nom (pas d'UID forcé), voir [ADR-0003](../adr/0003-grafana-dashboard-provisioning.md).
 
-Datasource : Prometheus référencé par nom (pas d'UID forcé), voir [ADR-0003](../adr/0003-grafana-dashboard-provisioning.md).
+### Loki + Promtail
+
+Les logs de tous les conteneurs sont collectés par Promtail et centralisés dans Loki (rétention 7 j), explorables dans Grafana → Explore (datasource `Loki`). Les logs JSON de la gateway Nginx sont directement structurés.
 
 ### MLflow
 

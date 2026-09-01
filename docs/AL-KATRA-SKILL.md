@@ -41,7 +41,7 @@ La plateforme cible prioritairement l'oléiculture au Maroc. Le modèle de cultu
 
 ## 2. Vue d'ensemble de l'architecture
 
-La plateforme est un monorepo composé de 7 services applicatifs et d'une stack d'infrastructure Docker locale. Les services communiquent de deux façons :
+La plateforme est un monorepo composé de 8 services applicatifs et d'une stack d'infrastructure Docker locale. Les services communiquent de deux façons :
 
 - **Synchrone** : HTTP via l'API Gateway Nginx (front → services métier) et appels inter-services directs (user-service → auth-service, recommendation-service → farm-service).
 - **Asynchrone** : flux d'événements via Kafka (pipeline IoT → ML → recommandations).
@@ -136,7 +136,7 @@ alkatra-platform/
 │   └── kubernetes/             manifests K8s (partiel — ml-inference uniquement)
 ├── scripts/                    Scripts utilitaires (simulateur, validation, setup)
 ├── docs/                       Documentation
-├── .github/workflows/          CI/CD (9 workflows)
+├── .github/workflows/          CI/CD (10 workflows)
 ├── package.json                Workspaces, scripts racine, dépendances partagées
 ├── turbo.json                  Orchestration build/test/dev
 ├── tsconfig.json               Configuration TypeScript racine
@@ -168,10 +168,18 @@ Les commandes utiles sont définies dans `package.json` racine et passent systé
 | `npm run lint` | Lint de tous les workspaces |
 | `npm run docker:up` | Démarre la stack infrastructure de base |
 | `npm run docker:up-phase1` | Démarre la stack complète incluant les services métier (profil `phase1`) |
+| `npm run docker:build` | Rebuild la stack infrastructure sans cache |
+| `npm run docker:build-phase1` | Rebuild la stack complète sans cache |
 | `npm run docker:down` | Arrête la stack |
+| `npm run docker:down-phase1` | Arrête la stack avec le profil `phase1` |
 | `npm run docker:logs` | Suit les logs de tous les conteneurs |
+| `npm run docker:reset` | Supprime les volumes locaux puis redémarre la stack de base |
 | `npm run simulate` | Lance le simulateur de capteur MQTT |
 | `npm run health` | Vérifie l'état de la stack locale |
+| `npm run setup` | Exécute le setup local |
+| `npm run models:register` | Enregistre les modèles ML |
+| `npm run validate:mongodb` | Valide les index MongoDB |
+| `npm run validate:pipeline` | Valide le pipeline |
 
 ### Version des runtimes
 
@@ -393,7 +401,7 @@ Deux usages distincts :
 
 ## 8. Topics Kafka
 
-Kafka tourne en mode KRaft single-node (image `apache/kafka:3.7.0`) avec deux listeners : `9092` (réseau interne Docker) et `9094` (host). La configuration est détaillée dans [`docs/adr/kafka-config-docker-explication.md`](adr/kafka-config-docker-explication.md).
+Kafka tourne en mode KRaft single-node (image `apache/kafka:3.7.0`) avec les listeners `9092` (réseau interne Docker), `9094` (host) et `9093` (contrôleur KRaft interne). La configuration est détaillée dans [`docs/adr/kafka-config-docker-explication.md`](adr/kafka-config-docker-explication.md).
 
 | Topic | Partitions | Rétention | Producteur | Consommateur |
 |---|---|---|---|---|
@@ -448,9 +456,9 @@ Les services métier sont démarrés avec le profil `phase1` via `npm run docker
 | Conteneur | Port host | Profil | Dépend de |
 |---|---|---|---|
 | `alkatra-iot` | 3005 | — | kafka, mosquitto, mongodb |
-| `alkatra-spark-job` | — | — | kafka, redis |
+| `alkatra-spark` | — | — | kafka, redis |
 | `alkatra-ml` | 8000 | — | kafka, mongodb, mlflow |
-| `alkatra-gateway` | 8080 | `phase1` | auth, user, farm, recommendation (healthy) |
+| `alkatra-gateway` | 8080 | `phase1` | auth, user, farm, recommendation, alert (healthy) |
 | `alkatra-auth` | 3001 | `phase1` | postgres, redis, keycloak |
 | `alkatra-user` | 3002 | `phase1` | auth-service |
 | `alkatra-farm` | 3003 | `phase1` | postgres, auth-service |
@@ -497,7 +505,7 @@ Les variables `RECOMMENDATION_SERVICE_*` sont injectées par le compose mais ne 
 
 ### Sécurité
 
-- Headers OWASP ajoutés sur toutes les réponses (`X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security`, etc.)
+- Headers de sécurité ajoutés sur toutes les réponses (`X-Content-Type-Options`, `X-Frame-Options`, etc.)
 - Logs au format JSON
 - Resolver DNS Docker `127.0.0.11`
 - `client_max_body_size 10M`
@@ -508,7 +516,7 @@ Le détail complet (config, ajouter une route) est dans [`docs/guides/api-gatewa
 
 ## 11. CI/CD
 
-Dix workflows GitHub Actions dans `.github/workflows/`. Tous se déclenchent sur `push` et `pull_request` vers `main` et `develop`, avec filtres de chemins pour ne lancer que les jobs pertinents.
+Dix workflows GitHub Actions sont présents dans `.github/workflows`. Les déclencheurs et filtres de chemins varient selon le workflow ; les détails vérifiés sont documentés dans [`docs/guides/ci-cd.md`](guides/ci-cd.md).
 
 | Workflow | Cible | Jobs |
 |---|---|---|

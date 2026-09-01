@@ -222,16 +222,44 @@ Dossier réservé. Contient uniquement `.gitkeep`.
 
 | Chemin | Rôle |
 |---|---|
-| `provisioning/datasources/datasources.yml` | Datasource Prometheus (par nom) |
-| `provisioning/dashboards/dashboards.yml` | Provider dashboards |
-| `dashboards/iot-pipeline.json` | Dashboard pipeline IoT |
-| `dashboards/ml-inference.json` | Dashboard inférence ML |
+| `provisioning/datasources/datasources.yml` | Datasources Prometheus et Loki (référencées par nom) |
+| `provisioning/dashboards/dashboards.yml` | Provider dashboards (`foldersFromFilesStructure`) |
+| `dashboards/00-overview/` | Dashboard vue d'ensemble (golden signals, pipeline, alertes, infra) |
+| `dashboards/10-infrastructure/` | Dashboards PostgreSQL, MongoDB, Redis, Kafka (lag/DLQ), Probes |
+| `dashboards/20-pipeline/` | Dashboards pipeline IoT, Spark Streaming |
+| `dashboards/30-services/` | Dashboards services HTTP, Auth, Alertes & FCM |
+| `dashboards/40-ml/` | Dashboards ML Inference, Recommandations |
+| `dashboards/50-alerting/` | Dashboard alertes métier |
 
 ### `infra/prometheus/`
 
 | Chemin | Rôle |
 |---|---|
-| `prometheus.yml` | Configuration du scrape (5 jobs) |
+| `prometheus.yml` | Configuration du scrape (services, exporters, blackbox probes) |
+| `rules/recording.yml` | Règles de recording (agrégations précalculées) |
+| `rules/alerts-infra.yml` | Alertes infrastructure |
+| `rules/alerts-pipeline.yml` | Alertes pipeline IoT/ML |
+| `rules/alerts-services.yml` | Alertes services applicatifs |
+
+### `infra/alertmanager/`
+
+| Chemin | Rôle |
+|---|---|
+| `alertmanager.yml.template` | Template de routage des alertes vers l'email (envsubst) |
+| `Dockerfile` + `entrypoint.sh` | Image Alertmanager custom, substitution du template |
+
+### `infra/blackbox/`
+
+| Chemin | Rôle |
+|---|---|
+| `config.yml` | Modules de probe HTTP (`http_2xx`) pour blackbox-exporter |
+
+### `infra/loki/`
+
+| Chemin | Rôle |
+|---|---|
+| `loki-config.yml` | Configuration Loki (rétention 7 j) |
+| `promtail-config.yml` | Configuration Promtail (découverte Docker, label `container`) |
 
 ### `infra/mosquitto/`
 

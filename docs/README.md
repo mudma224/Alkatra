@@ -21,12 +21,18 @@ docs/
 │   └── repository-map.md     Carte détaillée du dépôt
 ├── guides/                Guides pratiques
 │   ├── <service>.md          Un guide par service (détail technique complet)
+│   ├── alert-service.md       Notifications et alertes
+│   ├── recommendation-service.md Recommandations d'irrigation
 │   ├── local-development.md  Démarrage local
 │   ├── local-ml.md           Stack ML locale
 │   ├── api-gateway.md        Configuration Nginx
+│   ├── openapi-contract.md   Contrat OpenAPI
 │   ├── ci-cd.md              Pipelines GitHub Actions
 │   ├── observability.md      Prometheus, Grafana, MLflow
-│   └── testing-and-quality.md Stratégie de test
+│   ├── testing-and-quality.md Stratégie de test
+│   ├── current-frontend.md   État du frontend
+│   ├── guide-frontend.md     Guide du frontend
+│   └── production-spark.md   Opération du job Spark
 ├── reference/             Contrats et tables de référence
 │   ├── iot-sensor-payload.md  Contrat capteur
 │   ├── ports-and-services.md  Ports et routage
@@ -52,12 +58,22 @@ docs/
 npm install                    # Installe les dépendances de tous les workspaces
 npm run docker:up              # Démarre la stack infrastructure de base
 npm run docker:up-phase1       # Démarre la stack complète (incluant services métier)
+npm run docker:build           # Rebuild la stack de base sans cache
+npm run docker:build-phase1    # Rebuild la stack complète sans cache
 npm run dev                    # Démarre tous les services en mode développement
 npm run test                   # Tests de tous les workspaces
 npm run test:cov               # Tests avec couverture
 npm run build                  # Build de tous les workspaces
+npm run docker:down             # Arrête la stack de base
+npm run docker:down-phase1      # Arrête la stack complète
+npm run docker:logs             # Suit les logs des conteneurs
+npm run docker:reset            # Supprime les volumes puis redémarre
 npm run simulate               # Lance le simulateur de capteur MQTT
 npm run health                 # Vérifie l'état de la stack locale
+npm run setup                  # Exécute le setup local
+npm run models:register        # Enregistre les modèles ML
+npm run validate:mongodb       # Valide les index MongoDB
+npm run validate:pipeline      # Valide le pipeline
 ```
 
 Les scripts Docker utilisent `--env-file .env` (voir [ADR-0002](./adr/0002-docker-compose-env-file.md)).

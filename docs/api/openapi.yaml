@@ -2,30 +2,138 @@ openapi: 3.0.3
 info:
   title: Al Katra Bel Qatra API
   version: "1.0.0"
-  description: API produit — Sprint 1 (Auth) + Sprint 2 (Farm & Parcels)
+  license:
+    name: Proprietary
+  description: API publique exposée par la gateway et implémentée par les services NestJS.
 
 servers:
-  - url: https://localhost/api/v1
-    description: >-
-      Cible production/Sprint 5 — via reverse proxy nginx (pas encore actif
-      avant Sprint 5, ne pas utiliser en Sprint 2)
-  - url: http://localhost:3003/api/v1
-    description: >-
-      farm-service en accès direct — utilisé en Sprint 2/dev local tant
-      que nginx n'est pas déployé
+  - url: http://localhost:8080/api/v1
+    description: Gateway NGINX locale
 
 security:
   - bearerAuth: []
 
 tags:
+  - name: Auth
+    description: Demande et vérification des OTP, renouvellement de session
+  - name: User
+    description: Profil de l'utilisateur authentifié
   - name: Farms
     description: Gestion des fermes et de leur ownership
   - name: Parcels
     description: Gestion des parcelles et surfaces agricoles
   - name: Sensors
     description: Association et suivi des capteurs
+  - name: Recommendations
+    description: Recommandations d'irrigation et feedback
+  - name: Alerts
+    description: Alertes utilisateur
+  - name: Devices
+    description: Tokens d'appareils pour les notifications push
 
 paths:
+  /auth/register:
+    post:
+      operationId: requestOtp
+      tags: [Auth]
+      security: []
+      summary: Demander un code OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: OTP envoyé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [Auth]
+      security: []
+      summary: Vérifier un code OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+      responses:
+        '201':
+          description: Session créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [Auth]
+      security: []
+      summary: Renouveler les tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '201':
+          description: Nouvelle session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/profile:
+    get:
+      operationId: getProfile
+      tags: [User]
+      summary: Lire le profil courant
+      responses:
+        '200':
+          description: Profil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: updateProfile
+      tags: [User]
+      summary: Modifier le profil courant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profil mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /farms:
     post:
       operationId: createFarm
@@ -337,6 +445,225 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /recommendations/parcel/{parcelId}/today:
+    get:
+      operationId: getTodayRecommendation
+      tags: [Recommendations]
+      summary: Lire la recommandation du jour d'une parcelle
+      parameters:
+        - name: parcelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Recommandation du jour, ou null si aucune n'est disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/parcel/{parcelId}/history:
+    get:
+      operationId: getRecommendationHistory
+      tags: [Recommendations]
+      summary: Lire l'historique des recommandations
+      parameters:
+        - name: parcelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 30
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Historique paginé
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recommendation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /recommendations/{id}/feedback:
+    patch:
+      operationId: submitRecommendationFeedback
+      tags: [Recommendations]
+      summary: Enregistrer le feedback d'une recommandation
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '200':
+          description: Recommandation mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/{id}/execute:
+    patch:
+      operationId: executeRecommendation
+      tags: [Recommendations]
+      summary: Marquer une recommandation comme exécutée
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+      responses:
+        '200':
+          description: Recommandation exécutée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [Alerts]
+      summary: Lister les alertes de l'utilisateur courant
+      responses:
+        '200':
+          description: Alertes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /alerts/unread-count:
+    get:
+      operationId: countUnreadAlerts
+      tags: [Alerts]
+      summary: Compter les alertes non lues
+      responses:
+        '200':
+          description: Compteur
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /alerts/read-all:
+    patch:
+      operationId: markAllAlertsRead
+      tags: [Alerts]
+      summary: Marquer toutes les alertes comme lues
+      responses:
+        '200':
+          description: Alertes mises à jour
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /alerts/{id}/read:
+    patch:
+      operationId: markAlertRead
+      tags: [Alerts]
+      summary: Marquer une alerte comme lue
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Alerte mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices:
+    post:
+      operationId: registerDevice
+      tags: [Devices]
+      summary: Enregistrer un token push FCM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDeviceRequest'
+      responses:
+        '201':
+          description: Token enregistré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceToken'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /devices/{token}:
+    delete:
+      operationId: revokeDevice
+      tags: [Devices]
+      summary: Révoquer un token push
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Token révoqué
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -353,6 +680,13 @@ components:
         type: string
         format: uuid
     ParcelId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RecommendationId:
       name: id
       in: path
       required: true
@@ -412,6 +746,225 @@ components:
         error:
           type: string
           example: "Not Found"
+
+    RegisterRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          pattern: '^\+212[67]\d{8}$'
+          example: "+212612345678"
+
+    VerifyOtpRequest:
+      type: object
+      required: [phone, otp]
+      properties:
+        phone:
+          type: string
+          pattern: '^\+212[67]\d{8}$'
+        otp:
+          type: string
+          pattern: '^\\d{6}$'
+
+    RefreshRequest:
+      type: object
+      required: [phone, refreshToken]
+      properties:
+        phone:
+          type: string
+          pattern: '^\+212[67]\d{8}$'
+        refreshToken:
+          type: string
+
+    OtpResponse:
+      type: object
+      required: [success, message, expiresAt]
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      required: [id, phone, preferredLanguage, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        name:
+          type: string
+          nullable: true
+        preferredLanguage:
+          type: string
+          enum: [french, arabic, darija]
+        createdAt:
+          type: string
+          format: date-time
+
+    AuthResult:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, tokenType, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+        tokenType:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        preferredLanguage:
+          type: string
+          enum: [french, arabic, darija]
+
+    FeedbackRequest:
+      type: object
+      required: [feedback]
+      properties:
+        feedback:
+          type: string
+          enum: [accepted, rejected, ignored]
+
+    Recommendation:
+      type: object
+      required: [id, parcelId, generatedAt, irrigate, status, demoMode]
+      properties:
+        id:
+          type: string
+          format: uuid
+        parcelId:
+          type: string
+          format: uuid
+        generatedAt:
+          type: string
+          format: date-time
+        irrigate:
+          type: boolean
+        confidenceScore:
+          type: number
+          nullable: true
+        quantityMm:
+          type: number
+          nullable: true
+        durationMinutes:
+          type: integer
+          nullable: true
+        reasonCode:
+          type: string
+          nullable: true
+        topFactors:
+          type: array
+          items:
+            type: object
+        explanation:
+          type: object
+          required: [fr, darija]
+          properties:
+            fr:
+              type: string
+            darija:
+              type: string
+        modelVersion:
+          type: string
+          nullable: true
+        status:
+          type: string
+        userFeedback:
+          type: string
+          nullable: true
+        demoMode:
+          type: boolean
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        parcelId:
+          type: string
+          format: uuid
+          nullable: true
+        alertType:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        status:
+          type: string
+          enum: [unread, read, resolved]
+        title:
+          type: string
+          nullable: true
+        message:
+          type: string
+        data:
+          type: object
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    RegisterDeviceRequest:
+      type: object
+      required: [token, platform]
+      properties:
+        token:
+          type: string
+          minLength: 20
+          maxLength: 255
+        platform:
+          type: string
+          enum: [android, ios, web]
+
+    DeviceToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        token:
+          type: string
+        platform:
+          type: string
+          enum: [android, ios, web]
+        createdAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
 
     TypeCulture:
       type: string
@@ -725,9 +1278,10 @@ components:
         deviceType:
           type: string
           example: "esp32-wroom-32"
-        isActive:
-          type: boolean
-          example: true
+        healthStatus:
+          type: string
+          enum: [pending, active, inactive, failing]
+          example: active
         lastSeenAt:
           type: string
           format: date-time
@@ -751,9 +1305,8 @@ components:
       type: object
       description: >-
         Entité capteur telle que sérialisée par le farm-service. Le statut
-        d'affichage se dérive de lastSeenAt (null = jamais vu, « En attente »)
-        et isActive (false après 48 h de silence, « Inactif » ; un heartbeat
-        le repasse à true).
+        d'affichage est porté par healthStatus : pending, active, inactive ou
+        failing. Un heartbeat récent ramène le statut à active.
       properties:
         id:
           type: string
@@ -769,9 +1322,10 @@ components:
         deviceType:
           type: string
           example: "esp32-wroom-32"
-        isActive:
-          type: boolean
-          example: true
+        healthStatus:
+          type: string
+          enum: [pending, active, inactive, failing]
+          example: active
         lastSeenAt:
           type: string
           format: date-time
