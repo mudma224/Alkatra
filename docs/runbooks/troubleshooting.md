@@ -69,7 +69,7 @@ Et ajouter la tâche `test:cov` dans `turbo.json`.
 
 Symptôme :
 
-Le dossier `Al Katra IoT` est vide ou le dashboard `Al Katra - IoT Pipeline` n'apparaît pas.
+Le dashboard `Al Katra — Pipeline IoT` n'apparaît pas.
 
 Causes possibles :
 
@@ -168,26 +168,6 @@ Pour vérifier la config résolue :
 docker compose --env-file .env -f infra/docker/docker-compose.yml config
 ```
 
-## MLflow healthcheck : curl not found
-
-Symptôme :
-
-```text
-/bin/sh: 1: curl: not found
-```
-
-Cause :
-
-L'image `python:3.11-slim` ne contient pas `curl`.
-
-Correction :
-
-Healthcheck Docker avec Python, en interrogeant la racine du serveur MLflow (MLflow ne expose pas d'endpoint `/health` dédié) :
-
-```yaml
-test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/', timeout=5)\""]
-```
-
 ## Les scripts d'initialisation Postgres ne s'appliquent pas après modification
 
 Cause :
@@ -231,24 +211,26 @@ Vérifier que `tsconfig.json` existe à la racine du monorepo et que `.eslintrc.
 
 ---
 
-## CI GitHub Actions : npm ci échoue avec "package-lock.json is missing"
+## CI GitHub Actions : npm ci échoue avec un lockfile incohérent
 
 **Symptôme :**
 
 ```
-npm error The `npm ci` command can only install with an existing package-lock.json
+npm error Invalid: lock file's ... does not satisfy ...
 ```
 
 **Cause :**
-`package-lock.json` n'a pas été commité, ou le fichier local ne correspond pas aux dépendances déclarées.
+Le `package-lock.json` racine existe, mais il ne correspond pas aux dépendances
+déclarées dans les `package.json` ou n'est pas à jour dans la branche CI.
 
 **Correction :**
 
 ```bash
 npm install
-git add package-lock.json
-git commit -m "chore: update package-lock.json"
+npm ci
 ```
+
+Après vérification, commiter la mise à jour du `package-lock.json` dans la branche de travail.
 
 ---
 

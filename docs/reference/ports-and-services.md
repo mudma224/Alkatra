@@ -8,7 +8,7 @@
 | **Auth Service** | `alkatra-auth` | `http://localhost:3001` | `http://localhost:8080/api/v1/auth/*` | `phase1` |
 | **User Service** | `alkatra-user` | `http://localhost:3002` | `http://localhost:8080/api/v1/user/*` | `phase1` |
 | **Farm Service** | `alkatra-farm` | `http://localhost:3003` | `http://localhost:8080/api/v1/farms/*`, `/api/v1/parcels/*`, `/api/v1/sensors/*` | `phase1` |
-| **Recommendation Service** | `alkatra-recommendation` | `http://localhost:3004` | Non exposé (consommation interne) | `phase1` |
+| **Recommendation Service** | `alkatra-recommendation` | `http://localhost:3004` | `http://localhost:8080/api/v1/recommendations/*` | `phase1` |
 | **Alert Service** | `alkatra-alert` | `http://localhost:3006` | `http://localhost:8080/api/v1/alerts/*`, `/api/v1/devices/*` | `phase1` |
 | **IoT Service** | `alkatra-iot` | `http://localhost:3005` | Non exposé (communication interne uniquement) | — |
 | **ML Inference** | `alkatra-ml` | `http://localhost:8000` | Non exposé (communication interne uniquement) | — |
@@ -51,6 +51,7 @@ Les exporters (`postgres-exporter:9187`, `mongodb-exporter:9216`,
 | `/api/v1/farms/*` | farm-service:3003 | Gestion des fermes |
 | `/api/v1/parcels/*` | farm-service:3003 | Gestion des parcelles |
 | `/api/v1/sensors/*` | farm-service:3003 | Gestion des capteurs |
+| `/api/v1/recommendations/*` | recommendation-service:3004 | Recommandations et feedback |
 | `/api/v1/alerts/*` | alert-service:3006 | Notifications (liste, unread-count, mark-read) |
 | `/api/v1/devices/*` | alert-service:3006 | Enregistrement des tokens push FCM |
 

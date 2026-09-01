@@ -78,6 +78,27 @@ docker compose --env-file .env -f infra/docker/docker-compose.yml
 
 Cela garantit que Compose lit le `.env` de la racine.
 
+## Variables des services applicatifs
+
+Les variables ci-dessous sont injectées par `infra/docker/docker-compose.yml` et correspondent aux clés
+lues par les configurations des services. Les valeurs entre parenthèses sont les valeurs de développement
+du compose lorsqu'elles existent.
+
+| Service | Variables spécifiques |
+| --- | --- |
+| `auth-service` | `AUTH_SERVICE_PORT`, `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRATION`, `JWT_REFRESH_EXPIRATION`, `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_BLOCK_DURATION_SECONDS`, `INFOBIP_API_KEY`, `INFOBIP_BASE_URL`, `INFOBIP_SENDER`, `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` |
+| `user-service` | `PORT` (3002), `AUTH_SERVICE_HOST`, `AUTH_SERVICE_PORT`, `JWT_SECRET`, `CORS_ORIGINS` |
+| `farm-service` | `PORT` (3003), `DATABASE_URL`, `JWT_SECRET`, `AUTH_SERVICE_URL`, `ALERT_SERVICE_URL`, `INTERNAL_TOKEN`, `LOW_BATTERY_THRESHOLD`, `SENSOR_INACTIVE_HOURS`, `SENSOR_FAILING_HOURS`, `SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES`, `CORS_ORIGINS` |
+| `recommendation-service` | `PORT` (3004), `DATABASE_URL`, `JWT_SECRET`, `KAFKA_BROKERS`, `KAFKA_CLIENT_ID`, `KAFKA_GROUP_ID`, `KAFKA_RECOMMENDATIONS_TOPIC`, `KAFKA_TOPIC_DLQ`, `KAFKA_CONSUMER_ENABLED`, `FARM_SERVICE_URL`, `FARM_SERVICE_TIMEOUT_MS`, `CORS_ORIGINS` |
+| `alert-service` | `PORT` (3006), `DATABASE_URL`, `JWT_SECRET`, `INTERNAL_TOKEN`, `KAFKA_BROKERS`, `KAFKA_CLIENT_ID`, `KAFKA_GROUP_ID`, `KAFKA_RECOMMENDATIONS_TOPIC`, `KAFKA_TOPIC_DLQ`, `KAFKA_OUTBOUND_TOPIC`, `KAFKA_CONSUMER_ENABLED`, `FARM_SERVICE_URL`, `FARM_SERVICE_TIMEOUT_MS`, `HYDRIC_STRESS_PROBABILITY_THRESHOLD`, `HYDRIC_STRESS_SOIL_HUMIDITY_MAX_PCT`, `DEDUP_WINDOW_HOURS`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `CORS_ORIGINS` |
+| `iot-service` | `PORT` (3005), `MQTT_BROKER_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `KAFKA_BROKERS`, `MONGODB_URI`, `ML_INFERENCE_URL`, `FARM_SERVICE_URL`, `INTERNAL_TOKEN` |
+| `spark-job` | `KAFKA_BROKERS`, `KAFKA_INPUT_TOPIC`, `KAFKA_OUTPUT_TOPIC`, `KAFKA_STARTING_OFFSETS`, `KAFKA_FAIL_ON_DATA_LOSS`, `SPARK_DRY_RUN`, `SPARK_CHECKPOINT_DIR`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `PUSHGATEWAY_URL` |
+| `ml-inference-service` | `ENVIRONMENT`, `LOG_LEVEL`, `MLFLOW_TRACKING_URI`, `MLFLOW_CLASSIFIER_NAME`, `MLFLOW_REGRESSOR_NAME`, `MLFLOW_MODEL_STAGE`, `KAFKA_BROKERS`, `KAFKA_INPUT_TOPIC`, `KAFKA_OUTPUT_TOPIC`, `KAFKA_GROUP_ID`, `MONGODB_URI`, `MONGO_DB`, `MONGO_RECO_COLLECTION`, `CLASSIFICATION_THRESHOLD`, `ENABLE_KAFKA_CONSUMER`, `ENABLE_KAFKA_PRODUCER`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `MLFLOW_S3_ENDPOINT_URL` |
+
+`PORT` est utilisé par les services NestJS qui le déclarent ; `AUTH_SERVICE_PORT` est spécifique à la
+configuration de `auth-service`. Les variables de connexion PostgreSQL sont construites dans le compose
+à partir des mots de passe `*_DB_PASSWORD`, et non fournies sous forme de mot de passe en clair aux guides.
+
 ## Attention aux volumes
 
 Pour Postgres, les variables `POSTGRES_USER`, `POSTGRES_PASSWORD` et `POSTGRES_DB` ne sont appliquees qu'a la creation initiale du volume.

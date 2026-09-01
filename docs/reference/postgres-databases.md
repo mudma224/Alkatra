@@ -89,7 +89,7 @@ Chaque microservice possède **sa propre base de données** et **son propre util
 | `auth_db` | `00-create-databases.sh` | `auth_user` | Faible (une table) |
 | `farm_db` | `00-create-databases.sh` | `farm_user` | Moyenne (3 tables + PostGIS) |
 | `recommendation_db` | `00-create-databases.sh` | `recommendation_user` | Moyenne (1 table, beaucoup de lignes) |
-| `notification_db` | `00-create-databases.sh` | `notify_user` | Faible (1 table) |
+| `notification_db` | `00-create-databases.sh` | `notify_user` | Faible (2 tables : `alerts`, `device_tokens`) |
 | `keycloak_db` | `00-create-databases.sh` | `keycloak_user` | Faible (schema géré par Keycloak) |
 | `mlflow_db` | `00-create-databases.sh` | `mlflow_user` | Faible (géré par MLflow) |
 

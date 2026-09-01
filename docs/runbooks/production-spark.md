@@ -20,25 +20,30 @@ Projet Docker Compose : **al-katra-bel-qatra** (déclaré via `name:` dans `infr
 
 Surcharges au lancement (via `.env` ou inline) : `KAFKA_STARTING_OFFSETS`, `KAFKA_FAIL_ON_DATA_LOSS`, `DRY_RUN`.
 
-## 2. Build & Run
+## 2. Exécution locale Docker Compose
 
 ```bash
 # Depuis la racine du repo
-cd infra/docker
-
 # Build + démarrage de toute la stack (projet al-katra-bel-qatra)
-docker compose up -d --build
+docker compose --env-file .env -f infra/docker/docker-compose.yml up -d --build
 
 # Démarrer / rebuild uniquement le job Spark
-docker compose up -d --build spark-job
+docker compose --env-file .env -f infra/docker/docker-compose.yml up -d --build spark-job
 
 # Logs
-docker compose logs -f spark-job
+docker compose --env-file .env -f infra/docker/docker-compose.yml logs -f spark-job
 ```
 
-> Le projet étant nommé `al-katra-bel-qatra`, le conteneur Spark (`alkatra-spark`)
-> apparaît dans le même projet que les autres conteneurs. Vérifier :
-> `docker compose -p al-katra-bel-qatra ps`
+Le projet étant nommé `al-katra-bel-qatra`, le conteneur Spark (`alkatra-spark`)
+apparaît dans le même projet que les autres conteneurs. Vérifier :
+
+```bash
+docker compose --env-file .env -f infra/docker/docker-compose.yml ps spark-job
+```
+
+Le conteneur exécute le job avec `spark-submit --master local[2]`. Aucun manifeste
+Kubernetes Spark n'est présent dans `infra/kubernetes/` ; le manifeste disponible
+concerne uniquement `ml-inference`.
 
 ## 3. Smoke test end-to-end
 
@@ -68,12 +73,11 @@ Si aucun message n'est traité après un re-run, le checkpoint mémorise les off
 Pour rejouer tout le topic en lecture complète :
 
 ```bash
-cd infra/docker
-docker compose stop spark-job
+docker compose --env-file .env -f infra/docker/docker-compose.yml stop spark-job
 # Supprime le volume de checkpoint (projet al-katra-bel-qatra)
 docker volume rm al-katra-bel-qatra_spark-job
 # Relancer en lecture depuis le début
-KAFKA_STARTING_OFFSETS=earliest docker compose up -d spark-job
+KAFKA_STARTING_OFFSETS=earliest docker compose --env-file .env -f infra/docker/docker-compose.yml up -d spark-job
 ```
 
 ## 5. Tests unitaires
