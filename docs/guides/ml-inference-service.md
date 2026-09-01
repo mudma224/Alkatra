@@ -13,7 +13,7 @@
 7. [Fonctionnement interne par fichier](#7-fonctionnement-interne-par-fichier)
 8. [Chargement du modèle (MLflow)](#8-chargement-du-modèle-mlflow)
 9. [Logique de prédiction (régression conditionnelle)](#9-logique-de-prédiction-régression-conditionnelle)
-10. [Pipeline Kafka (consumer + producer)](#10-pipeline-kafka-consumer--producer)
+10. [Pipeline Kafka (consumer + producer)](#10-pipeline-kafka-consumer-producer)
 11. [Persistance MongoDB](#11-persistance-mongodb)
 12. [Observabilité (métriques Prometheus)](#12-observabilité-métriques-prometheus)
 13. [Gestion des erreurs et demo_mode](#13-gestion-des-erreurs-et-demo_mode)
@@ -123,7 +123,7 @@ apps/ml-inference-service/
 │   ├── main.py                           # Point d'entrée FastAPI (lifespan, endpoints)
 │   │
 │   ├── core/
-│   │   └── metrics.py                    # Métriques Prometheus (4 métriques)
+│   │   └── metrics.py                    # Métriques Prometheus (7 métriques : 3 counters, 2 gauges, 2 histogrammes)
 │   │
 │   ├── schemas/
 │   │   └── prediction.py                 # Schémas Pydantic (PredictionRequest, PredictionResponse)
@@ -294,7 +294,7 @@ Les 22 features dans l'ordre exact attendu par le modèle :
 |---------|-----------|
 | `app/main.py` | Point d'entrée FastAPI. `lifespan` : charge les modèles (`model_service.load()`), initialise le Producer Kafka, puis le Consumer Kafka + MongoWriter (sauf en demo_mode). 3 endpoints : `/health`, `/predict`, `/metrics`. Le shutdown ferme le consumer, MongoWriter et Producer. |
 | `app/config.py` | Classe `Settings`. Lit toutes les variables d'environnement avec valeurs par défaut. Instance globale `settings`. |
-| `app/core/metrics.py` | Définit 4 métriques Prometheus (voir [section 12](#12-observabilité-métriques-prometheus)). |
+| `app/core/metrics.py` | Définit les 7 métriques Prometheus (voir [section 12](#12-observabilité-métriques-prometheus)). |
 | `app/schemas/prediction.py` | Schémas Pydantic. `FEATURE_NAMES` (22 features, ordre exact). `PredictionRequest` (22 features + `parcel_id`, avec alias pour les caractères spéciaux). `to_feature_dict()` reconstruit le dict avec les noms bruts du modèle. `PredictionResponse` avec champs de projection PostgreSQL (`duration_minutes`, `soil_humidity_pct`, `eto`, `generated_at`). |
 | `app/services/model_service.py` | Service de prédiction. Charge 2 Boosters XGBoost + le biais depuis MLflow. `predict()` : classification → régression conditionnelle → biais → SHAP. Fonction `load()` avec retry + fallback demo_mode. Voir [sections 8 et 9](#8-chargement-du-modèle-mlflow). |
 | `app/services/kafka_consumer.py` | Consumer Kafka (`MLKafkaConsumer`). Tourne dans un **thread daemon**. `_process()` : valide les 22 features → `predict()` → `mongo_writer.save()` → `kafka_producer.publish()`. |
@@ -493,7 +493,7 @@ Cette asymétrie est intentionnelle : MongoDB sert d'historique des prédictions
 return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 ```
 
-Utilise `prometheus_client` (contrairement au recommendation-service qui génère le format à la main).
+Utilise `prometheus_client` directement (`generate_latest`, `CONTENT_TYPE_LATEST`).
 
 ### Métriques définies (`app/core/metrics.py`)
 
@@ -501,10 +501,13 @@ Utilise `prometheus_client` (contrairement au recommendation-service qui génèr
 |----------------|------|--------|-------------|-------------------|
 | `ml_predictions_total` | Counter | `source` (`http`/`kafka`), `result` (`irrigate`/`no_irrigate`) | Nombre total de prédictions | `main.py` (HTTP), `kafka_consumer.py` (Kafka) |
 | `ml_missing_features_total` | Counter | `feature` | Messages rejetés (features manquantes) | `kafka_consumer.py` |
-| `ml_prediction_latency_seconds` | Histogram | — | Latence d'une prédiction | `main.py` (HTTP uniquement) |
 | `ml_kafka_messages_total` | Counter | `status` (`ok`/`error`/`no_parcel`/`missing_features`) | Messages Kafka traités | `kafka_consumer.py` |
+| `ml_models_loaded` | Gauge | — | Nombre de modèles chargés depuis MLflow (classifier + regressor) | `model_service.py` (`load()`) |
+| `ml_demo_mode` | Gauge | — | Mode démo actif (1 = fallback, 0 = modèles MLflow) | `model_service.py` (`load()`) |
+| `ml_prediction_latency_seconds` | Histogram | — | Latence d'une prédiction (chemin HTTP `/predict`) | `main.py` |
+| `ml_prediction_kafka_latency_seconds` | Histogram | — | Latence d'une prédiction (chemin Kafka) | `kafka_consumer.py` |
 
-> ⚠️ Aucune métrique de latence n'est exposée pour le chemin Kafka (seuls les appels HTTP `/predict` sont chronométrés). Aucune métrique de type `Gauge`. Les buckets de l'histogramme ne sont pas personnalisés (valeurs par défaut).
+> Il y a donc **7 métriques** : 3 `Counter`, 2 `Gauge` et 2 `Histogram`. La latence est mesurée **sur les deux chemins** (HTTP via `ml_prediction_latency_seconds`, Kafka via `ml_prediction_kafka_latency_seconds`). Les 2 gauges (`ml_models_loaded`, `ml_demo_mode`) sont valorisées par la politique de chargement (voir section 13).
 
 ---
 
@@ -691,11 +694,11 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 4. **Auto-commit Kafka** : `enable_auto_commit=True` → en cas de crash après consommation mais avant traitement, un message peut être perdu (at-most-once). Pas de garantie at-least-once.
 
-5. **Pas de latence mesurée sur le chemin Kafka** : L'histogramme `ml_prediction_latency_seconds` n'est incrémenté que pour `/predict` (HTTP), pas pour les prédictions issues du consumer Kafka.
+5. **Deux histogrammes de latence distincts (HTTP vs Kafka)** : `ml_prediction_latency_seconds` ne chronomètre que le chemin HTTP `/predict`, tandis que `ml_prediction_kafka_latency_seconds` chronomètre les prédictions issues du consumer Kafka (timing autour de `model_service.predict` dans `kafka_consumer._process`).
 
 6. **Dockerfile en root** : Contrairement au recommendation-service, le conteneur tourne en root (pas d'utilisateur non-root). Moins sécurisé.
 
-7. **Producer Kafka bloquant en cas d'échec** : `kafka_producer.publish()` lève une exception si la publication échoue, ce qui remonte dans `_process` et est capturé par le try/except global → métrique `error`. Mais la recommandation a déjà été écrite dans MongoDB → risque d'incohérence (en MongoDB sans être sur Kafka).
+7. **Échec de publication Kafka = risque d'incohérence Mongo/Kafka** : `kafka_producer.publish()` lève si la publication échoue, mais l'appel est englobé dans un `try/except` (dans `kafka_consumer._process` et dans `/predict`) qui log l'erreur **sans la remonter ni incrémenter une métrique dédiée**. La recommandation a déjà été écrite dans MongoDB → risque d'incohérence (document présente en Mongo mais absente de Kafka).
 
 8. **`joblib` non listé dans requirements.txt** : Utilisé dans `model_service.py` mais tiré indirectement comme dépendance transitive de scikit-learn (lui-même dépendance de MLflow). Fragile si MLflow change ses dépendances.
 
@@ -719,7 +722,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 | **Consumer Kafka** | kafka-python (topic `processed-sensor-data`, group `ml-inference-group`) |
 | **Producer Kafka** | kafka-python (topic `recommendations-generated`) |
 | **Persistance** | MongoDB `alkatra_iot.irrigation_recommendations` |
-| **Métriques** | Prometheus `/metrics` (4 métriques via `prometheus_client`) |
+| **Métriques** | Prometheus `/metrics` (7 métriques via `prometheus_client` : `ml_predictions_total`, `ml_missing_features_total`, `ml_kafka_messages_total`, `ml_models_loaded`, `ml_demo_mode`, `ml_prediction_latency_seconds`, `ml_prediction_kafka_latency_seconds`) |
 | **Health checks** | `/health` (modèles chargés + demo_mode) |
 | **Mode dégradé** | `demo_mode` (fallback après échec de chargement) |
 | **Tests** | pytest (2 fichiers, couverture limitée) |

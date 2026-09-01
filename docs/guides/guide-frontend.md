@@ -1,6 +1,6 @@
-# Al Katra Bel Qatra — DEV2 Frontend Quick Start
+# Al Katra Bel Qatra — Frontend Quick Start
 
-Guide opérationnel uniquement. Pour le détail technique complet, voir [`frontend.md`](./frontend.md).
+Guide opérationnel uniquement. Pour le détail technique complet, voir [`current-frontend.md`](./current-frontend.md).
 
 ## Prérequis
 
@@ -48,13 +48,14 @@ http://localhost:5173
 
 (Port par défaut de Vite — non redéfini dans `vite.config.ts`.)
 
-## Login Screen
+## Routes actuellement disponibles
 
-Ouvrir directement `http://localhost:5173/` — il n'y a qu'un seul écran, aucun routing n'est configuré, donc cette URL suffit.
+Ouvrir `http://localhost:5173/login`. La route racine redirige vers `/farms` si une session existe, sinon vers `/login`.
 
-Ce que vous devez voir :
-- Titre "Al katra bel qatra"
-- Champ "Numéro de téléphone" avec préfixe "+212"
-- Bouton "Envoyer OTP" (grisé tant que le champ est vide)
+Routes publiques : `/login`, `/otp`.
+
+Routes authentifiées : `/farms`, `/farms/new`, `/farms/:farmId`, `/farms/:farmId/edit`, `/farms/:farmId/parcels/new`, `/farms/:farmId/parcels/:parcelId`, `/farms/:farmId/parcels/:parcelId/edit`, `/farms/:farmId/parcels/:parcelId/sensors`, `/farms/:farmId/parcels/:parcelId/recommendation`, `/farms/:farmId/parcels/:parcelId/recommendation/:recommendationId/feedback`, `/recommendations`, `/profile` et `/profile/edit`.
+
+Le parcours de connexion demande un numéro via `POST /api/v1/auth/register`, vérifie l'OTP via `POST /api/v1/auth/verify-otp`, puis persiste la session Zustand sous la clé `alkatra-auth`. Les requêtes authentifiées utilisent le bearer token courant et renouvellent la session via `POST /api/v1/auth/refresh` après un `401`.
 
 

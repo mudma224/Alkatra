@@ -113,7 +113,7 @@ npm run dev -w @alkatra/farm-service
 npm run dev -w @alkatra/recommendation-service
 ```
 
-Les services Python (`ml-inference-service`, `spark-jobs`) n'exposent pas de tâche `dev` dans Turborepo ; ils tournent dans leur conteneur Docker.
+Les services Python (`ml-inference-service`, `spark-jobs`) n'exposent pas de tâche `dev` dans Turborepo ; ils tournent dans leur conteneur Docker. Le frontend possède sa propre tâche `dev` dans `frontend/`.
 
 ### Construire et tester
 

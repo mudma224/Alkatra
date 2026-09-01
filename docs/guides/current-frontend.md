@@ -12,7 +12,7 @@
 6. [Écrans](#6-écrans)
 7. [Composants](#7-composants)
 8. [Hooks](#8-hooks)
-9. [État global : auth store](#9-état-global--auth-store)
+9. [État global : auth store](#9-état-global-auth-store)
 10. [Authentification et session](#10-authentification-et-session)
 11. [Couche API et contrats](#11-couche-api-et-contrats)
 12. [Types principaux](#12-types-principaux)
@@ -42,7 +42,7 @@ Périmètre réellement implémenté :
 - **Parcelles (CRUD complet)** : liste intégrée au détail de ferme, création (`/farms/:farmId/parcels/new`), détail (`/farms/:farmId/parcels/:parcelId`), édition (`…/edit`), suppression avec confirmation.
 - **Capteurs** : association (modale de saisie de `deviceId`), liste inline (≤ 3) ou page dédiée avec recherche + filtres (`/farms/:farmId/parcels/:parcelId/sensors`), dissociation avec confirmation, statut dérivé Actif / En attente / Inactif.
 - **Profil** : consultation (`/profile`, re-fetch du profil via `GET /api/v1/user/profile`) et édition (`/profile/edit`, `PATCH /api/v1/user/profile`).
-- **Routes placeholder** : `/recommendations` et `/farms/:farmId/parcels/:parcelId/recommendation` rendent un composant `PlaceholderScreen` (Phase 5).
+- **Recommandations** : `/recommendations` affiche la liste des parcelles éligibles et `/farms/:farmId/parcels/:parcelId/recommendation` affiche la recommandation du jour ; le feedback est accessible sous `/farms/:farmId/parcels/:parcelId/recommendation/:recommendationId/feedback`.
 
 Toutes les requêtes HTTP sont émises vers l'API Gateway Nginx sur `http://localhost:8080/api/v1` (variable `VITE_API_BASE_URL`), qui route `/api/v1/auth/*` vers l'`auth-service`, `/api/v1/user/*` vers l'`user-service`, et `/api/v1/farms|parcels|sensors` vers le `farm-service` (config Nginx `infra/nginx/nginx.conf.template`).
 
@@ -134,7 +134,7 @@ frontend/
     │       ├── Input/                   Champ de formulaire (+ test)
     │       ├── LoadingSpinner/          Spinner (role="status")
     │       ├── OTPInput/                Saisie OTP à 6 cases (coller/revenir/clavier)
-    │       ├── PlaceholderScreen/       Écran temporaire marqué par phase
+    │       ├── PlaceholderScreen/       Composant générique encore utilisé uniquement par les vues explicitement temporaires
     │       ├── Select/                  Liste déroulante (native <select>)
     │       └── Skeleton/                Bloc squelette animé (états loading)
     ├── hooks/
@@ -207,8 +207,9 @@ Fichier `src/router/index.tsx` — `createBrowserRouter`. Toutes les routes :
 | `/farms/:farmId/parcels/:parcelId` | `ParcelDetailScreen` | `RequireAuth` + `AppLayout` |
 | `/farms/:farmId/parcels/:parcelId/edit` | `ParcelEditScreen` | `RequireAuth` + `AppLayout` |
 | `/farms/:farmId/parcels/:parcelId/sensors` | `SensorListScreen` (recherche + filtres) | `RequireAuth` + `AppLayout` |
-| `/farms/:farmId/parcels/:parcelId/recommendation` | `PlaceholderScreen` — « Recommandation du jour » (Phase 5) | `RequireAuth` + `AppLayout` |
-| `/recommendations` | `PlaceholderScreen` — « Recommandations » (Phase 5) | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/parcels/:parcelId/recommendation` | `RecommendationScreen` | `RequireAuth` + `AppLayout` |
+| `/farms/:farmId/parcels/:parcelId/recommendation/:recommendationId/feedback` | `FeedbackScreen` | `RequireAuth` + `AppLayout` |
+| `/recommendations` | `RecommendationOverviewScreen` | `RequireAuth` + `AppLayout` |
 | `/profile` | `ProfileScreen` | `RequireAuth` + `AppLayout` |
 | `/profile/edit` | `EditProfileScreen` | `RequireAuth` + `AppLayout` |
 | `*` | `DefaultRoute` — redirection | `/farms` si `isAuthenticated()`, sinon `/login` |
@@ -273,7 +274,7 @@ Vérification du code à 6 chiffres :
 ### ParcelDetailScreen (`src/screens/parcel/ParcelDetailScreen/`, route `/farms/:farmId/parcels/:parcelId`)
 
 - `useParcel(parcelId)` (relations `farm` + `sensors` incluses) ; titre + sous-titre nom de ferme, Info Card 5 lignes (Culture / Surface / Type de sol / Irrigation / Créée le — labels FR des enums) ;
-- CTA primary « Voir la recommandation du jour » → placeholder Phase 5 ;
+- CTA primary « Voir la recommandation du jour » → route de recommandation de la parcelle ;
 - `SensorSection` (voir §7) ; boutons Modifier / Supprimer (ConfirmDialog : « Les capteurs associés seront supprimés. » — cascade SQL) ; succès suppression → retour à la ferme (`replace`).
 
 ### SensorListScreen (`src/screens/parcel/SensorListScreen/`, route `/farms/:farmId/parcels/:parcelId/sensors`)
@@ -775,7 +776,7 @@ Depuis la racine du monorepo, ces scripts passent par Turborepo (`npm run dev` /
 
 Faits vérifiables dans le code actuel, à ne pas confondre avec une feuille de route :
 
-- **Recommandations en placeholder** : `/recommendations` et `/farms/:farmId/parcels/:parcelId/recommendation` rendent `PlaceholderScreen` (Phase 5). Auth, profil, fermes, parcelles et capteurs sont implémentés.
+- **Recommandations** : les vues de liste, de recommandation du jour et de feedback sont implémentées. Les appels utilisent les endpoints de recommandation derrière la gateway.
 - **Aucun lazy-loading** : toutes les routes et écrans sont chargés dans le bundle initial (`App.tsx` → `router`) ; `React.lazy`/`Suspense` ne sont utilisés nulle part.
 - **Déconnexion locale uniquement** : `clearAuth()` ne fait aucun appel backend ; le stockage local est simplement purgé.
 - **Tokens en `localStorage`** (clé `alkatra-auth`) : choix du code actuel et non des cookies `httpOnly`.

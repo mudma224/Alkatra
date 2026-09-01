@@ -97,17 +97,19 @@ Le job dépend de `kafka` et `redis` dans le `docker-compose` (condition `servic
 apps/spark-jobs/
 ├── Dockerfile                            # Image apache/spark:3.5.1 + jars Kafka vendorisés
 ├── entrypoint.sh                         # Gestion des permissions du checkpoint
-├── requirements.txt                      # Dépendances Python (conflit Git non résolu — voir §15)
+├── requirements.txt                      # Dépendances dev/tests locaux (voir §15)
 │
 ├── jobs/
 │   ├── feature_engineering.py            # ETo, Kc olivier, compute_derived_features (22 features)
 │   ├── state_manager.py                  # État journalier Redis (day0..day3, TTL, rotation)
+│   ├── stream_metrics.py                 # Métriques Prometheus → PushGateway (par micro-batch)
 │   └── sensor_stream_processor.py        # Point d'entrée Spark Structured Streaming
 │
 └── tests/
     ├── conftest.py                       # Ajoute apps/spark-jobs au sys.path
     ├── test_feature_engineering.py       # Tests ETo, Kc, 22 features (sans Spark, sans Redis)
-    └── test_state_manager.py             # Tests Redis via fakeredis (sans Spark)
+    ├── test_state_manager.py             # Tests Redis via fakeredis (sans Spark)
+    └── test_stream_metrics.py            # Tests push PushGateway (mocké, sans réseau)
 ```
 
 > **Note :** Aucun fichier `__init__.py` n'existe dans `jobs/` ni dans `tests/`. Les tests importent les modules via `jobs.feature_engineering`, `jobs.state_manager` (rendu possible par le `conftest.py` qui place la racine `apps/spark-jobs` sur `sys.path`). Le job en production importe directement `feature_engineering` et `state_manager` (sans le préfixe `jobs.`) car le `spark-submit` s'exécute depuis `/app` avec `jobs/sensor_stream_processor.py` en point d'entrée.
@@ -123,11 +125,9 @@ Les fonctions pures (`feature_engineering`, `state_manager`) ne nécessitent ni 
 ```bash
 cd apps/spark-jobs
 
-# Installer les dépendances de test
-# ⚠️ requirements.txt contient des marqueurs de conflit Git non résolus
-# (voir section 15) — pip install -r requirements.txt ÉCHOUE.
-# Contournement : installer manuellement les paquets nécessaires
-pip install pyspark==3.5.1 redis==5.3.1 pytest==8.2.0 fakeredis==2.36.1
+# Installer les dépendances de développement/tests
+# requirements.txt regroupe ces dépendances (voir section 15)
+pip install -r requirements.txt
 
 # Lancer les tests
 pytest tests/ -v
@@ -184,6 +184,10 @@ environment:
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
+  # Métriques → PushGateway (observabilité Prometheus)
+  PUSHGATEWAY_URL: http://pushgateway:9091
+  STREAM_METRICS_JOB: spark-jobs
+  STREAM_METRICS_INSTANCE: feature-engineering
 ```
 
 ### Tableau récapitulatif
@@ -200,6 +204,9 @@ environment:
 | `REDIS_HOST` | `redis` | `redis` | Hôte Redis (état journalier) |
 | `REDIS_PORT` | `6379` | `6379` | Port Redis |
 | `REDIS_PASSWORD` | `alkatra_redis_pass` | `alkatra_redis_pass` | Mot de passe Redis |
+| `PUSHGATEWAY_URL` | `""` (vide, no-op) | `http://pushgateway:9091` | URL du PushGateway Prometheus ; si vide, `stream_metrics` devient un no-op journalisé |
+| `STREAM_METRICS_JOB` | `spark-jobs` | `spark-jobs` | Valeur du label `job` poussée au PushGateway |
+| `STREAM_METRICS_INSTANCE` | `feature-engineering` | `feature-engineering` | Valeur du `grouping_key.instance` poussée au PushGateway |
 
 > **Variables du `entrypoint.sh` (permissions checkpoint) :** `CHECKPOINT_OWNER_UID` (défaut `1001`), `CHECKPOINT_OWNER_GID` (défaut `0`), `CHECKPOINT_PERMISSIONS` (défaut `775`). Elles ajustent l'ownership et les droits du répertoire de checkpoint au démarrage du conteneur.
 
@@ -238,6 +245,7 @@ Le mode `--master local[2]` exécute Spark en local avec 2 threads. Aucun cluste
 | `jobs/feature_engineering.py` | Fonctions pures : `calculate_eto()` (Penman-Monteith FAO-56 simplifié), `get_kc_olivier(month)` (table phénologique), `compute_derived_features(...)` (produit les 22 features). Aucune dépendance Spark ni Redis. |
 | `jobs/state_manager.py` | Gestion de l'état journalier par `parcel_id` dans Redis : `get_parcel_state()` (lecture day1..day3), `update_parcel_state()` (rotation day0..day3 + TTL 5 jours). Client Redis singleton. |
 | `jobs/sensor_stream_processor.py` | Point d'entrée Spark Structured Streaming. Définit le schéma de référence `RAW_SCHEMA`, les alias de champs `FIELD_ALIASES`, les fonctions de parsing tolérant (`_to_float`, `_ts_to_iso`, `_parse_datetime`, `_resolve_field`), la fonction `process_batch()` (exécutée par `foreachBatch`) et la fonction `main()` (session Spark + stream). |
+| `jobs/stream_metrics.py` | Métriques Prometheus du job : 5 gauges (`spark_stream_batch_duration_seconds`, `spark_stream_batch_id`, `spark_stream_num_input_rows`, `spark_stream_num_output_rows`, `spark_stream_rejected_messages`) poussées vers le PushGateway après **chaque** micro-batch (y compris les batches vides — la fraîcheur du push sert de signal d'alerte `SparkStreamStalled`). `push_batch_metrics()`. Si `PUSHGATEWAY_URL` est absent (tests, DRY_RUN local), les appels deviennent des no-ops. |
 
 ### `feature_engineering.py`
 
@@ -494,10 +502,11 @@ La philosophie du job est la **tolérance** : un message invalide ne fait pas to
 | `tests/conftest.py` | Ajoute la racine `apps/spark-jobs` à `sys.path` pour permettre `from jobs.feature_engineering import ...` |
 | `tests/test_feature_engineering.py` | `calculate_eto` (valeurs plausibles été/hiver, non-négativité, exemple du contrat capteur), `get_kc_olivier` (un test par trimestre + décembre), `compute_derived_features` (présence des 22 clés, calcul `temp_moy`, cumul `pluie_3j`, seuils `regime_sol`, `deficit_hydrique`, premier jour à zéros) |
 | `tests/test_state_manager.py` | `get_parcel_state` (parcelle inconnue → zéros, après 1 update → J-1 correct, `soil_humidity_rolling3` = moyenne 3 jours), `update_parcel_state` (clé Redis créée avec les bons champs, TTL > 0) |
+| `tests/test_stream_metrics.py` | `push_batch_metrics` : valorisation locale des 5 gauges, no-op sans erreur si `PUSHGATEWAY_URL` vide, et push effectif vers le PushGateway (`push_to_gateway` mocké, job/instance/`grouping_key` vérifiés) |
 
-### Caractéristiques (fakeredis, pas de Spark requis)
+### Caractéristiques (fakeredis + mocks, pas de Spark requis)
 
-- Les tests portent sur les **fonctions pures** (`feature_engineering`) et sur l'état Redis **mocké via `fakeredis`**.
+- Les tests portent sur les **fonctions pures** (`feature_engineering`), sur l'état Redis **mocké via `fakeredis`** et sur les métriques **poussées vers un PushGateway mocké** (`unittest.mock.patch`).
 - Aucune session Spark n'est instanciée. Aucun Kafka réel n'est requis.
 - Le fixture `fake_redis_client` (autouse) remplace `_redis_client` du module `state_manager` par un `fakeredis.FakeRedis(decode_responses=True)`.
 - Aucun test ne couvre `sensor_stream_processor.py` (parsing, `process_batch`, intégration Spark/Kafka).
@@ -507,9 +516,8 @@ La philosophie du job est la **tolérance** : un message invalide ne fait pas to
 ```bash
 cd apps/spark-jobs
 
-# Prérequis : fakeredis doit être installé
-# (voir la note sur requirements.txt en section 15)
-pip install pytest==8.2.0 fakeredis==2.36.1 redis==5.3.1
+# Prérequis : dépendances de dev/tests (voir requirements.txt en section 15)
+pip install -r requirements.txt
 
 # Lancer les tests
 pytest tests/ -v
@@ -535,7 +543,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip wget && rm -rf /var/lib/apt/lists/*
 
 # Runtime Python minimal — PySpark est fourni par l'image de base
-RUN pip install --no-cache-dir redis==5.3.1
+RUN pip install --no-cache-dir redis==5.3.1 prometheus-client==0.20.0
 
 # Code des jobs + tests
 COPY jobs/ ./jobs/
@@ -574,7 +582,7 @@ CMD ["/opt/spark/bin/spark-submit", "--master", "local[2]", ..., "jobs/sensor_st
 |---------|--------|
 | Image de base | `apache/spark:3.5.1` (Scala 2.12) |
 | Utilisateur d'exécution | **UID 1001 non-root** (`spark`), groupe 0 |
-| Dépendance Python installée | `redis==5.3.1` uniquement (PySpark fourni par l'image) |
+| Dépendances Python installées | `redis==5.3.1` + `prometheus-client==0.20.0` (PySpark fourni par l'image) |
 | Port exposé | **Aucun** |
 | Healthcheck | Aucun (job long-running, pas d'endpoint HTTP) |
 | Point d'entrée | `/app/entrypoint.sh` puis `spark-submit` via `CMD` |
@@ -658,48 +666,37 @@ spark-job:
 - Il n'utilise pas `--packages` Spark : les jars Kafka sont vendorisés.
 - Il n'applique pas de déduplication explicite des messages (pas de gestion d'idempotence côté business — seule la rotation `day0` est idempotente dans la journée).
 - Il ne valide pas strictement la présence des 7 variables capteur : les champs absents sont convertis en `0.0` par `_to_float`.
-- Il n'émet pas de métriques Prometheus (pas d'endpoint `/metrics`).
+- Il n'expose pas d'endpoint HTTP `/metrics` (pas de serveur HTTP). Ses métriques Prometheus sont **poussées** vers le PushGateway (`PUSHGATEWAY_URL`, job `spark-jobs`, 5 gauges `spark_stream_*` par micro-batch) et scrapées par Prometheus via le job `pushgateway`, et non récupérées par un endpoint local.
 - Il ne publie pas vers un topic d'erreurs/dead-letter queue (les messages invalides sont seulement rejetés et loggés).
 
 ---
 
 ## 15. Comportements notables
 
-### `requirements.txt` — conflit Git non résolu
+### `requirements.txt` — dépendances de développement/tests
 
-Le fichier `apps/spark-jobs/requirements.txt` contient des **marqueurs de conflit Git non résolus** qui empêchent `pip install -r requirements.txt` de aboutir. Le contenu effectif du fichier est :
+Le fichier `apps/spark-jobs/requirements.txt` regroupe les dépendances pour le **développement et les tests locaux** (hors conteneur Spark) :
 
 ```
-<<<<<<<<< Temporary merge branch 1
 # Dépendances pour le DÉVELOPPEMENT / TESTS locaux (hors conteneur Spark).
-# Dans le conteneur, PySpark provient de l'image apache/spark:3.5.1 et seul
-# redis est installé via le Dockerfile (redis==5.3.1).
+# Dans le conteneur, PySpark provient de l'image apache/spark:3.5.1 et seuls
+# redis + prometheus-client sont installés via le Dockerfile.
 pyspark==3.5.1
 redis==5.3.1
+prometheus-client==0.20.0
 pytest==8.2.0
 fakeredis==2.36.1
-=========
 httpx==0.27.0
 kafka-python==2.0.2
 pytest-asyncio==0.23.6
->>>>>>>>> Temporary merge branch 2
 ```
 
-Conséquences :
+Points clés :
 
-- `pip install -r requirements.txt` **échoue** (pip refuse la syntaxe avec `<<<<<<<` / `=========` / `>>>>>>>>>`).
-- La **branche 1** contient les dépendances réellement utilisées : `pyspark==3.5.1`, `redis==5.3.1`, `pytest==8.2.0`, `fakeredis==2.36.1`.
-- La **branche 2** contient un ensemble alternatif (`httpx`, `kafka-python`, `pytest-asyncio`) sans rapport direct avec le code des jobs.
-- Les tests importent `fakeredis`, qui ne se trouve que dans la **branche 1**. L'exécution des tests exige donc d'installer `fakeredis` (et `redis`, `pytest`) manuellement en contournant le fichier.
-
-Contournement pour exécuter les tests :
-
-```bash
-pip install pyspark==3.5.1 redis==5.3.1 pytest==8.2.0 fakeredis==2.36.1
-pytest apps/spark-jobs/tests/ -v
-```
-
-Ce conflit n'affecte pas le conteneur Docker : le Dockerfile ignore `requirements.txt` et installe uniquement `redis==5.3.1` (PySpark est fourni par l'image de base).
+- `pip install -r requirements.txt` fonctionne : le fichier est exploitable tel quel pour exécuter `pytest tests/` en local.
+- Les seules dépendances **runtime** du conteneur sont `redis==5.3.1` et `prometheus-client==0.20.0`, installées directement par le Dockerfile — `requirements.txt` n'est pas consommé lors du build de l'image.
+- PySpark n'est jamais installé via pip dans le conteneur : il est fourni par l'image de base `apache/spark:3.5.1`. La ligne `pyspark==3.5.1` sert uniquement aux tests/exécutions locaux hors image.
+- `httpx`, `kafka-python` et `pytest-asyncio` sont des dépendances de confort pour le développement local ; ils ne sont pas importés par le code des jobs en production.
 
 ### Parsing permissif des valeurs capteur
 
@@ -742,8 +739,9 @@ Le volume Docker nommé `spark-job`, monté sur `/tmp/spark-checkpoint`, persist
 | **Utilisateur** | UID 1001 non-root |
 | **Jars Kafka** | Vendorisés (4 jars, Scala 2.12) |
 | **Mode test local** | `DRY_RUN=1` (journalisation sans écriture Kafka) |
+| **Observabilité** | 5 gauges `spark_stream_*` poussées vers le PushGateway (`pushgateway:9091`, job `spark-jobs`, instance `feature-engineering`) à chaque micro-batch |
 | **Dépendances conteneur** | `kafka`, `redis` (`service_healthy`) |
-| **Tests** | pytest + fakeredis (2 fichiers, fonctions pures) |
+| **Tests** | pytest + fakeredis + mocks PushGateway (3 fichiers, fonctions pures) |
 
 ### Commandes essentielles
 
@@ -767,7 +765,7 @@ docker exec -i alkatra-kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic processed-sensor-data \
   --from-beginning --timeout-ms 10000
 
-# Lancer les tests en local (contourner le requirements.txt corrompu)
-pip install pyspark==3.5.1 redis==5.3.1 pytest==8.2.0 fakeredis==2.36.1
+# Lancer les tests en local
+pip install -r requirements.txt
 cd apps/spark-jobs && pytest tests/ -v
 ```

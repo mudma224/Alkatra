@@ -176,9 +176,8 @@ apps/recommendation-service/
 │   │   └── explanation.module.ts         # Module explanation
 │   │
 │   ├── metrics/
-│   │   ├── metrics.module.ts             # Module Prometheus
-│   │   ├── metrics.controller.ts         # Endpoint /metrics
-│   │   └── metrics.service.ts            # Registre métriques en mémoire (format Prometheus)
+│   │   ├── metrics.module.ts             # Métriques métier sur le registre partagé @alkatra/observability
+│   │   └── metrics.service.ts            # Compteurs Kafka/DLQ/persistance + gauge latence legacy
 │   │
 │   └── health/
 │       └── health.controller.ts          # Controller health (live + ready avec DB + Kafka)
@@ -230,7 +229,7 @@ npm run dev            # Lance tous les workspaces via Turbo
 - `farm-service` accessible à l'URL configurée (défaut : `http://farm-service:3003`)
 - `ml-inference-service` produisant sur le topic `recommendations-generated`
 - `JWT_SECRET` identique à celui utilisé par `auth-service`
-- `@alkatra/shared-types` buildé (`npm run build --workspace @alkatra/shared-types`) — consommé via le workspace
+- `@alkatra/shared-types` et `@alkatra/observability` buildés (`npm run build --workspace @alkatra/shared-types && npm run build --workspace @alkatra/observability`) — consommés via les workspaces
 
 ---
 
@@ -357,7 +356,7 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | Fichier | Rôle réel |
 |---------|-----------|
 | `src/main.ts` | Point d'entrée NestJS. Active `ValidationPipe` global (`whitelist`, `forbidNonWhitelisted`, `transform`). Active `AllExceptionsFilter` global. Active `LoggingInterceptor` (reçoit `MetricsService` pour les compteurs HTTP). Active CORS, shutdown hooks. Démarre sur le port `app.port` (3004). |
-| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global), `DatabaseModule`, `MetricsModule`, `RecommendationsModule`, `SyncModule`. Déclare `HealthController`. |
+| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global), `ObservabilityModule.forRoot({ prefix: 'recommendation' })`, `DatabaseModule`, `MetricsModule`, `RecommendationsModule`, `SyncModule`. Déclare `HealthController`. |
 | `src/config/configuration.ts` | Configuration via `registerAs('app')`. Lit `DATABASE_URL`, `JWT_SECRET`, `KAFKA_*`, `FARM_SERVICE_URL`. Expose `consumerEnabled` pour désactiver le consumer. |
 | `src/database/database.module.ts` | Module TypeORM. `forRootAsync` avec `url` depuis `app.database.url`. Entité : `[Recommendation]`. `synchronize` et `logging` depuis la config. |
 | `src/entities/recommendation.entity.ts` | Entité `Recommendation` (table `recommendations`). Voir [modèle de données](#9-modèle-de-données-postgresql). |
@@ -368,7 +367,7 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | `src/common/guards/jwt-auth.guard.ts` | Guard JWT. `extends AuthGuard('jwt')`. Log la tentative d'accès. `handleRequest()` : throw 401 si token absent/expiré/invalide. |
 | `src/common/decorators/current-user.decorator.ts` | Décorateur `@CurrentUser()`. Lit `req.user` (rempli par Passport). Injecte le header `authorization` brut dans `user.authorization` pour le forward au farm-service. |
 | `src/common/filters/http-exception.filter.ts` | Filtre global. `extractMessage()` : gère string / array (join) / object. Format réponse : `{ statusCode, message, path, timestamp }`. |
-| `src/common/interceptors/logging.interceptor.ts` | Interceptor HTTP. Log chaque requête (méthode, URL pattern, statut, durée). Incrémente les métriques Prometheus (`recordHttpRequest`, `recordHttpDuration`). Utilise `req.route.path` pour éviter l'explosion de cardinalité des labels. |
+| `src/common/interceptors/logging.interceptor.ts` | Interceptor HTTP. Log chaque requête (méthode, URL pattern, statut, durée). Incrémente la métrique de latence moyenne legacy via `recordHttpDuration(durationMs)`. Les compteurs/ histogrammes HTTP standards (`recommendation_http_requests_total`, `recommendation_http_request_duration_seconds`) sont produits par l'intercepteur du package partagé `@alkatra/observability`. |
 | `src/recommendations/recommendations.module.ts` | Module recommendations. Importe `TypeOrmModule.forFeature([Recommendation])`, `PassportModule`, `JwtModule`, `HttpModule`. Déclare controller + service + `FarmClientService` + `JwtStrategy`. |
 | `src/recommendations/recommendations.controller.ts` | Controller `/api/v1/recommendations`. `@UseGuards(JwtAuthGuard)` au niveau classe. 4 endpoints. Utilise `@CurrentUser()` et `farmClient.assertParcelOwnership()`. |
 | `src/recommendations/recommendations.service.ts` | Service recommendations. `findTodayByParcel` (update atomique `pending→seen`), `findHistoryByParcel` (paginé), `submitFeedback` (matrice de transitions), `markAsExecuted` (seulement si `accepted`), `getParcelIdOf`, `toDto`. |
@@ -378,9 +377,8 @@ Toutes les routes métier sont préfixées par `/api/v1/` et protégées par `Jw
 | `src/sync/double-write.service.ts` | Projection Kafka → PostgreSQL. **Idempotence** : vérifie `(parcelId, generatedAt)` avant insert. Génère les explications via `ExplanationService`. Mappe les champs (`duration_minutes`, `soil_humidity_pct`, `eto`, `demo_mode`). Le nom `DoubleWriteService` est hérité de l'architecture initiale : le service actuel effectue une projection simple du topic Kafka `recommendations-generated` vers PostgreSQL (`recommendation_db`). L'écriture dans MongoDB (`irrigation_recommendations`) est effectuée par le `ml-inference-service`, pas par le recommendation-service. |
 | `src/explanation/explanation.service.ts` | Génère les textes d'explication FR/Darija + `reasonCode` à partir de `{ irrigate, quantityMm, confidenceScore, topFactors }`. |
 | `src/explanation/explanation.templates.ts` | Templates de raisons (`LOW_SOIL_MOISTURE`, `HIGH_WATER_DEFICIT`, `HIGH_EVAPOTRANSPIRATION`, `HIGH_TEMPERATURE`, `STRONG_WIND`, `RECENT_RAIN`, `SUFFICIENT_MOISTURE`, `MILD_WEATHER`, `GENERIC`). |
-| `src/metrics/metrics.module.ts` | Module Prometheus. Déclare `MetricsController` + `MetricsService`. Exporte `MetricsService`. |
-| `src/metrics/metrics.controller.ts` | Endpoint `/metrics`. `@Header('Content-Type', 'text/plain; version=0.0.4')`. Retourne `metricsService.format()`. |
-| `src/metrics/metrics.service.ts` | Registre en mémoire. Compteurs HTTP (par méthode/route/status), latence moyenne, Kafka (ok/error/invalid), gauge consumer, erreurs persistance. Sérialise au format Prometheus texte. Voir [observabilité](#12-observabilité-métriques-prometheus). |
+| `src/metrics/metrics.module.ts` | Module des métriques métier. Provisionne uniquement `MetricsService` (l'exposition `/metrics` — registre, intercepteur HTTP, métriques Node par défaut — est fournie par `ObservabilityModule.forRoot({ prefix: 'recommendation' })`). |
+| `src/metrics/metrics.service.ts` | Métriques métier via `prom-client` sur le registre partagé (`@alkatra/observability`) : Kafka (`KafkaMetrics`), gauge de latence moyenne legacy, erreurs persistance, recommandations persistées, feedbacks. Voir [observabilité](#12-observabilité-métriques-prometheus). |
 | `src/health/health.controller.ts` | Controller health. `GET /health` : statique. `GET /health/ready` : `SELECT 1` + `syncConsumer.isConnected()`. Statut `degraded` si DB ou Kafka down. |
 
 ---
@@ -601,21 +599,26 @@ Si Kafka est indisponible au démarrage (`onModuleInit`), le service **continue 
 
 ### Endpoint `/metrics`
 
-Expose les métriques au format texte Prometheus (`text/plain; version=0.0.4`). Suit le **pattern maison du monorepo** (format texte généré à la main, sans `prom-client`), cohérent avec l'`iot-service`.
+Fourni par `ObservabilityModule.forRoot({ prefix: 'recommendation' })` (package `@alkatra/observability`) : registre `prom-client` dédié, métriques par défaut Node (`process_*`, `nodejs_*`) et intercepteur HTTP global qui produit `recommendation_http_requests_total` (counter, labels `method`, `route`, `status`) et l'histogramme `recommendation_http_request_duration_seconds`.
 
-### Métriques exposées
+### Métriques métier
+
+Déclarées par `MetricsService` sur le même registre via `prom-client`, en conservant les noms historiques :
 
 | Nom Prometheus | Type | Labels | Description | Source |
 |----------------|------|--------|-------------|--------|
-| `recommendation_http_requests_total` | counter | `method`, `route`, `status` | Requêtes HTTP par méthode/route/statut | `LoggingInterceptor` |
-| `recommendation_http_request_duration_ms_avg` | gauge | — | Latence HTTP moyenne (ms) | `LoggingInterceptor` |
-| `recommendation_kafka_messages_consumed_total` | counter | `status` (`ok`/`error`/`invalid`) | Messages Kafka consommés par statut | `SyncConsumerService` |
+| `recommendation_http_requests_total` | counter | `method`, `route`, `status` | Requêtes HTTP par méthode/route/statut | Intercepteur HTTP du package partagé |
+| `recommendation_http_request_duration_seconds` | histogram | — | Latence HTTP | Intercepteur HTTP du package partagé |
+| `recommendation_http_request_duration_ms_avg` | gauge | — | Latence HTTP **moyenne** en ms (gauge legacy conservée pour compatibilité) | `LoggingInterceptor` |
+| `recommendation_kafka_messages_consumed_total` | counter | `topic`, `status` (`ok`/`error`/`invalid`) | Messages Kafka consommés par statut (label `topic` ajouté au standard) | `SyncConsumerService` |
 | `recommendation_kafka_consumer_connected` | gauge | — | État du consumer Kafka (1=connecté, 0=déconnecté) | `SyncConsumerService` |
+| `recommendations_persisted_total` | counter | — | Recommandations persistées avec succès dans PostgreSQL | `SyncConsumerService` |
 | `recommendation_persistence_errors_total` | counter | — | Erreurs de persistance PostgreSQL | `SyncConsumerService` |
+| `recommendation_feedback_total` | counter | `decision` (`accepted`/`rejected`/`ignored`) | Feedbacks agriculteurs enregistrés | `RecommendationsService.submitFeedback` |
 
 ### Implémentation
 
-`MetricsService` est un **singleton NestJS** (registre en mémoire). Les compteurs sont incrémentés par le `LoggingInterceptor` (HTTP) et le `SyncConsumerService` (Kafka + persistance). La sérialisation Prometheus est assurée par `metricsService.format()`.
+`MetricsService` est un **singleton NestJS** construit sur le registre partagé (`MetricsRegistryService` de `@alkatra/observability`). Les compteurs sont incrémentés par le `LoggingInterceptor` (HTTP), le `SyncConsumerService` (Kafka + persistance) et le `RecommendationsService` (feedbacks). La sérialisation est assurée par `prom-client`.
 
 ---
 
@@ -759,21 +762,29 @@ COPY apps/recommendation-service/tsconfig.json ./apps/recommendation-service/
 COPY apps/recommendation-service/tsconfig.build.json ./apps/recommendation-service/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-types/tsconfig.json ./packages/shared-types/
-# Filtre le package.json racine : workspaces = recommendation-service + shared-types
-RUN node -e "const fs=require('fs');const p=...;p.workspaces=['apps/recommendation-service','packages/shared-types'];..."
+COPY packages/observability/package.json ./packages/observability/
+COPY packages/observability/tsconfig.json ./packages/observability/tsconfig.json
+# Filtre le package.json racine : workspaces = recommendation-service + shared-types + observability,
+# dépendances racine vidées et devDependencies supprimées
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./package.json','utf8'));p.workspaces=['apps/recommendation-service','packages/shared-types','packages/observability'];p.dependencies={};delete p.devDependencies;fs.writeFileSync('./package.json',JSON.stringify(p,null,2));"
 RUN npm install --workspace @alkatra/recommendation-service
 
 # Stage 2 : builder — Compile le TypeScript
 FROM deps AS builder
+WORKDIR /workspace
 COPY packages/shared-types ./packages/shared-types
-RUN npm run build --workspace @alkatra/shared-types    # shared-types compilé en premier
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/shared-types && npm run build --workspace @alkatra/observability
 COPY apps/recommendation-service ./apps/recommendation-service
-RUN npm run build --workspace @alkatra/recommendation-service && npm prune --omit=dev
+RUN npm run build --workspace @alkatra/recommendation-service \
+    && npm prune --omit=dev
 
 # Stage 3 : development — Hot reload local
 FROM deps AS development
+WORKDIR /workspace
 COPY packages/shared-types ./packages/shared-types
-RUN npm run build --workspace @alkatra/shared-types
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/shared-types && npm run build --workspace @alkatra/observability
 COPY apps/recommendation-service ./apps/recommendation-service
 EXPOSE 3004
 CMD ["npm", "run", "start:dev", "-w", "apps/recommendation-service"]
@@ -790,6 +801,9 @@ ENV TZ=Africa/Casablanca
 COPY --from=builder /workspace/node_modules ./node_modules
 COPY --from=builder /workspace/packages/shared-types/package.json ./packages/shared-types/
 COPY --from=builder /workspace/packages/shared-types/dist ./packages/shared-types/dist
+# @alkatra/observability compilé (socle métriques Prometheus)
+COPY --from=builder /workspace/packages/observability/package.json ./packages/observability/
+COPY --from=builder /workspace/packages/observability/dist ./packages/observability/dist
 COPY --from=builder /workspace/apps/recommendation-service/dist ./apps/recommendation-service/dist
 COPY --from=builder /workspace/apps/recommendation-service/package.json ./apps/recommendation-service/
 COPY --from=builder /workspace/apps/recommendation-service/node_modules ./apps/recommendation-service/node_modules
@@ -808,8 +822,8 @@ CMD ["node", "dist/src/main.js"]
 |---------|--------|
 | Image de base | `node:20-alpine` |
 | Contexte de build | Racine du monorepo |
-| Workspaces filtrés | `apps/recommendation-service` + `packages/shared-types` |
-| Compilation ordonnée | `shared-types` compilé avant `recommendation-service` (son `main` pointe vers `dist/`) |
+| Workspaces filtrés | `apps/recommendation-service` + `packages/shared-types` + `packages/observability` (dépendances racine vidées) |
+| Compilation ordonnée | `shared-types` puis `observability` compilés avant `recommendation-service` (leur `main` pointe vers `dist/`) |
 | Utilisateur | `nestjs` (non-root, UID 1001) |
 | Fuseau horaire | `Africa/Casablanca` (nécessaire pour `todayRange()`) |
 | Port exposé | 3004 |

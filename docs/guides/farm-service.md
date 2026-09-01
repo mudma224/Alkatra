@@ -51,7 +51,7 @@
 
 - ❌ Il n'ingère pas de données de mesures capteurs (température, humidité, etc.) — il ne conserve que l'état d'activité du capteur (heartbeat)
 - ❌ Il n'a pas de pagination sur les listes
-- ❌ Il n'a pas de métriques Prometheus
+- ❌ Il ne publie sur aucun sujet Kafka et ne consomme aucun flux — c'est un service REST synchrone (l'alerting vers alert-service passe par HTTP interne, pas par Kafka)
 - ❌ Il n'a pas de tests d'intégration (uniquement des tests unitaires avec mocks)
 - ❌ Il ne crée pas le schéma DB automatiquement (`synchronize: false`)
 
@@ -616,11 +616,11 @@ if (parcelCount > 0) → 409 CONFLICT
    b. Si sensor.parcelId !== parcelId :
       → Vérifier que l'ancienne parcelle appartient aussi à l'utilisateur
       → 403 si oldParcel.farm.ownerId !== userId (anti-vol de capteur)
-      → Réassocier : sensor.parcelId = parcelId, sensor.isActive = true
+      → Réassocier : sensor.parcelId = parcelId, sensor.healthStatus = 'pending' (le capteur repart « En attente » ; le premier heartbeat le repassera 'active')
       → Save
 
 4. Si le capteur n'existe pas :
-   → Créer avec deviceType = 'esp32-wroom-32', isActive = true
+   → Créer avec deviceType = 'esp32-wroom-32', healthStatus = 'pending' (jamais vu, aucun heartbeat)
    → Save
 ```
 
@@ -642,8 +642,8 @@ if (parcelCount > 0) → 409 CONFLICT
 Association (POST /associate)          Heartbeat (PATCH /internal/.../seen)
         │                                       │
         ▼                                       ▼
-  isActive = true                       last_seen_at = now()
-  last_seen_at = NULL                   isActive = true
+  health_status = 'pending'               last_seen_at = now()
+  last_seen_at = NULL                     health_status = 'active'
         │                                       │
         └──────────────┬────────────────────────┘
                        ▼
@@ -938,13 +938,18 @@ WORKDIR /workspace
 COPY package*.json ./
 COPY tsconfig.json ./
 COPY apps/farm-service/package*.json ./apps/farm-service/
-COPY apps/farm-service/tsconfig.json ./apps/farm-service/
+COPY apps/farm-service/tsconfig.json ./apps/farm-service/tsconfig.json
+COPY packages/shared-types ./packages/shared-types
+COPY packages/observability ./packages/observability
+RUN npm install -g npm@11.9.0
 RUN npm ci --workspace @alkatra/farm-service
 
 # Stage 2 : builder — Compile le TypeScript
 FROM deps AS builder
 WORKDIR /workspace
 COPY apps/farm-service ./apps/farm-service
+# @alkatra/observability doit être compilé en premier (main = dist/index.js)
+RUN npm run build --workspace @alkatra/observability
 RUN npm run build --workspace @alkatra/farm-service \
     && npm prune --omit=dev --workspace @alkatra/farm-service
 
@@ -957,6 +962,9 @@ COPY --from=builder /workspace/node_modules ./node_modules
 COPY --from=builder /workspace/apps/farm-service/dist ./apps/farm-service/dist
 COPY --from=builder /workspace/apps/farm-service/package*.json ./apps/farm-service/
 COPY --from=builder /workspace/apps/farm-service/node_modules ./apps/farm-service/node_modules
+# @alkatra/observability compilé (résolu via symlink workspace dans node_modules)
+COPY --from=builder /workspace/packages/observability/package.json ./packages/observability/package.json
+COPY --from=builder /workspace/packages/observability/dist ./packages/observability/dist
 RUN chown -R nestjs:nodejs /workspace
 USER nestjs
 WORKDIR /workspace/apps/farm-service
@@ -1060,8 +1068,7 @@ CMD ["node", "dist/main.js"]
 
 ### Observabilité
 
-- ❌ Aucune métrique Prometheus (pas de module metrics)
-- ❌ Aucun endpoint `/metrics`
+- ❌ Aucun dashboard Grafana **dédié** aux métriques métier farm-service (les métriques `farm_*` sont consultables via Prometheus ou le dashboard générique « Services HTTP » — Grafana)
 - ❌ Aucun structured logging (les logs utilisent `Logger` NestJS standard)
 
 ### Tests
@@ -1106,12 +1113,12 @@ CMD ["node", "dist/main.js"]
 | **Base de données** | PostgreSQL `farm_db` (TypeORM, tables `farms`, `parcels`, `sensors`) |
 | **ORM** | TypeORM 0.3.20 (`synchronize: false`) |
 | **Authentification** | JWT (HS256, secret partagé avec auth-service) |
-| **Communication inter-service** | Sortant : HTTP GET vers `auth-service` `/internal/user/:userId`. Entrant : HTTP PATCH depuis `iot-service` `/internal/sensors/:deviceId/seen` (heartbeat, non routé par la gateway). |
+| **Communication inter-service** | Sortant : HTTP GET vers `auth-service` `/internal/user/:userId` ; HTTP POST vers `alert-service` `/internal/alerts` (notifications capteurs, header `X-Internal-Token`). Entrant : HTTP PATCH depuis `iot-service` `/internal/sensors/:deviceId/seen` (heartbeat, non routé par la gateway). |
 | **Tâche planifiée** | `SensorActivityService` — cycle configurable (`SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES`, 15 min) : `inactive` après 2 h de silence (notification info), `failing` après 24 h (alerte critical) — seuils configurables |
 | **Validation** | class-validator + class-transformer (ValidationPipe global) |
 | **Health checks** | `/api/v1/health/live` + `/api/v1/health/ready` (SELECT 1) |
-| **Métriques** | Aucune |
-| **Tests** | Jest (36 cas unitaires, mocks uniquement) |
+| **Métriques** | Prometheus (`GET /metrics`, via `@alkatra/observability`) : `farm_http_requests_total`, `farm_http_request_duration_seconds` + métiers `farm_heartbeats_processed_total`, `farm_entities`, `farm_sensor_health` |
+| **Tests** | Jest (48 cas unitaires, mocks uniquement) |
 | **Langage** | TypeScript 5.7 |
 | **Node.js** | 20 (Alpine) |
 | **Docker** | Multi-stage, utilisateur non-root, healthcheck sur `/ready` |

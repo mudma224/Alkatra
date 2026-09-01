@@ -9,7 +9,7 @@
 
 1. [Rôle du service](#1-rôle-du-service)
 2. [Architecture et flux](#2-architecture-et-flux)
-3. [Arborescence complète](#3-arborescence-complete)
+3. [Arborescence complète](#3-arborescence-complète)
 4. [Démarrage](#4-démarrage)
 5. [Variables d'environnement](#5-variables-denvironnement)
 6. [Routes HTTP](#6-routes-http)
@@ -88,7 +88,7 @@ Principes :
 apps/alert-service/
 ├── src/
 │   ├── main.ts                        # Bootstrap (ValidationPipe, filtre, CORS, shutdown hooks)
-│   ├── app.module.ts                  # Config, Database, Metrics, Devices, Channels, Alerts, Consumers
+│   ├── app.module.ts                  # Config, ObservabilityModule(prefix 'alert'), Database, Metrics, Devices, Channels, Alerts, Consumers
 │   ├── config/configuration.ts        # registerAs('app') — tous les defaults
 │   ├── database/
 │   │   ├── database.module.ts         # TypeORM forRootAsync (notification_db)
@@ -122,7 +122,7 @@ apps/alert-service/
 │   │   ├── fcm.channel.ts             # firebase-admin + dégradation gracieuse
 │   │   └── alerts-outbound.publisher.ts # Producer kafkajs best-effort
 │   ├── health/health.controller.ts    # /health + /health/ready
-│   └── metrics/ (service, controller, module)
+│   └── metrics/ (module, service — l'exposition `/metrics` vient du package partagé)
 ├── tests/                             # 10 specs jest (voir §15)
 ├── Dockerfile                         # 4 stages, contexte racine, port 3006
 ├── package.json · tsconfig.json · jest.config.js · .env.example
@@ -155,6 +155,7 @@ La base `notification_db` est créée par `infra/postgres/00-create-databases.sh
 | `JWT_SECRET` | dev | Même secret que auth-service (validation locale) |
 | `INTERNAL_TOKEN` | `''` | Token inter-services (header `X-Internal-Token` sur `/internal/*`) — vide = isolation réseau Docker |
 | `KAFKA_BROKERS` | `localhost:9092` | Brokers Kafka |
+| `KAFKA_CLIENT_ID` | `alert-service` | Identifiant client Kafka |
 | `KAFKA_GROUP_ID` | `alert-service-group` | Consumer group |
 | `KAFKA_RECOMMENDATIONS_TOPIC` | `recommendations-generated` | Topic consommé |
 | `KAFKA_TOPIC_DLQ` | `alerts-dlq` | DLQ dédiée (distincte de `recommendations-generated-dlq`) |
@@ -277,18 +278,19 @@ Sémantique at-most-once (auto-commit), sans perte grâce à la DLQ.
 | Métrique | Type | Labels |
 |---|---|---|
 | `alert_http_requests_total` | counter | method, route, status |
-| `alert_http_request_duration_ms_avg` | gauge | — |
-| `alert_kafka_messages_consumed_total` | counter | status = ok / invalid / error / skipped_no_owner |
+| `alert_http_request_duration_seconds` | histogram | method, route, status |
+| `alert_kafka_messages_consumed_total` | counter | topic, status |
 | `alert_kafka_consumer_connected` | gauge | — |
 | `alert_kafka_dlq_total` | counter | — |
 | `alerts_outbound_published_total` | counter | — |
 | `alerts_created_total` | counter | type |
 | `alerts_dedup_skipped_total` | counter | type |
 | `alert_persistence_errors_total` | counter | — |
+| `alert_http_request_duration_ms_avg` | gauge | — |
 | `fcm_enabled` | gauge | 0/1 |
 | `fcm_sent_total` / `fcm_failed_total` | counter | — |
 
-Scrapé par Prometheus (job `alert-service`, `alert-service:3006/metrics`, interval 5 s). Format texte maison (pattern MetricsService, pas de prom-client).
+Scrapé par Prometheus (job `alert-service`, `alert-service:3006/metrics`, intervalle 5 s). L'endpoint est fourni par `ObservabilityModule.forRoot({ prefix: 'alert' })` (package `@alkatra/observability`) : registre `prom-client` partagé, métriques Node par défaut, intercepteur HTTP global `alert_http_requests_total` + `alert_http_request_duration_seconds`. `MetricsService` ajoute les métriques métier ci-dessus, dont la legacy `alert_http_request_duration_ms_avg` conservée pour compatibilité. L'`alert_http_request_duration_seconds` est bien l'histogramme standard généré par le package partagé, et non une métrique maison.
 
 ## 13. Gestion des erreurs
 

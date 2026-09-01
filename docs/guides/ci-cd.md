@@ -4,7 +4,7 @@ Ce document décrit les pipelines GitHub Actions qui vérifient le code du monor
 
 ## Vue d'ensemble
 
-Le monorepo est vérifié par neuf workflows GitHub Actions, définis dans `.github/workflows/`. Chaque workflow se déclenche sur les branches `main` et `develop`. Les workflows spécialisés (`ci-iot`, `ci-ml`, `ci-spark`, `ci-auth`, `ci-farm`, `ci-recommendation`, `ci-alert`, `ci-frontend`) utilisent des filtres de chemins (`paths`) pour ne s'exécuter que lorsqu'un service concerné est modifié. Le workflow `ci-common` s'exécute sur l'ensemble du dépôt, sans filtre de chemins.
+Le monorepo est vérifié par dix workflows GitHub Actions, définis dans `.github/workflows/`. Les workflows ciblés se déclenchent sur `push` et Pull Request vers `main` et `develop`, avec des filtres `paths`. `ci-common` s'exécute sur tout le dépôt ; `ci-observability` couvre les configurations Prometheus, Alertmanager, Grafana, Loki, Blackbox et le package partagé d'observabilité.
 
 Les versions d'exécuteur utilisées en CI :
 
@@ -27,6 +27,7 @@ Les versions d'exécuteur utilisées en CI :
 | Recommendation | `ci-recommendation.yml` | `apps/recommendation-service/**`, `packages/shared-types/**`, `.github/workflows/ci-recommendation.yml` | Lint, Test & Build, Vérification build Docker |
 | Alert | `ci-alert.yml` | `apps/alert-service/**`, `packages/shared-types/**`, `.github/workflows/ci-alert.yml` | Lint, Test & Build, Vérification build Docker |
 | Frontend | `ci-frontend.yml` | `frontend/**` | Lint, Test & Build du frontend |
+| Observabilité | `ci-observability.yml` | Infrastructure d'observabilité, compose et `packages/observability/**` | Validation Prometheus/Alertmanager, dashboards, build et tests du package |
 
 ## Détail par workflow
 
@@ -34,7 +35,7 @@ Les versions d'exécuteur utilisées en CI :
 
 S'exécute sur tout `push` ou PR vers `main` et `develop`, sans filtre de chemins. Trois jobs :
 
-1. **Lint + Typecheck** — `npm ci` à la racine, puis `npm run lint` (ESLint sur tout le TypeScript du monorepo via Turborepo) et `npx prettier --check "**/*.{ts,js,json}"` pour vérifier le formatage.
+1. **Lint + formatage** — `npm ci` à la racine, puis `npm run lint` et `npx prettier --check "**/*.{ts,js,json}"`. Le job ne lance pas de commande TypeScript `typecheck` dédiée.
 2. **Build Docker Images** — dépend du job de lint. Construit trois images :
    - `iot-service` : `docker build apps/iot-service --target development -t alkatra-iot:ci` (requis) ;
    - `spark-jobs` : build avec `continue-on-error: true` (image lourde) ;
@@ -116,6 +117,14 @@ Job **Lint, Test & Build** — `npm ci` à la racine du monorepo, puis au niveau
 - upload du rapport de couverture (`apps/alert-service/coverage`, rétention 7 jours).
 
 Job **Vérification build Docker (sans push)** — dépend du job précédent. `docker/build-push-action@v5` avec `context: .` et `file: apps/alert-service/Dockerfile` (multi-stage, contexte racine pour les workspaces), tag `alkatra/alert-service:ci`.
+
+### ci-frontend.yml
+
+Se déclenche sur `frontend/**`, pour les push vers `main`/`develop` et les Pull Requests. Dans `frontend/`, il exécute `npm ci`, `npm run lint`, `npm run test` et `npm run build` avec Node.js 20.
+
+### ci-observability.yml
+
+Se déclenche lorsque l'infrastructure d'observabilité, le package `@alkatra/observability`, le compose ou le workflow changent. Les jobs exécutent `promtool check config`, rendent le template Alertmanager puis lancent `amtool check-config`, valident les dashboards et les YAML Grafana/Loki/Blackbox, puis construisent et testent le package d'observabilité.
 
 ## Validation Kubernetes
 

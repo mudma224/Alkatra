@@ -12,7 +12,7 @@
 4. [Variables d'environnement](#4-variables-denvironnement)
 5. [Routes HTTP](#5-routes-http)
 6. [Fonctionnement interne par fichier](#6-fonctionnement-interne-par-fichier)
-7. [Sécurité : authentification OTP + JWT](#7-sécurité--authentification-otp--jwt)
+7. [Sécurité : authentification OTP + JWT](#7-sécurité-authentification-otp-jwt)
 8. [Gestion des OTP (Redis)](#8-gestion-des-otp-redis)
 9. [Envoi SMS (Infobip)](#9-envoi-sms-infobip)
 10. [Module Keycloak](#10-module-keycloak)
@@ -261,8 +261,7 @@ environment:
 |---------|-------|-----|-------------|
 | `POST` | `/api/v1/auth/register` | `RegisterDto` | Demande d'inscription : génère un code OTP à 6 chiffres, le stocke dans Redis, l'envoie par SMS (ou log en dev). Retourne `{ success, message, expiresAt }` |
 | `POST` | `/api/v1/auth/verify-otp` | `VerifyOtpDto` | Vérifie le code OTP. Si valide : crée ou récupère l'utilisateur en base, génère un token pair (access + refresh), retourne `AuthResult` |
-| `POST` | `/api/v1/auth/login` | `LoginDto` | Connexion via refresh token. Vérifie le refresh token, génère un nouveau token pair |
-| `POST` | `/api/v1/auth/refresh` | `LoginDto` | Alias de `/login` pour compatibilité frontend (Sprint 4). Même contrat |
+| `POST` | `/api/v1/auth/refresh` | `LoginDto` | Connexion via refresh token. Vérifie le refresh token (et sa cohérence avec le `phone` fourni), génère un nouveau token pair. C'est la **seule** route de connexion implémentée — `/login` n'existe pas comme route séparée (le commentaire dans `auth.controller.ts` indique que `/refresh` a été exposé sous ce nom pour compatibilité avec l'intercepteur Axios du frontend, Sprint 4) |
 
 ### Profil utilisateur (protégée par JWT)
 
@@ -281,7 +280,7 @@ environment:
 
 | Méthode | Route | Comportement |
 |---------|-------|-------------|
-| `GET` | `/health` | Retourne `{ status: "ok", service: "auth-service", timestamp }`. Réponse statique utilisée par le healthcheck Docker. |
+| `GET` | `/health` | Vérifie PostgreSQL (`SELECT 1`) et Redis (`PING`) ; retourne `{ status: "ok", service, checks: { database, redis }, timestamp }` ou 503 `not_ready` si une dépendance est down |
 
 ### Métriques (publique)
 
@@ -351,7 +350,7 @@ apps/auth-service/
 │   │
 │   ├── auth/                # Module AUTH principal
 │   │   ├── auth.module.ts
-│   │   ├── auth.controller.ts   # POST /api/v1/auth/{register,verify-otp,login,refresh}
+│   │   ├── auth.controller.ts   # POST /api/v1/auth/{register,verify-otp,refresh}
 │   │   ├── auth.service.ts      # Logique métier : OTP, JWT, création utilisateur
 │   │   ├── dto/
 │   │   │   ├── register.dto.ts  # Validation numéro téléphone
@@ -385,10 +384,9 @@ apps/auth-service/
 │   │   ├── internal-user.controller.ts   # GET/PATCH /internal/user/:userId (interne)
 │   │   └── internal-user.service.ts      # CRUD interne (mise à jour profil)
 │   │
-│   └── metrics/             # Module Prometheus
+│   └── metrics/             # Module métriques métier (exposition /metrics via @alkatra/observability)
 │       ├── metrics.module.ts
-│       ├── metrics.controller.ts  # GET /metrics
-│       └── metrics.service.ts     # Collecte métriques
+│       └── auth-metrics.service.ts  # Compteurs métier (AuthMetricsService)
 │
 └── test/
     ├── auth.service.spec.ts    # Tests du AuthService
@@ -401,12 +399,12 @@ apps/auth-service/
 
 | Fichier | Rôle réel |
 |---------|-----------|
-| `src/main.ts` | Point d'entrée NestJS. Active `ValidationPipe` global (whitelist, forbidNonWhitelisted, transform). Active CORS (toutes origines, credentials). Démarre sur le port configuré (défaut 3001). |
-| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global, avec `configuration.ts`), `TypeOrmModule` (PostgreSQL, `synchronize: false`), `AuthModule`, `MetricsModule`, `OtpModule`, `KeycloakModule`, `UserModule`. Déclare `AppController`. |
-| `src/app.controller.ts` | Contrôleur racine. Expose `GET /health` — retourne une réponse statique pour le healthcheck Docker. |
+| `src/main.ts` | Point d'entrée NestJS. Active `ValidationPipe` global (whitelist, forbidNonWhitelisted, transform). Active CORS avec liste d'origines restreinte (`http://localhost:5173`, `http://localhost:8080`), `credentials: true`, méthodes et en-têtes autorisés explicites. Démarre sur le port configuré (défaut 3001). |
+| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global, avec `configuration.ts`), `ObservabilityModule.forRoot({ prefix: 'auth' })` (package `@alkatra/observability` — endpoint `/metrics`, métriques Node, intercepteur HTTP), `TypeOrmModule` (PostgreSQL, `synchronize: false`), `AuthModule`, `MetricsModule`, `OtpModule`, `KeycloakModule`, `UserModule`. Déclare `AppController`. |
+| `src/app.controller.ts` | Contrôleur racine. Expose `GET /health` — vérifie réellement les dépendances : PostgreSQL (`SELECT 1`) et Redis (`PING`). Réponse `{ status: 'ok', service: 'auth-service', checks: {...}, timestamp }` ou `503 ServiceUnavailableException` avec `{ status: 'not_ready', checks: {...} }` si une dépendance est down. Utilisé par le healthcheck Docker et `scripts/health-check.sh`. |
 | `src/config/configuration.ts` | Fonction de configuration NestJS. Centralise toutes les variables d'environnement avec valeurs par défaut. Utilise `dotenv` via `ConfigModule.forRoot()`. |
 | `src/auth/auth.module.ts` | Module auth. Importe `TypeOrmModule.forFeature([UserEntity])`, `OtpModule`, `PassportModule`, `JwtModule.registerAsync()` (configuré avec `jwt.secret` et `jwt.accessExpiration`). Déclare `AuthController`, `AuthService`, `JwtStrategy`. Exporte `AuthService`. |
-| `src/auth/auth.controller.ts` | Controller auth. Préfixe `api/v1/auth`. 4 endpoints POST : `register`, `verify-otp`, `login`, `refresh`. Tous retournent `200 OK` (`@HttpCode(HttpStatus.OK)`). |
+| `src/auth/auth.controller.ts` | Controller auth. Préfixe `api/v1/auth`. 3 endpoints POST : `register`, `verify-otp`, `refresh`. Tous retournent `200 OK` (`@HttpCode(HttpStatus.OK)`). `refresh` reçoit un `LoginDto` (`phone` + `refreshToken`). |
 | `src/auth/auth.service.ts` | **Cœur métier de l'authentification**. 3 méthodes principales : `requestOtp(phone)` → génère OTP + envoi SMS ; `verifyOtpAndAuthenticate(phone, otp)` → vérifie OTP → crée/récupère user → génère token pair ; `refreshSession(phone, refreshToken)` → vérifie refresh token → regénère token pair. `generateTokenPair(user)` signe un access token (HS256, `jwt.secret`) et un refresh token (HS256, `jwt.refreshSecret`). `verifyRefreshToken(token)` vérifie et décode le refresh token. |
 | `src/auth/strategies/jwt.strategy.ts` | Stratégie Passport JWT. Extrait du header `Authorization: Bearer`. Vérifie avec `jwt.secret`. Algorithme imposé : `HS256`. `validate()` retourne `{ userId: payload.sub, phone: payload.phone }`. |
 | `src/auth/strategies/jwt-auth.guard.ts` | Guard NestJS. `extends AuthGuard('jwt')`. |
@@ -414,7 +412,7 @@ apps/auth-service/
 | `src/auth/entities/user.entity.ts` | Entité TypeORM `UserEntity` mappée à la table `users`. Champs : `id` (UUID), `phone` (unique), `name` (nullable), `preferredLanguage` ('french'/'arabic'/'darija' par défaut 'darija'), `otpAttempts` (int, défaut 0), `otpBlockedUntil` (nullable), `lastLoginAt` (nullable), `keycloakId` (nullable), `createdAt`, `updatedAt`. |
 | `src/auth/dto/register.dto.ts` | DTO `RegisterDto`. Valide que `phone` est un string non vide correspondant au format `+2126XXXXXXXX` ou `+2127XXXXXXXX`. |
 | `src/auth/dto/login.dto.ts` | DTO `LoginDto`. Valide `phone` (même format que register) et `refreshToken` (string non vide). |
-| `src/otp/otp.module.ts` | Module OTP. Importe `HttpModule` (pour axios). Déclare `OtpService`, `redisProvider`, `SmsProviderService`. Exporte `OtpService` et `SmsProviderService`. |
+| `src/otp/otp.module.ts` | Module OTP. Importe `HttpModule` (pour axios). Déclare `OtpService`, `redisProvider`, `SmsProviderService`. Exporte `OtpService`, `SmsProviderService` et `REDIS_CLIENT`. |
 | `src/otp/otp.service.ts` | **Cœur de la sécurité OTP**. Génère un code à 6 chiffres, le stocke dans Redis (clé `otp:{phone}` avec TTL), gère le compteur de tentatives (`otp:attempts:{phone}`), le blocage (`otp:blocked:{phone}`) après `maxAttempts` échecs. `isBlocked()` vérifie si le numéro est bloqué. `verify()` compare le code, incrémente les tentatives en cas d'échec, bloque si seuil atteint. `clear()` supprime les clés Redis en cas de succès. |
 | `src/otp/redis.provider.ts` | Provider NestJS pour Redis. Crée une instance `ioredis.Redis` avec `host`, `port`, `password` (optionnel) depuis la config. `maxRetriesPerRequest: 3`. Token d'injection : `REDIS_CLIENT`. |
 | `src/otp/sms-provider.service.ts` | Service d'envoi SMS. En développement (`NODE_ENV !== 'production'`), log simplement le code dans la console (`[DEV-OTP] Code pour +2126XXXXXXXX : 483729`). En production, appelle l'API REST Infobip (`POST /sms/2/text/advanced`) avec `Authorization: App {apiKey}`. Timeout 10s. En cas d'échec, log l'erreur et lance `InternalServerErrorException`. |
@@ -427,8 +425,8 @@ apps/auth-service/
 | `src/user/user.controller.ts` | Controller utilisateur public. Préfixe `api/v1/user`. `GET /profile` protégé par `JwtAuthGuard`. Utilise `@CurrentUser()` pour obtenir l'utilisateur connecté. |
 | `src/user/internal-user.service.ts` | **Service INTERNE** pour `user-service`. `getProfile(userId)` : identique à `UserService.getProfile()`. `updateProfile(userId, data)` : met à jour `name` et/ou `preferredLanguage` et sauvegarde en base. |
 | `src/user/internal-user.controller.ts` | Controller **INTERNE** (sans préfixe `api/v1`). Préfixe `internal/user`. `GET /:userId` → `getProfile()`. `PATCH /:userId` → `updateProfile()`. **Aucun guard JWT** — accessible uniquement depuis le réseau Docker interne. C'est cet endpoint que `user-service` appelle. |
-| `src/metrics/metrics.controller.ts` | Controller metrics. `GET /metrics` avec `Content-Type: text/plain`. |
-| `src/metrics/metrics.service.ts` | Service Prometheus. Compteurs : `auth_otp_requests_total`, `auth_otp_verified_total`, `auth_otp_failed_total`, `auth_login_total`. Histogramme : `auth_request_duration_seconds` (labels : method, route, status_code). Gauge : `auth_users_total`. |
+| `src/metrics/metrics.module.ts` | Module métriques métier. Fournit `AuthMetricsService` (injectable partout via le module). L'exposition `GET /metrics`, les métriques par défaut Node et l'intercepteur HTTP sont fournis par `ObservabilityModule.forRoot({ prefix: 'auth' })` dans `AppModule`. |
+| `src/metrics/auth-metrics.service.ts` | Service de métriques métier (`AuthMetricsService`), déclaré sur le registre partagé `@alkatra/observability`. Compteurs `auth_otp_requests_total`, `auth_otp_verified_total`, `auth_otp_failed_total`, `auth_login_total` et gauge `auth_users_total`. Méthodes `recordOtpRequest()`, `recordOtpVerified()`, `recordOtpFailed()`, `recordLogin()`, `setUsersTotal()` — appelées par `AuthService` aux points réels du flux. |
 
 ---
 
@@ -458,7 +456,7 @@ L'authentification repose sur un **système sans mot de passe** en 2 étapes :
 │  Utilisation :                                    │
 │  - Header: Authorization: Bearer <access_token>         │
 │  - Quand l'access token expire :                        │
-│    → POST /api/v1/auth/login avec refresh token         │
+│    → POST /api/v1/auth/refresh avec refresh token      │
 │    → Obtention d'un nouveau token pair                  │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -624,13 +622,17 @@ L'authentification des utilisateurs s'appuie sur le JWT natif NestJS associé à
 {
   "status": "ok",
   "service": "auth-service",
+  "checks": {
+    "database": "up",
+    "redis": "up"
+  },
   "timestamp": "2026-07-13T10:00:00.000Z"
 }
 ```
 
-- Ne dépend d'aucun service externe
-- Simple indicateur que le processus Node.js tourne
-- Utilisé par Docker healthcheck
+- Vérifie **réellement** les dépendances : PostgreSQL (`SELECT 1`) et Redis (`PING`)
+- Si l'une des deux est down, le service répond `503 ServiceUnavailableException` avec `{ status: 'not_ready', service, checks, timestamp }`
+- Utilisé par le healthcheck Docker (binaire à 15 s) et par `scripts/health-check.sh`
 
 ### Healthcheck Docker
 
@@ -647,18 +649,24 @@ healthcheck:
 
 ## 13. Métriques Prometheus
 
-Le module `metrics` expose des métriques Prometheus via `prom-client`.
+L'exposition `GET /metrics` est fournie par `ObservabilityModule.forRoot({ prefix: 'auth' })` (package `@alkatra/observability`) : registre Prometheus dédié, métriques par défaut Node (`process_*`, `nodejs_*`) et **intercepteur HTTP global**. Les métriques métier sont déclarées par `AuthMetricsService` (`src/metrics/auth-metrics.service.ts`) sur le même registre.
 
-### Métriques définies
+### Métriques standard (intercepteur HTTP, labels `method`, `route`, `status`)
 
 | Nom | Type | Description |
 |-----|------|-------------|
-| `auth_otp_requests_total` | Counter | Nombre total de demandes OTP |
-| `auth_otp_verified_total` | Counter | Nombre total d'OTP vérifiés avec succès |
-| `auth_otp_failed_total` | Counter | Nombre total d'échecs de vérification OTP |
-| `auth_login_total` | Counter | Nombre total de connexions (via refresh token) |
-| `auth_request_duration_seconds` | Histogram | Durée des requêtes HTTP (labels : method, route, status_code) |
-| `auth_users_total` | Gauge | Nombre total d'utilisateurs en base |
+| `auth_http_requests_total` | Counter | Nombre total de requêtes HTTP traitées |
+| `auth_http_request_duration_seconds` | Histogram | Durée des requêtes HTTP (buckets de 5 ms à 10 s) |
+
+### Métriques métier
+
+| Nom | Type | Description |
+|-----|------|-------------|
+| `auth_otp_requests_total` | Counter | Demandes d'OTP (`POST /register`) — incrémenté dans `requestOtp()` |
+| `auth_otp_verified_total` | Counter | OTP vérifiés avec succès |
+| `auth_otp_failed_total` | Counter | Échecs de vérification OTP (code invalide/expiré ou téléphone bloqué) |
+| `auth_login_total` | Counter | Connexions réussies (verify-otp ou refresh) |
+| `auth_users_total` | Gauge | Nombre d'utilisateurs en base — valorisée au démarrage (`onModuleInit`) et à chaque création d'utilisateur |
 
 ### Endpoint
 
@@ -667,7 +675,7 @@ GET /metrics
 Content-Type: text/plain; version=0.0.4; charset=utf-8
 ```
 
-> ⚠️ Les métriques sont déclarées mais ne sont pas incrémentées par la logique métier (pas d'appel à `.inc()` dans `auth.service.ts`). Les valeurs exposées restent à 0.
+> Toutes ces métriques sont **incrémentées aux points réels du flux** dans `auth.service.ts` ; aucune série métier n'est laissée à 0 en fonctionnement normal.
 
 ---
 
@@ -737,34 +745,56 @@ npm run test:cov      # Avec couverture
 
 ## 16. Docker
 
-### Dockerfile (multi-stage, 3 cibles)
+### Dockerfile (multi-stage, 4 cibles)
 
 ```dockerfile
-# Stage 1 : Builder — compile le TypeScript
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
+# Stage 1 : deps — Installer les dépendances
+FROM node:20-alpine AS deps
+WORKDIR /workspace
+# Copier les manifestes (racine + service + package workspace @alkatra/observability)
+COPY package.json ./
+COPY tsconfig.json ./
+COPY apps/auth-service/package.json ./apps/auth-service/
+COPY apps/auth-service/tsconfig.json ./apps/auth-service/tsconfig.json
+COPY packages/observability/package.json ./packages/observability/package.json
+COPY packages/observability/tsconfig.json ./packages/observability/tsconfig.json
+# Filtrer le package.json racine pour ne garder que les workspaces nécessaires
+# (le service + @alkatra/observability qu'il consomme)
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./package.json','utf8'));p.workspaces=['apps/auth-service','packages/observability'];p.dependencies={};delete p.devDependencies;fs.writeFileSync('./package.json',JSON.stringify(p,null,2));"
+RUN npm install --workspace @alkatra/auth-service
 
-# Stage 2 : Development — hot reload local
-FROM node:20-alpine AS development
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
+# Stage 2 : builder — Compile le code TypeScript
+FROM deps AS builder
+WORKDIR /workspace
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/observability
+COPY apps/auth-service ./apps/auth-service
+RUN npm run build --workspace @alkatra/auth-service \
+    && npm prune --omit=dev
+
+# Stage 3 : development — Hot reload local
+FROM deps AS development
+WORKDIR /workspace
+COPY packages/observability ./packages/observability
+RUN npm run build --workspace @alkatra/observability
+COPY apps/auth-service ./apps/auth-service
 EXPOSE 3001
-CMD ["npm", "run", "start:dev"]
+CMD ["npm", "run", "start:dev", "-w", "apps/auth-service"]
 
-# Stage 3 : Production — image finale légère
+# Stage 4 : production — Image finale légère
 FROM node:20-alpine AS production
-WORKDIR /app
-RUN addgroup -S nodegroup && adduser -S nodeuser -G nodegroup
-COPY package*.json ./
-RUN npm install --omit=dev
-COPY --from=builder /app/dist ./dist
-USER nodeuser
+RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001
+WORKDIR /workspace
+ENV NODE_ENV=production
+COPY --from=builder /workspace/node_modules ./node_modules
+COPY --from=builder /workspace/packages/observability/package.json ./packages/observability/package.json
+COPY --from=builder /workspace/packages/observability/dist ./packages/observability/dist
+COPY --from=builder /workspace/apps/auth-service/dist ./apps/auth-service/dist
+COPY --from=builder /workspace/apps/auth-service/package.json ./apps/auth-service/
+COPY --from=builder /workspace/apps/auth-service/node_modules ./apps/auth-service/node_modules
+RUN chown -R nestjs:nodejs /workspace
+USER nestjs
+WORKDIR /workspace/apps/auth-service
 EXPOSE 3001
 CMD ["node", "dist/main"]
 ```
@@ -773,13 +803,15 @@ CMD ["node", "dist/main"]
 
 | Stage | Utilisation | Rôle |
 |-------|-------------|------|
-| `builder` | Intermédiaire | Installe toutes les dépendances et compile le TypeScript (`npm run build`) |
-| `development` | `docker compose` (cible par défaut dans docker-compose) | Installe les dépendances, copie le code source, lance `nest start --watch` (hot reload) |
-| `production` | Déploiement réel | Installe uniquement les dépendances de production, copie le `dist/` compilé, exécute avec un utilisateur non-root (`nodeuser`) |
+| `deps` | Intermédiaire | Installe les dépendances du workspace `@alkatra/auth-service` (workspaces filtrés : `apps/auth-service` + `packages/observability`) |
+| `builder` | Intermédiaire | Compile d'abord `@alkatra/observability` (résolu via symlink workspace), puis `@alkatra/auth-service`, puis `npm prune --omit=dev` |
+| `development` | `docker compose` (target utilisée dans docker-compose) | Compile observability, copie le code source, lance `start:dev` (hot reload) |
+| `production` | Déploiement réel | Dépendances de production uniquement, copie du `dist/` compilé, exécution avec un utilisateur non-root (`nestjs`) |
 
 **Points clés :**
-- Le contexte de build est `apps/auth-service/` (pas la racine du monorepo, contrairement à `user-service`)
-- Le volume monté dans docker-compose (`- ./../../apps/auth-service/src:/app/src`) permet le hot-reload en développement
+- Le contexte de build est la **racine du monorepo** (`../..` dans docker-compose), comme `user-service`
+- Le service consomme le package workspace `@alkatra/observability` (le Dockerfile copie et compile ce package avant le service)
+- Le volume monté dans docker-compose (`- ./../../apps/auth-service/src:/workspace/apps/auth-service/src`) permet le hot-reload en développement
 - L'image de production utilise un utilisateur non-root pour la sécurité
 - Le port exposé est `3001`
 
@@ -788,9 +820,9 @@ CMD ["node", "dist/main"]
 ```yaml
 auth-service:
   build:
-    context: ./../../apps/auth-service
-    dockerfile: Dockerfile
-    target: development           # Cible "development" pour le hot-reload
+    context: ../..                      # Racine du monorepo
+    dockerfile: ./apps/auth-service/Dockerfile
+    target: development                 # Cible "development" pour le hot-reload
   container_name: alkatra-auth
   restart: unless-stopped
   depends_on:
@@ -824,7 +856,7 @@ auth-service:
   ports:
     - "3001:3001"
   volumes:
-    - ./../../apps/auth-service/src:/app/src   # Hot-reload
+    - ./../../apps/auth-service/src:/workspace/apps/auth-service/src   # Hot-reload
   healthcheck:
     test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
     interval: 15s
@@ -869,7 +901,7 @@ Tous les services sont sur le réseau Docker `alkatra-net` (bridge).
 - Le service ne gère pas l'authentification OIDC via Keycloak (le module est en diagnostic uniquement).
 - Le service ne gère pas la suppression de comptes utilisateur.
 - Le service n'expose pas de route publique de mise à jour du profil (`PATCH /api/v1/user/profile` est délégué à user-service qui appelle l'endpoint interne).
-- Les métriques Prometheus sont déclarées mais non incrémentées par la logique métier.
+- L'inscription n'est pas une étape séparée : l'utilisateur est créé automatiquement en base lors de la première vérification OTP réussie (pas de pré-inscription distincte de `register`).
 
 ---
 
@@ -877,9 +909,9 @@ Tous les services sont sur le réseau Docker `alkatra-net` (bridge).
 
 ### Métriques Prometheus
 
-Les compteurs et histogrammes Prometheus (`auth_otp_requests_total`, `auth_otp_verified_total`, `auth_otp_failed_total`, `auth_login_total`, `auth_request_duration_seconds`, `auth_users_total`) sont déclarés dans `metrics.service.ts` mais ne sont pas incrémentés par la logique métier. Les valeurs exposées sur `/metrics` restent à 0.
+Les métriques métier (`auth_otp_requests_total`, `auth_otp_verified_total`, `auth_otp_failed_total`, `auth_login_total`, `auth_users_total`) sont déclarées dans `metrics/auth-metrics.service.ts` sur le registre partagé `@alkatra/observability` et **incrémentées aux points réels du flux** : `requestOtp()` (demande OTP), vérification échouée, OTP vérifié, connexion réussie (verify-otp ou refresh), et `onModuleInit()` valorise `auth_users_total` par un comptage en base.
 
-L'histogramme `auth_request_duration_seconds` n'est rattaché à aucun middleware ni interceptor mesurant la durée des requêtes. La gauge `auth_users_total` n'est rattachée à aucune requête de comptage vers PostgreSQL.
+Les métriques HTTP (`auth_http_requests_total`, `auth_http_request_duration_seconds`) sont produites par l'intercepteur global fourni par `ObservabilityModule.forRoot({ prefix: 'auth' })`, avec pour labels `method`, `route` et `status`, et ne sont donc jamais à 0 une fois le service sollicité.
 
 ### Endpoint interne sans guard
 
@@ -912,7 +944,7 @@ Les tests unitaires s'exécutent via Jest sur `auth.service.spec.ts` et `otp.ser
 | **SMS Provider** | Infobip (API REST) |
 | **Authentification** | OTP SMS → JWT (HS256, access 1h, refresh 30 jours) |
 | **Communication inter-service** | Endpoint interne `/internal/user/:userId` (GET/PATCH) |
-| **Health check** | `GET /health` (statique) |
+| **Health check** | `GET /health` (PostgreSQL `SELECT 1` + Redis `PING`, 503 si down) |
 | **Métriques** | Prometheus (`/metrics`) |
 | **Profil Docker** | `phase1` (démarrage explicite requis) |
 | **Dépendances** | PostgreSQL (healthy), Redis (healthy), Keycloak (started) |

@@ -12,7 +12,11 @@ Ce guide décrit comment lancer la stack ML localement, enregistrer les modèles
 
 ```bash
 python -m pip install -r requirements-ml.txt
+python -m pip install -r apps/ml-inference-service/requirements.txt
+python -m pip install -r apps/spark-jobs/requirements.txt
 ```
+
+`requirements-ml.txt` fournit les dépendances ML générales ; les deux fichiers de service sont les références pour exécuter leurs tests et leurs applications.
 
 ## 3) Démarrer la stack
 

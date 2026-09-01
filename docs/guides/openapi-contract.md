@@ -123,14 +123,14 @@ Avant de développer ou de consommer une route, les équipes doivent vérifier l
 ### 4.1. Depuis la racine du projet
 
 ```bash
-cd C:\Users\PC\Documents\alkatra-platform
+cd C:\Users\Mahmoud\Desktop\alkatra-platform-stage
 npx @redocly/cli lint docs/api/openapi.yaml
 ```
 
 ### 4.2. Depuis le dossier `docs/api`
 
 ```bash
-cd C:\Users\PC\Documents\alkatra-platform\docs\api
+cd C:\Users\Mahmoud\Desktop\alkatra-platform-stage\docs\api
 npx @redocly/cli lint openapi.yaml
 ```
 
@@ -139,7 +139,7 @@ npx @redocly/cli lint openapi.yaml
 Depuis la racine :
 
 ```bash
-cd C:\Users\PC\Documents\alkatra-platform
+cd C:\Users\Mahmoud\Desktop\alkatra-platform-stage
 npx @redocly/cli build-docs docs/api/openapi.yaml
 ```
 
@@ -195,7 +195,7 @@ cd C:\Users\PC\Documents\alkatra-platform
 npx @redocly/cli preview-docs docs/api/openapi.yaml
 ```
 
-#### apres un fichier .html est généré dans docs/api qui documente tout l'api de farm-service
+Le fichier YAML est rédigé manuellement et doit être comparé aux controllers et DTO des services. La commande `build-docs` génère une sortie de prévisualisation ; elle ne modifie pas le contrat source.
 ---
 
 ## 7) En résumé
@@ -215,7 +215,7 @@ Dans ce projet, le fichier [docs/api/openapi.yaml](../../docs/api/openapi.yaml) 
 ## 8) Commandes utiles à retenir
 
 ```bash
-cd C:\Users\PC\Documents\alkatra-platform
+cd C:\Users\Mahmoud\Desktop\alkatra-platform-stage
 npx @redocly/cli lint docs/api/openapi.yaml
 npx @redocly/cli preview-docs docs/api/openapi.yaml
 python -c "import yaml, pathlib; p=pathlib.Path('docs/api/openapi.yaml'); data=yaml.safe_load(p.read_text(encoding='utf-8')); print(data.get('openapi'))"

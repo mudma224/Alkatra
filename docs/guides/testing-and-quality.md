@@ -42,6 +42,7 @@ npm run test -w @alkatra/auth-service
 npm run test -w @alkatra/user-service
 npm run test -w @alkatra/farm-service
 npm run test -w @alkatra/recommendation-service
+npm run test --workspace=@alkatra/alert-service
 npm run test -w @alkatra/iot-service
 
 # Lancer les tests avec collecte de couverture
@@ -147,10 +148,7 @@ npm run lint
 npm run lint -w @alkatra/farm-service
 ```
 
-ESLint est configuré à la racine via `.eslintrc.js` (plugin
-`@typescript-eslint`, presets recommandés, environnement `node` + `jest`). Le
-formatage est assuré par Prettier (`.prettierrc` à la racine), invoqué par
-`npm run format`.
+Chaque package NestJS porte sa commande ESLint dans son propre `package.json` ; plusieurs services utilisent une configuration locale. Le formatage est assuré par Prettier, invoqué par `npm run format` à la racine.
 
 Pour les composants Python, `ruff` est utilisé dans les workflows CI
 (`ruff check apps/ml-inference-service/app/ apps/spark-jobs/jobs/`).

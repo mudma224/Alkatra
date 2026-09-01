@@ -14,7 +14,7 @@
 4. [Variables d'environnement](#4-variables-denvironnement)
 5. [Routes HTTP](#5-routes-http)
 6. [Fonctionnement interne par fichier](#6-fonctionnement-interne-par-fichier)
-7. [Sécurité : authentification JWT](#7-sécurité--authentification-jwt)
+7. [Sécurité : authentification JWT](#7-sécurité-authentification-jwt)
 8. [Health checks](#8-health-checks)
 9. [Métriques Prometheus](#9-métriques-prometheus)
 10. [Tests](#10-tests)
@@ -169,6 +169,7 @@ JWT_SECRET=change_me_same_as_auth_service
 | `AUTH_SERVICE_HOST` | `localhost` | Hostname du auth-service (résolu en `auth-service` dans Docker) |
 | `AUTH_SERVICE_PORT` | `3001` | Port du auth-service |
 | `JWT_SECRET` | (obligatoire) | Secret HMAC pour valider les tokens JWT (algorithme HS256) |
+| `CORS_ORIGINS` | `http://localhost:3000` | Origines frontend autorisées par CORS, séparées par des virgules (ex. `http://localhost:5173,http://localhost:3000`) |
 
 ### Configuration injectée par Docker Compose
 
@@ -178,7 +179,8 @@ environment:
   PORT: 3002
   AUTH_SERVICE_HOST: auth-service    # Nom du container Docker
   AUTH_SERVICE_PORT: 3001
-  JWT_SECRET: ${JWT_SECRET:-alkatra_jwt_dev_secret}
+  JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+  CORS_ORIGINS: http://localhost:5173,http://localhost:3000
 ```
 
 > ⚠️ `JWT_SECRET` doit être **strictement identique** à celui configuré dans `auth-service`, sinon la validation des tokens JWT échouera.
@@ -225,7 +227,7 @@ Toutes les routes ci-dessous nécessitent un header `Authorization: Bearer <toke
 
 | Méthode | Route | Comportement |
 |---------|-------|-------------|
-| `GET` | `/api/v1/metrics` | Retourne les métriques Prometheus au format texte (`Content-Type: text/plain; version=0.0.4`) |
+| `GET` | `/metrics` | Retourne les métriques Prometheus au format texte (`Content-Type: text/plain; version=0.0.4`). Route **exclue du préfixe global `api/v1`** (voir `main.ts`) pour être scrapée à la racine par Prometheus |
 
 ---
 
@@ -264,9 +266,11 @@ apps/user-service/
 │   │   └── health.controller.ts # Liveness + Readiness probes
 │   │
 │   └── metrics/
-│       ├── metrics.module.ts # Module Prometheus
-│       ├── metrics.controller.ts # Endpoint GET /metrics
-│       └── metrics.service.ts # Service de collecte de métriques
+│       ├── metrics.module.ts     # Module métriques métier
+│       └── user-metrics.service.ts # Compteurs métier (UserMetricsService)
+│
+│   (L'exposition GET /metrics, les métriques Node et l'intercepteur HTTP
+│    sont fournis par @alkatra/observability dans app.module.ts)
 │
 └── test/
     ├── user.service.spec.ts      # Tests du UserService
@@ -279,8 +283,8 @@ apps/user-service/
 
 | Fichier | Rôle réel |
 |---------|-----------|
-| `src/main.ts` | Point d'entrée NestJS. Définit le préfixe global `api/v1`, active `ValidationPipe` global (whitelist, forbidNonWhitelisted, transform). Démarre le serveur sur le port `PORT` (défaut 3002). |
-| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global), `UserModule`, `AuthModule`, `FarmsModule`, `MetricsModule`. Déclare `HealthController`. |
+| `src/main.ts` | Point d'entrée NestJS. Définit le préfixe global `api/v1` en **excluant `GET /metrics`** (scrape Prometheus à la racine), active `ValidationPipe` global (whitelist, forbidNonWhitelisted, transform) et CORS (`CORS_ORIGINS`, liste séparée par des virgules ; défaut `http://localhost:3000`). Démarre sur le port `PORT` (défaut 3002). |
+| `src/app.module.ts` | Module racine. Importe `ConfigModule` (global), `ObservabilityModule.forRoot({ prefix: 'user' })`, `UserModule`, `AuthModule`, `FarmsModule`. Déclare `HealthController`. |
 | `src/user/user.module.ts` | Module NestJS standard. Déclare `UserController` et `UserService`. |
 | `src/user/user.controller.ts` | Controller protégé par `JwtAuthGuard`. Expose `GET /user/profile` et `PATCH /user/profile`. Extrait `userId` de `req.user` (injecté par Passport après validation JWT). |
 | `src/user/user.service.ts` | **Cœur du proxy**. Construit l'URL `http://{AUTH_SERVICE_HOST}:{AUTH_SERVICE_PORT}/internal/user/{userId}`. Appelle `axios.get()` ou `axios.patch()`. Gère les erreurs : 404 → `NotFoundException`, autres → log + rethrow. |
@@ -291,8 +295,7 @@ apps/user-service/
 | `src/farms/farms.module.ts` | Module déclarant `FarmsController`. |
 | `src/farms/farms.controller.ts` | Controller protégé par JWT. Route `GET /farms` lance `NotImplementedException('Farms listing is not implemented yet')`. |
 | `src/health/health.controller.ts` | Controller sans guard. `GET /health` → redirige vers `readiness()`. `GET /health/live` → réponse statique `{ status: 'alive' }`. `GET /health/ready` → appelle `auth-service/health` via HTTP ; si OK → `{ status: 'ready', checks: { authService: 'up' } }`, sinon → `503 ServiceUnavailableException`. |
-| `src/metrics/metrics.controller.ts` | Controller exposant `GET /metrics` avec `Content-Type: text/plain; version=0.0.4`. Délègue à `MetricsService`. |
-| `src/metrics/metrics.service.ts` | Service utilisant `prom-client` pour collecter et exposer les métriques Prometheus. |
+| `src/metrics/user-metrics.service.ts` | Service de métriques métier (`UserMetricsService`), déclaré sur le registre partagé `@alkatra/observability`. Compteurs incrémentés par `UserService` : `user_profile_requests_total`, `user_profile_updates_total`, `user_auth_calls_total{operation,status}`. L'endpoint `GET /metrics` lui-même est fourni par `@alkatra/observability` (pas de `metrics.controller.ts` local). |
 | `test/user.service.spec.ts` | Tests unitaires du `UserService`. Mocke `axios` et `ConfigService`. Vérifie : appel correct à auth-service, retour du profil, levée de `NotFoundException` sur 404. |
 | `test/user.controller.spec.ts` | Tests unitaires du `UserController`. Mocke `UserService`. Vérifie : délégation au service avec le bon `userId`, propagation des erreurs. |
 | `test/jwt.strategy.spec.ts` | Tests unitaires de `JwtStrategy`. Vérifie que `validate()` retourne `{ userId, phone }` à partir du payload JWT. |
@@ -373,26 +376,41 @@ Conçus pour les **liveness/readiness probes Kubernetes** et Docker Compose.
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/health/ready"]
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/api/v1/health/ready"]
   interval: 30s
   timeout: 10s
   retries: 3
   start_period: 40s
 ```
 
-> Le healthcheck Docker appelle `http://localhost:3002/health/ready`, sans le préfixe global `api/v1` (la route complète exposée par NestJS est `/api/v1/health/ready`). Le chemin sans préfixe ne correspond à aucune route déclarée : le healthcheck ne renvoie donc pas un succès.
+> Le healthcheck Docker du docker-compose actuel cible bien `http://localhost:3002/api/v1/health/ready` — le préfixe global `api/v1` est inclus et correspond à la route NestJS réellement exposée (`/api/v1/health/ready`, liveness sur `/api/v1/health/live`).
 
 ---
 
 ## 9. Métriques Prometheus
 
-Le module `metrics` expose des métriques au format Prometheus via `prom-client`.
+L'exposition `GET /metrics` est fournie par `ObservabilityModule.forRoot({ prefix: 'user' })` (package `@alkatra/observability`) : registre Prometheus dédié, métriques par défaut Node (`process_*`, `nodejs_*`) et **intercepteur HTTP global**.
 
 | Route | Format | Content-Type |
 |-------|--------|-------------|
-| `GET /api/v1/metrics` | Texte Prometheus | `text/plain; version=0.0.4` |
+| `GET /metrics` | Texte Prometheus | `text/plain; version=0.0.4` |
 
-Ces métriques sont scrapées par Prometheus (configuré dans `infra/prometheus/prometheus.yml`).
+### Métriques standard (intercepteur HTTP, labels `method`, `route`, `status`)
+
+| Nom | Type | Description |
+|-----|------|-------------|
+| `user_http_requests_total` | Counter | Requêtes HTTP traitées |
+| `user_http_request_duration_seconds` | Histogram | Durée des requêtes HTTP |
+
+### Métriques métier (`src/metrics/user-metrics.service.ts`)
+
+| Nom | Type | Description |
+|-----|------|-------------|
+| `user_profile_requests_total` | Counter | Requêtes `GET /profile` servies — incrémentée dans `UserService.getProfile()` |
+| `user_profile_updates_total` | Counter | Mises à jour `PATCH /profile` transmises — incrémentée dans `UserService.updateProfile()` |
+| `user_auth_calls_total` | Counter | Appels proxy vers auth-service, labels `operation` (`get_profile` / `update_profile`) et `status` (`ok` / `not_found` / `error`) |
+
+Ces métriques (HTTP et métier) sont scrapées par Prometheus (job `user-service`, configuré dans `infra/prometheus/prometheus.yml`).
 
 ---
 
@@ -482,14 +500,15 @@ user-service:
     PORT: 3002
     AUTH_SERVICE_HOST: auth-service
     AUTH_SERVICE_PORT: 3001
-    JWT_SECRET: ${JWT_SECRET:-alkatra_jwt_dev_secret}
+    JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+    CORS_ORIGINS: http://localhost:5173,http://localhost:3000
   depends_on:
     auth-service:
       condition: service_healthy      # Attend que auth-service soit healthy
   networks:
     - alkatra-net
   healthcheck:
-    test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/health/ready"]
+    test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/api/v1/health/ready"]
     interval: 30s
     timeout: 10s
     retries: 3
@@ -526,11 +545,11 @@ La résolution DNS interne permet à `user-service` d'accéder à `auth-service`
 
 ### Appels HTTP et orchestration
 
-1. **Healthcheck Docker** : Le healthcheck déclaré dans `docker-compose.yml` appelle `http://localhost:3002/health/ready`, c'est-à-dire sans le préfixe global `api/v1`. La route exposée par NestJS est `/api/v1/health/ready` ; le chemin sans préfixe ne correspond à aucune route, le healthcheck ne renvoie donc pas un succès.
+1. **Healthcheck Docker aligné** : Le healthcheck déclaré dans `docker-compose.yml` appelle `http://localhost:3002/api/v1/health/ready`, qui correspond à la route NestJS effectivement exposée (`/api/v1/health/ready`, liveness `/api/v1/health/live`).
 
 2. **Absence de timeout / retry sur les appels HTTP** : `UserService` appelle `auth-service` via `axios` sans configuration de timeout ni de mécanisme de retry ou de circuit breaker. Une lenteur ou une indisponibilité de `auth-service` se propage directement aux requêtes de `user-service`, sans coupure ni nouvelle tentative.
 
-3. **Compteurs Prometheus non incrémentés** : Les compteurs Prometheus sont déclarés dans le module `metrics` mais ne sont pas incrémentés par le code applicatif. L'endpoint `/api/v1/metrics` expose les métriques par défaut de `prom-client` (processus, Node.js) sans données métier.
+3. **Métriques Prometheus effectivement incrémentées** : Les compteurs métier (`user_profile_requests_total`, `user_profile_updates_total`, `user_auth_calls_total`) sont déclarés dans `metrics/user-metrics.service.ts` et **incrémentés par `UserService`** (le BFF) à chaque profil servi, profil mis à jour et appel proxy vers auth-service. L'endpoint `GET /metrics` (à la racine, exclu du préfixe `api/v1`) expose ces données ainsi que les métriques standard de l'intercepteur HTTP (`user_http_requests_total`, `user_http_request_duration_seconds`) et les métriques par défaut Node.
 
 4. **Route `farms` non implémentée** : `GET /api/v1/farms` lève une `NotImplementedException` et renvoie une réponse `501` avec le message `"Farms listing is not implemented yet"`.
 
@@ -543,7 +562,7 @@ La résolution DNS interne permet à `user-service` d'accéder à `auth-service`
 | **Type** | Microservice proxy/façade (BFF) |
 | **Framework** | NestJS 11 |
 | **Port** | 3002 |
-| **Préfixe API** | `/api/v1` |
+| **Préfixe API** | `/api/v1` (`GET /metrics` à la racine, exclu du préfixe) |
 | **Base de données** | Aucune (délègue à auth-service) |
 | **Authentification** | JWT (HS256) via Passport |
 | **Communication inter-service** | HTTP (axios) vers auth-service:3001 |

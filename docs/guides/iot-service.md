@@ -13,8 +13,8 @@
 5. [Variables d'environnement](#5-variables-denvironnement)
 6. [Routes HTTP](#6-routes-http)
 7. [Fonctionnement interne par fichier](#7-fonctionnement-interne-par-fichier)
-8. [Bridge MQTT → Kafka (validation capteur)](#8-bridge-mqtt--kafka-validation-capteur)
-9. [Consumer Kafka → MongoDB](#9-consumer-kafka--mongodb)
+8. [Bridge MQTT → Kafka (validation capteur)](#8-bridge-mqtt-kafka-validation-capteur)
+9. [Consumer Kafka → MongoDB](#9-consumer-kafka-mongodb)
 10. [Persistance MongoDB (collection ai_sensor_features)](#10-persistance-mongodb-collection-ai_sensor_features)
 11. [Observabilité (métriques Prometheus)](#11-observabilité-métriques-prometheus)
 12. [Gestion des erreurs](#12-gestion-des-erreurs)
@@ -151,8 +151,9 @@ apps/iot-service/
 │   │   └── health.controller.ts                # GET /health (stats runtime)
 │   │
 │   └── metrics/
-│       ├── metrics.module.ts                   # Module metrics
-│       └── metrics.controller.ts               # GET /metrics (format Prometheus texte)
+│       ├── metrics.module.ts                   # Module métriques métier
+│       └── iot-metrics.service.ts              # Métriques métier (IotMetricsService)
+│       (l'exposition GET /metrics via @alkatra/observability — pas de controller local)
 │
 └── tests/
     ├── mqtt.service.spec.ts                    # Tests MqttService (validation, anomalies, forward)
@@ -245,7 +246,7 @@ Le service applique le préfixe global `api/v1` via `app.setGlobalPrefix('api/v1
 
 | Méthode | Route | Préfixée ? | Auth | Comportement |
 |---------|-------|-----------|------|-------------|
-| `GET` | `/health` | non | aucune | Retourne le statut runtime (stats MQTT, état Kafka, MongoDB/ML statiques) |
+| `GET` | `/health` | non | aucune | Retourne le statut runtime (stats MQTT, état Kafka, MongoDB/ML dynamiques) |
 | `GET` | `/metrics` | non | aucune | Expose les métriques au format texte Prometheus |
 
 Il n'existe aucune route métier sous `/api/v1/*` (aucun controller n'est monté sur ce préfixe). Le service ne publie pas d'API REST de données capteur.
@@ -261,11 +262,11 @@ Il n'existe aucune route métier sous `/api/v1/*` (aucun controller n'est monté
 | `src/main.ts` | Point d'entrée NestJS. Active le logger (`log`, `error`, `warn`, `debug`). Applique le préfixe `api/v1` en excluant `GET /metrics` et `GET /health`. Écoute sur `0.0.0.0:${PORT}` (3005 par défaut). |
 | `src/app.module.ts` | Module racine. Importe `ConfigModule.forRoot` (global, `.env`), `MongooseModule.forRootAsync` (URI depuis `MONGODB_URI`), `KafkaConsumerModule`, `KafkaModule`, `MqttModule`, `HealthModule`, `MetricsModule`. |
 | `src/mqtt/mqtt.module.ts` | Importe `KafkaModule` pour injecter `KafkaService`. Déclare et exporte `MqttService`. |
-| `src/mqtt/mqtt.service.ts` | Cœur du bridge MQTT. `onModuleInit` : connexion Mosquitto (clientId daté, `reconnectPeriod: 3000`, `connectTimeout: 10000`). Subscribe au wildcard QoS 1. `handleMessage` : parse → `buildSensorReading` → `detectAnomalies` → `kafkaService.send`. Expose `getStats()`. Voir [section 8](#8-bridge-mqtt--kafka-validation-capteur). |
+| `src/mqtt/mqtt.service.ts` | Cœur du bridge MQTT. `onModuleInit` : connexion Mosquitto (clientId daté, `reconnectPeriod: 3000`, `connectTimeout: 10000`). Subscribe au wildcard QoS 1. `handleMessage` : parse → `buildSensorReading` → `detectAnomalies` → `kafkaService.send`. Expose `getStats()`. Voir [section 8](#8-bridge-mqtt-kafka-validation-capteur). |
 | `src/kafka/kafka.module.ts` | Déclare et exporte `KafkaService`. |
 | `src/kafka/kafka.service.ts` | Producer Kafka. `onModuleInit` : client (`clientId: alkatra-iot-service`, `logLevel: WARN`, retry 10x), producer (`allowAutoTopicCreation: true`, `transactionTimeout: 30000`). `send(topic, key, value)` : compression GZIP, timestamp, log en `warn` si non connecté. `subscribe()` : code mort (jamais appelé, voir [section 17](#17-comportements-notables)). |
 | `src/kafka-consumer/kafka-consumer.module.ts` | Importe `MongodbModule`. Déclare `SensorDataConsumer` comme `@Controller()`. |
-| `src/kafka-consumer/sensor-data.consumer.ts` | Consumer Kafka. `onModuleInit` : client (`clientId: iot-service-consumer`), consumer (`groupId: iot-service-mongodb-persister`, `sessionTimeout: 30000`, `heartbeatInterval: 3000`). Subscribe `raw-sensor-data` (`fromBeginning: false`). Validation minimale, `saveFeature`, puis `notifySensorSeen(payload)` : heartbeat HTTP vers farm-service (`fetch` natif, best-effort — `battery_pct`/`firmware_version` du payload transmis si présents, échec loggé en `warn` sans interrompre l'ingestion). Voir [section 9](#9-consumer-kafka--mongodb). |
+| `src/kafka-consumer/sensor-data.consumer.ts` | Consumer Kafka. `onModuleInit` : client (`clientId: iot-service-consumer`), consumer (`groupId: iot-service-mongodb-persister`, `sessionTimeout: 30000`, `heartbeatInterval: 3000`). Subscribe `raw-sensor-data` (`fromBeginning: false`). Validation minimale, `saveFeature`, puis `notifySensorSeen(payload)` : heartbeat HTTP vers farm-service (`fetch` natif, best-effort — `battery_pct`/`firmware_version` du payload transmis si présents, échec loggé en `warn` sans interrompre l'ingestion). Voir [section 9](#9-consumer-kafka-mongodb). |
 | `src/mongodb/mongodb.module.ts` | `forRootAsync` (URI + pool `maxPoolSize: 10`, `serverSelectionTimeoutMS: 5000`, `socketTimeoutMS: 45000`). `forFeature([{ name: AiSensorFeature.name, schema }]`)). Déclare et exporte `AiSensorFeatureRepository`. |
 | `src/mongodb/repositories/ai-sensor-reading.repository.ts` | Repository. `saveFeature(payload)` : instancie un document `AiSensorFeature` à partir du payload et le persiste. `getLatestByParcel(parcelId, limit=48)` : tri `ts: -1`, `.lean()`. `getLastByDevice(deviceId)` : `findOne` trié `ts: -1`. |
 | `src/mongodb/schemas/ai-sensor-feature.schema.ts` | Schéma de la collection `ai_sensor_features`. Voir [section 10](#10-persistance-mongodb-collection-ai_sensor_features). |
@@ -446,35 +447,23 @@ Les index simples portés par chaque `@Prop({ index: true })` (`device_id`, `far
 
 ### Endpoint /metrics
 
-`GET /metrics` (Content-Type `text/plain; version=0.0.4; charset=utf-8`) génère à la main les lignes Prometheus, sans dépendance à `prom-client`. Le pattern maison est cohérent avec celui du `recommendation-service`.
+`GET /metrics` est fourni par `ObservabilityModule.forRoot({ prefix: 'iot' })` (package `@alkatra/observability`) : registre Prometheus dédié, métriques par défaut Node (`process_*`, `nodejs_*`), intercepteur HTTP global. Les métriques métier sont déclarées par `IotMetricsService` (`src/metrics/iot-metrics.service.ts`) sur ce même registre via `prom-client`. Contrairement à un pattern « maison », le service consomme bien `prom-client` et `@alkatra/observability` (cf. `package.json`).
 
-### Métriques exposées
+### Métriques métier exposées (`src/metrics/iot-metrics.service.ts`)
 
 | Nom Prometheus | Type | Labels | Description |
 |----------------|------|--------|-------------|
-| `alkatra_iot_messages_received_total` | counter | — | Total des messages MQTT reçus |
-| `alkatra_iot_messages_forwarded_total` | counter | — | Total des lectures transférées vers Kafka |
-| `alkatra_iot_anomalies_detected_total` | counter | — | Total des anomalies détectées |
-| `alkatra_iot_mqtt_connected` | gauge | — | État de la connexion MQTT (1 connecté, 0 déconnecté) |
-| `alkatra_iot_kafka_ready` | gauge | — | État du producer Kafka (1 prêt, 0 non prêt) |
-| `alkatra_iot_last_sensor_value` | gauge | `farm_id`, `parcel_id`, `device_id`, `field` | Dernière valeur reçue par variable IA (7 séries) |
-| `alkatra_iot_last_message_timestamp_seconds` | gauge | `farm_id`, `parcel_id`, `device_id` | Timestamp (epoch secondes) du dernier message valide |
+| `alkatra_iot_messages_received_total` | Counter | — | Total des messages MQTT reçus (avant validation) |
+| `alkatra_iot_messages_forwarded_total` | Counter | — | Total des lectures transférées vers Kafka |
+| `alkatra_iot_messages_invalid_total` | Counter | — | Messages rejetés (JSON invalide ou variables IA manquantes) |
+| `alkatra_iot_anomalies_detected_total` | Counter | — | Total des anomalies détectées |
+| `alkatra_iot_mqtt_connected` | Gauge | — | État de la connexion MQTT (1 connecté, 0 déconnecté) |
+| `alkatra_iot_kafka_ready` | Gauge | — | État du producer Kafka (1 prêt, 0 non prêt) |
+| `alkatra_iot_last_sensor_value` | Gauge | `farm_id`, `parcel_id`, `device_id`, `field` | Dernière valeur reçue par variable IA (7 séries par capteur) |
+| `alkatra_iot_last_message_timestamp_seconds` | Gauge | `farm_id`, `parcel_id`, `device_id` | Timestamp (epoch secondes) du dernier message valide par capteur |
+| `alkatra_iot_active_sensors` | Gauge | — | Nombre de capteurs ayant émis dans les 2 dernières heures (fenêtre glissante) |
 
-Les séries `alkatra_iot_last_sensor_value` et `alkatra_iot_last_message_timestamp_seconds` ne sont émises que si une lecture a déjà été reçue (`stats.lastReading` non null). Les valeurs de labels sont échappées (`\` et `"`).
-
-### Exemple d'extrait
-
-```
-# HELP alkatra_iot_messages_received_total Total MQTT messages received by iot-service.
-# TYPE alkatra_iot_messages_received_total counter
-alkatra_iot_messages_received_total 142
-# HELP alkatra_iot_messages_forwarded_total Total sensor messages forwarded to Kafka.
-# TYPE alkatra_iot_messages_forwarded_total counter
-alkatra_iot_messages_forwarded_total 140
-# HELP alkatra_iot_mqtt_connected MQTT connection status, 1 connected and 0 disconnected.
-# TYPE alkatra_iot_mqtt_connected gauge
-alkatra_iot_mqtt_connected 1
-```
+Les séries « dernière lecture » (`last_sensor_value`, `last_message_timestamp_seconds`) sont désormais **multi-capteurs** : l'état est une `Map` (clé `farm_id|parcel_id|device_id`) bornée à `MAX_TRACKED_DEVICES = 200` entrées (LRU simple). À chaque lecture valide, les 7 gauges `last_sensor_value` et la gauge `last_message_timestamp_seconds` sont mises à jour pour le capteur concerné. Toutes les métriques sont **incrémentées aux points réels** du flux (`recordMessageReceived`, `recordMessageForwarded`, `recordMessageInvalid`, `recordAnomaly`, `setMqttConnected`, `setKafkaReady`, `recordValidReading`).
 
 ---
 
@@ -514,7 +503,8 @@ Les compteurs `messagesReceived`, `messagesForwarded`, `anomaliesDetected` sont 
     "ready": true
   },
   "mongodb": {
-    "connected": true
+    "connected": true,
+    "state": 1
   },
   "ml_consumer": {
     "active": true
@@ -527,8 +517,8 @@ La réponse combine :
 - `mqtt.connected` : `client.connected` (état réel de la connexion MQTT)
 - `mqtt.messagesReceived` / `messagesForwarded` / `anomaliesDetected` : compteurs runtime
 - `kafka.ready` : `kafkaService.isReady()` (état réel du producer)
-- `mongodb.connected` : valeur **statique** `true`
-- `ml_consumer.active` : valeur **statique** `true`
+- `mongodb.connected` : dynamique — `mongoConnection.readyState === 1` grâce à `@InjectConnection()` de Mongoose ; le champ `state` expose le `readyState` brut
+- `ml_consumer.active` : dynamique — `sensorDataConsumer.isConnected()` (retourne `isRunning`, état réel du consumer Kafka)
 
 ### Healthcheck Docker
 
@@ -577,7 +567,7 @@ npm run test:cov      # Avec couverture
 
 ### Dockerfile
 
-Le `apps/iot-service/Dockerfile` est un build multi-stage en 3 cibles, basé sur `node:20-alpine`.
+Le `apps/iot-service/Dockerfile` est un build multi-stage en **4 cibles** (`deps`, `builder`, `development`, `production`), basé sur `node:20-alpine`. Comme `auth-service`, il compile le package workspace `@alkatra/observability` avant le service et le contexte de build est la **racine du monorepo**.
 
 ```dockerfile
 # Stage 1 : development — utilisé par docker-compose (target: development)
@@ -615,8 +605,8 @@ Le service est déclaré dans `infra/docker/docker-compose.yml` avec `target: de
 ```yaml
 iot-service:
   build:
-    context: ./../../apps/iot-service
-    dockerfile: Dockerfile
+    context: ../..                          # Racine du monorepo
+    dockerfile: ./apps/iot-service/Dockerfile
     target: development
   container_name: alkatra-iot
   restart: unless-stopped
@@ -633,10 +623,11 @@ iot-service:
     KAFKA_BROKERS: kafka:9092
     MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
     ML_INFERENCE_URL: http://ml-inference-service:8000
+    FARM_SERVICE_URL: http://farm-service:3003   # Heartbeat capteurs (endpoint interne)
   ports:
     - "3005:3005"
   volumes:
-    - ./../../apps/iot-service/src:/app/src
+    - ./../../apps/iot-service/src:/workspace/apps/iot-service/src
   healthcheck:
     test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3005/health || exit 1"]
     interval: 15s
@@ -671,7 +662,6 @@ iot-service:
 - Il ne valide pas, côté consumer, les 7 variables IA (la validation a lieu une seule fois dans le bridge MQTT ; le consumer ne contrôle que la présence de `device_id`, `farm_id`, `parcel_id`).
 - Il ne fournit pas de Dead Letter Queue : un message en échec de parsing ou de persistance est loggé puis définitivement ignoré.
 - Il n'authentifie pas les requêtes (`/health` et `/metrics` sont publiques).
-- Il n'utilise pas `prom-client` : les métriques Prometheus sont générées à la main.
 
 ---
 
@@ -679,7 +669,7 @@ iot-service:
 
 1. **`KafkaService.subscribe()` est du code mort.** La classe `KafkaService` expose une méthode `subscribe(topic, callback)` qui instancierait un consumer (groupId `iot-service-group`). Cette méthode n'est jamais appelée : la consommation réelle de `raw-sensor-data` est assurée par `SensorDataConsumer`, qui instancie son propre client Kafka (`clientId: iot-service-consumer`, groupId `iot-service-mongodb-persister`). Il en résulte deux clients Kafka distincts dans le service.
 
-2. **`/health` contient des valeurs statiques.** Les champs `mongodb.connected` et `ml_consumer.active` sont des booléens codés en dur à `true` dans `HealthController`. Ils ne reflètent pas l'état réel de MongoDB (pas de ping `mongoose.connection.readyState`) ni l'existence d'un quelconque consumer ML. Seuls `mqtt.connected` et `kafka.ready` sont dynamiques.
+2. **`/health` expose des indicateurs dynamiques.** Les champs `kafka.ready` (`kafkaService.isReady()`), `mongodb.connected` (`mongoConnection.readyState === 1`, via `@InjectConnection()`), `ml_consumer.active` (`sensorDataConsumer.isConnected()` → `isRunning`) et `mqtt.connected` (`client.connected`) reflètent tous l'état réel des connexions au moment de l'appel. Le champ `mongodb.state` expose le `readyState` brut de Mongoose.
 
 3. **Compteur `messagesForwarded` non garanti.** `MqttService.handleMessage` incrémente `messagesForwarded` après l'appel à `kafkaService.send`, mais `send` ne lève pas d'exception en cas d'échec (elle log en `error`). Le compteur comptabilise donc les tentatives valides (payload accepté), pas les acquittements Kafka.
 
@@ -706,7 +696,7 @@ iot-service:
 | **Schéma IA** | 7 variables (`sensor-ai-v2`) avec alias tolérés |
 | **Anomalies** | Températures, vent, rayonnement, humidités, pluie |
 | **Health checks** | `GET /health` (healthcheck Docker) |
-| **Métriques** | `GET /metrics` (Prometheus texte, sans `prom-client`) |
+| **Métriques** | `GET /metrics` via `@alkatra/observability` + `prom-client` (registre partagé, intercepteur HTTP `iot_http_*`) |
 | **Authentification** | aucune (endpoints publics) |
 | **Tests** | Jest (2 specs dans `tests/` + 1 spec dans `src/`) |
 | **Langage** | TypeScript 5.7 (target ES2021) |
