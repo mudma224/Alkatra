@@ -1,0 +1,7 @@
+mlflow==2.13.2
+xgboost==2.0.3
+pandas==2.2.2
+numpy==1.26.4
+joblib==1.4.2
+boto3==1.26.137
+s3fs==2023.6.0

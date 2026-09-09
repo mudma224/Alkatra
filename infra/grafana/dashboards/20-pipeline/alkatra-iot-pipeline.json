@@ -1,0 +1,158 @@
+{
+  "uid": "alkatra-iot-pipeline",
+  "title": "Al Katra — Pipeline IoT",
+  "tags": ["alkatra", "iot", "mqtt", "kafka"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "15s",
+  "description": "Ingestion capteur : Mosquitto → iot-service → Kafka raw-sensor-data. Qualité de contrat (invalides, anomalies), fraîcheur et valeurs par capteur.",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "farm_id",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": { "query": "label_values(alkatra_iot_last_sensor_value, farm_id)", "refId": "q" },
+        "refresh": 1,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "parcel_id",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": { "query": "label_values(alkatra_iot_last_sensor_value{farm_id=~\"$farm_id\"}, parcel_id)", "refId": "q" },
+        "refresh": 1,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Cibles de scrape",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "up{job=~\"prometheus|iot-service\"}", "legendFormat": "{{job}}" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Connexions pipeline",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "OK", "color": "green" }, "0": { "text": "KO", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [
+        { "refId": "A", "expr": "max(alkatra_iot_mqtt_connected)", "legendFormat": "MQTT" },
+        { "refId": "B", "expr": "max(alkatra_iot_kafka_ready)", "legendFormat": "Kafka producer" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Capteurs actifs (< 2 h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(alkatra_iot_active_sensors)", "legendFormat": "actifs" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Âge du dernier message",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 300 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "pipeline:last_message_age_seconds", "legendFormat": "âge" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Messages MQTT / min",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(alkatra_iot_messages_received_total[1m])) * 60", "legendFormat": "reçus" },
+        { "refId": "B", "expr": "sum(rate(alkatra_iot_messages_forwarded_total[1m])) * 60", "legendFormat": "→ Kafka" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Qualité du contrat capteur (rejets / anomalies)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "description": "Invalides = JSON cassé ou variables IA manquantes (rejet avant Kafka). Anomalies = valeurs hors seuils (publiées mais flaggées).",
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(alkatra_iot_messages_invalid_total[5m])) * 60", "legendFormat": "invalides" },
+        { "refId": "B", "expr": "sum(rate(alkatra_iot_anomalies_detected_total[5m])) * 60", "legendFormat": "anomalies" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Âge du dernier message par capteur",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 7200 }, { "color": "red", "value": 86400 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "time() - alkatra_iot_last_message_timestamp_seconds{farm_id=~\"$farm_id\", parcel_id=~\"$parcel_id\"}", "legendFormat": "{{device_id}} ({{farm_id}}/{{parcel_id}})" } ]
+    },
+    {
+      "id": 21,
+      "type": "bargauge",
+      "title": "Dernières valeurs capteur",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "decimals": 1 }, "overrides": [] },
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true, "minVizHeight": 10 },
+      "targets": [ { "refId": "A", "expr": "alkatra_iot_last_sensor_value{farm_id=~\"$farm_id\", parcel_id=~\"$parcel_id\"}", "legendFormat": "{{device_id}} · {{field}}" } ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "iot-service — runtime Node",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "max(nodejs_eventloop_lag_seconds{job=\"iot-service\"})", "legendFormat": "event loop lag" } ]
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "iot-service — mémoire heap",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "nodejs_heap_size_used_bytes{job=\"iot-service\"}", "legendFormat": "used" },
+        { "refId": "B", "expr": "nodejs_heap_size_total_bytes{job=\"iot-service\"}", "legendFormat": "total" }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "iot-service — CPU process",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "avg(rate(process_cpu_seconds_total{job=\"iot-service\"}[5m])) * 100", "legendFormat": "CPU %" } ]
+    }
+  ]
+}

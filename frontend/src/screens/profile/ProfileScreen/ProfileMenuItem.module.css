@@ -1,0 +1,102 @@
+.profileMenuItem {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+
+  padding: var(--spacing-md);
+
+  border: none;
+  border-radius: var(--radius-button);
+
+  background-color: var(--color-secondary-100);
+  color: var(--color-neutral-black);
+
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-body);
+
+  text-align: left;
+  cursor: pointer;
+
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.profileMenuItem:not(:disabled):hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.profileMenuItem:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.profileMenuItem:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/*
+ * Real disabled state (new) instead of an interactive-looking button
+ * wired to an empty onClick — see ProfileMenuItemProps.disabled above.
+ */
+.profileMenuItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.content {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+
+  width: 24px;
+  height: 24px;
+
+  color: var(--color-secondary-600);
+}
+
+.label {
+  min-width: 0;
+
+  color: var(--color-neutral-black);
+
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-body);
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arrow {
+  flex-shrink: 0;
+
+  width: 20px;
+  height: 20px;
+
+  color: var(--color-secondary-600);
+}
+
+@media (max-width: 375px) {
+  .profileMenuItem {
+    min-height: 52px;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .content {
+    gap: var(--spacing-sm);
+  }
+}

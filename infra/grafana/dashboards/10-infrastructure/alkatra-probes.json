@@ -1,0 +1,64 @@
+{
+  "uid": "alkatra-probes",
+  "title": "Al Katra — Probes de disponibilité",
+  "tags": ["alkatra", "infra", "blackbox"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Sondes blackbox : disponibilité et temps de réponse vus de l'extérieur des services. Core = stack de base (alertée) ; Phase1 = services métier (dashboard uniquement, selon le profil compose actif).",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Probes core UP",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "probe_success{job=\"blackbox-core\"}", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Probes phase1 UP",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 0 },
+      "description": "DOWN est normal si la stack tourne sans le profil phase1.",
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "probe_success{job=\"blackbox-phase1\"}", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "id": 10,
+      "type": "statetimeline",
+      "title": "Disponibilité — core (timeline)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ] }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "probe_success{job=\"blackbox-core\"}", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "statetimeline",
+      "title": "Disponibilité — phase1 (timeline)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ] }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "probe_success{job=\"blackbox-phase1\"}", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Temps de réponse des probes",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 2 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "probe_duration_seconds{job=~\"blackbox-.*\"}", "legendFormat": "{{instance}}" } ]
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "uid": "alkatra-business-alerts",
+  "title": "Al Katra — Alertes métier (funnel)",
+  "tags": ["alkatra", "alerting", "business"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Funnel des alertes fermier : créées par type → dédupliquées → fan-out FCM → échecs. Vigie de la santé du pipeline d'alerting applicatif.",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Alertes créées (total)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(alerts_created_total)", "legendFormat": "créées" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Dédupliquées (total)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "description": "Ignorées par la fenêtre glissante de 24 h (user, parcelle, type, sévérité).",
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(alerts_dedup_skipped_total)", "legendFormat": "dédup" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Push FCM envoyés (total)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(fcm_sent_total)", "legendFormat": "envoyés" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Échecs FCM (total)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "sum(fcm_failed_total)", "legendFormat": "échecs" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Alertes créées par type (/ h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "description": "hydric_stress_critical, sensor_offline, low_battery, daily_recommendation…",
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (type) (increase(alerts_created_total[1h]))", "legendFormat": "{{type}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Alertes dédupliquées par type (/ h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (type) (increase(alerts_dedup_skipped_total[1h]))", "legendFormat": "{{type}}" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Fan-out push FCM (/ h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(fcm_sent_total[1h]))", "legendFormat": "envoyés" },
+        { "refId": "B", "expr": "sum(increase(fcm_failed_total[1h]))", "legendFormat": "échecs" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Santé du pipeline d'alerting (erreurs / h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10, "drawStyle": "bars" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(alert_persistence_errors_total[1h]))", "legendFormat": "persistance PG" },
+        { "refId": "B", "expr": "sum(increase(alert_kafka_dlq_total[1h]))", "legendFormat": "DLQ" }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "logs",
+      "title": "Logs alert-service (Loki)",
+      "datasource": "Loki",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "options": { "showTime": true, "showLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false },
+      "targets": [ { "refId": "A", "expr": "{container=\"alkatra-alert\"} |= \"\" ", "queryType": "range" } ]
+    }
+  ]
+}

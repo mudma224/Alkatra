@@ -1,0 +1,14 @@
+{
+  "name": "@alkatra/shared-types",
+  "version": "0.1.0",
+  "description": "Shared TypeScript types for Al Katra platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "lint": "eslint src/ --ext .ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

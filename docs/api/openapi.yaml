@@ -1,0 +1,1346 @@
+openapi: 3.0.3
+info:
+  title: Al Katra Bel Qatra API
+  version: "1.0.0"
+  license:
+    name: Proprietary
+  description: API publique exposée par la gateway et implémentée par les services NestJS.
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Gateway NGINX locale
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Demande et vérification des OTP, renouvellement de session
+  - name: User
+    description: Profil de l'utilisateur authentifié
+  - name: Farms
+    description: Gestion des fermes et de leur ownership
+  - name: Parcels
+    description: Gestion des parcelles et surfaces agricoles
+  - name: Sensors
+    description: Association et suivi des capteurs
+  - name: Recommendations
+    description: Recommandations d'irrigation et feedback
+  - name: Alerts
+    description: Alertes utilisateur
+  - name: Devices
+    description: Tokens d'appareils pour les notifications push
+
+paths:
+  /auth/register:
+    post:
+      operationId: requestOtp
+      tags: [Auth]
+      security: []
+      summary: Demander un code OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: OTP envoyé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [Auth]
+      security: []
+      summary: Vérifier un code OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+      responses:
+        '201':
+          description: Session créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [Auth]
+      security: []
+      summary: Renouveler les tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '201':
+          description: Nouvelle session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/profile:
+    get:
+      operationId: getProfile
+      tags: [User]
+      summary: Lire le profil courant
+      responses:
+        '200':
+          description: Profil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: updateProfile
+      tags: [User]
+      summary: Modifier le profil courant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profil mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /farms:
+    post:
+      operationId: createFarm
+      tags: [Farms]
+      summary: Créer une ferme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFarmRequest'
+      responses:
+        '201':
+          description: Ferme créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Farm'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listFarms
+      tags: [Farms]
+      summary: Lister les fermes de l'utilisateur connecté
+      responses:
+        '200':
+          description: Liste des fermes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FarmSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /farms/{id}:
+    get:
+      operationId: getFarm
+      tags: [Farms]
+      summary: Détail d'une ferme
+      parameters:
+        - $ref: '#/components/parameters/FarmId'
+      responses:
+        '200':
+          description: Détail ferme
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Farm'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateFarm
+      tags: [Farms]
+      summary: Mettre à jour une ferme
+      parameters:
+        - $ref: '#/components/parameters/FarmId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFarmRequest'
+      responses:
+        '200':
+          description: Ferme mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Farm'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteFarm
+      tags: [Farms]
+      summary: Supprimer une ferme
+      parameters:
+        - $ref: '#/components/parameters/FarmId'
+      responses:
+        '204':
+          description: Ferme supprimée
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /parcels:
+    post:
+      operationId: createParcel
+      tags: [Parcels]
+      summary: Créer une parcelle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateParcelRequest'
+      responses:
+        '201':
+          description: Parcelle créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parcel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /parcels/farm/{farmId}:
+    get:
+      operationId: listParcelsByFarm
+      tags: [Parcels]
+      summary: Lister les parcelles d'une ferme
+      parameters:
+        - name: farmId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Liste des parcelles de la ferme
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Parcel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /parcels/{id}:
+    get:
+      operationId: getParcel
+      tags: [Parcels]
+      summary: Détail d'une parcelle
+      parameters:
+        - $ref: '#/components/parameters/ParcelId'
+      responses:
+        '200':
+          description: Détail parcelle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parcel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateParcel
+      tags: [Parcels]
+      summary: Mettre à jour une parcelle
+      parameters:
+        - $ref: '#/components/parameters/ParcelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateParcelRequest'
+      responses:
+        '200':
+          description: Parcelle mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parcel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: deleteParcel
+      tags: [Parcels]
+      summary: Supprimer une parcelle
+      parameters:
+        - $ref: '#/components/parameters/ParcelId'
+      responses:
+        '204':
+          description: Parcelle supprimée
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sensors/associate:
+    post:
+      operationId: associateSensor
+      tags: [Sensors]
+      summary: Associer un capteur existant à une parcelle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssociateSensorRequest'
+      responses:
+        '200':
+          description: Association confirmée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorAssociation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Capteur non trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /sensors/parcel/{parcelId}:
+    get:
+      operationId: listSensorsByParcel
+      tags: [Sensors]
+      summary: Lister les capteurs d'une parcelle
+      description: >
+        Retourne tous les capteurs associés à la parcelle (deviceId, statut
+        d'activité, batterie, firmware). Vérifie que la parcelle appartient à
+        l'utilisateur (404 si inconnue, 403 si propriétaire différent).
+      parameters:
+        - name: parcelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Capteurs de la parcelle
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Sensor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sensors/{sensorId}:
+    delete:
+      operationId: dissociateSensor
+      tags: [Sensors]
+      summary: Dissocier un capteur de sa parcelle
+      description: >
+        Supprime la ligne d'association capteur/parcelle. Les mesures déjà
+        collectées (MongoDB, clé device_id) sont conservées ; le même deviceId
+        peut être réassocié plus tard. Refusé (403) si le capteur appartient à
+        une parcelle d'un autre utilisateur.
+      parameters:
+        - name: sensorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Capteur dissocié
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/parcel/{parcelId}/today:
+    get:
+      operationId: getTodayRecommendation
+      tags: [Recommendations]
+      summary: Lire la recommandation du jour d'une parcelle
+      parameters:
+        - name: parcelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Recommandation du jour, ou null si aucune n'est disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/parcel/{parcelId}/history:
+    get:
+      operationId: getRecommendationHistory
+      tags: [Recommendations]
+      summary: Lire l'historique des recommandations
+      parameters:
+        - name: parcelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 30
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Historique paginé
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recommendation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /recommendations/{id}/feedback:
+    patch:
+      operationId: submitRecommendationFeedback
+      tags: [Recommendations]
+      summary: Enregistrer le feedback d'une recommandation
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '200':
+          description: Recommandation mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/{id}/execute:
+    patch:
+      operationId: executeRecommendation
+      tags: [Recommendations]
+      summary: Marquer une recommandation comme exécutée
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+      responses:
+        '200':
+          description: Recommandation exécutée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [Alerts]
+      summary: Lister les alertes de l'utilisateur courant
+      responses:
+        '200':
+          description: Alertes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /alerts/unread-count:
+    get:
+      operationId: countUnreadAlerts
+      tags: [Alerts]
+      summary: Compter les alertes non lues
+      responses:
+        '200':
+          description: Compteur
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /alerts/read-all:
+    patch:
+      operationId: markAllAlertsRead
+      tags: [Alerts]
+      summary: Marquer toutes les alertes comme lues
+      responses:
+        '200':
+          description: Alertes mises à jour
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /alerts/{id}/read:
+    patch:
+      operationId: markAlertRead
+      tags: [Alerts]
+      summary: Marquer une alerte comme lue
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Alerte mise à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices:
+    post:
+      operationId: registerDevice
+      tags: [Devices]
+      summary: Enregistrer un token push FCM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDeviceRequest'
+      responses:
+        '201':
+          description: Token enregistré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceToken'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /devices/{token}:
+    delete:
+      operationId: revokeDevice
+      tags: [Devices]
+      summary: Révoquer un token push
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Token révoqué
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    FarmId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ParcelId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RecommendationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Non authentifié
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Accès refusé (ownership)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ressource non trouvée
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: >-
+        Règle métier violée — ex. la superficie totale des parcelles
+        d'une ferme dépasse la superficie déclarée de la ferme
+        (parcels.service.ts)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 422
+            message: "La superficie totale des parcelles dépasse la superficie de la ferme"
+            error: "Unprocessable Entity"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 404
+        message:
+          type: string
+          example: "Ferme non trouvée"
+        error:
+          type: string
+          example: "Not Found"
+
+    RegisterRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          pattern: '^\+212[67]\d{8}$'
+          example: "+212612345678"
+
+    VerifyOtpRequest:
+      type: object
+      required: [phone, otp]
+      properties:
+        phone:
+          type: string
+          pattern: '^\+212[67]\d{8}$'
+        otp:
+          type: string
+          pattern: '^\\d{6}$'
+
+    RefreshRequest:
+      type: object
+      required: [phone, refreshToken]
+      properties:
+        phone:
+          type: string
+          pattern: '^\+212[67]\d{8}$'
+        refreshToken:
+          type: string
+
+    OtpResponse:
+      type: object
+      required: [success, message, expiresAt]
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      required: [id, phone, preferredLanguage, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        name:
+          type: string
+          nullable: true
+        preferredLanguage:
+          type: string
+          enum: [french, arabic, darija]
+        createdAt:
+          type: string
+          format: date-time
+
+    AuthResult:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, tokenType, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+        tokenType:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        preferredLanguage:
+          type: string
+          enum: [french, arabic, darija]
+
+    FeedbackRequest:
+      type: object
+      required: [feedback]
+      properties:
+        feedback:
+          type: string
+          enum: [accepted, rejected, ignored]
+
+    Recommendation:
+      type: object
+      required: [id, parcelId, generatedAt, irrigate, status, demoMode]
+      properties:
+        id:
+          type: string
+          format: uuid
+        parcelId:
+          type: string
+          format: uuid
+        generatedAt:
+          type: string
+          format: date-time
+        irrigate:
+          type: boolean
+        confidenceScore:
+          type: number
+          nullable: true
+        quantityMm:
+          type: number
+          nullable: true
+        durationMinutes:
+          type: integer
+          nullable: true
+        reasonCode:
+          type: string
+          nullable: true
+        topFactors:
+          type: array
+          items:
+            type: object
+        explanation:
+          type: object
+          required: [fr, darija]
+          properties:
+            fr:
+              type: string
+            darija:
+              type: string
+        modelVersion:
+          type: string
+          nullable: true
+        status:
+          type: string
+        userFeedback:
+          type: string
+          nullable: true
+        demoMode:
+          type: boolean
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        parcelId:
+          type: string
+          format: uuid
+          nullable: true
+        alertType:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        status:
+          type: string
+          enum: [unread, read, resolved]
+        title:
+          type: string
+          nullable: true
+        message:
+          type: string
+        data:
+          type: object
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    RegisterDeviceRequest:
+      type: object
+      required: [token, platform]
+      properties:
+        token:
+          type: string
+          minLength: 20
+          maxLength: 255
+        platform:
+          type: string
+          enum: [android, ios, web]
+
+    DeviceToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        token:
+          type: string
+        platform:
+          type: string
+          enum: [android, ios, web]
+        createdAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    TypeCulture:
+      type: string
+      enum: [olive, citrus, cereal, vegetable, other]
+
+    TypeSol:
+      type: string
+      enum: [clay, silt, sandy, calcareous, mixed]
+
+    MethodeIrrigation:
+      type: string
+      enum: [drip, sprinkler, gravity]
+
+    GeoJsonPoint:
+      type: object
+      description: Point GeoJSON — coordonnées au format [longitude, latitude] (WGS84)
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Point]
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: number
+          example: [-6.3498, 32.3373]
+
+    GeoJsonPolygon:
+      type: object
+      description: >-
+        Polygone GeoJSON — coordinates est une liste d'anneaux (linear rings),
+        chaque anneau une liste de positions [longitude, latitude], le premier
+        anneau étant le contour extérieur.
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Polygon]
+        coordinates:
+          type: array
+          items:
+            type: array
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items:
+                type: number
+
+    CreateFarmRequest:
+      type: object
+      required: [name, totalAreaHa]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+        location:
+          $ref: '#/components/schemas/GeoJsonPoint'
+
+    UpdateFarmRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+        location:
+          $ref: '#/components/schemas/GeoJsonPoint'
+
+    Farm:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+        location:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FarmSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Ferme Rachid Tadla"
+        totalAreaHa:
+          type: number
+          minimum: 0.01
+          example: 15.5
+        region:
+          type: string
+          maxLength: 100
+          example: "Beni Mellal"
+
+    CreateParcelRequest:
+      type: object
+      required: [name, areaHa, farmId, cropType, soilType, irrigationMethod]
+      properties:
+        farmId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Parcelle 1"
+        areaHa:
+          type: number
+          minimum: 0.01
+          example: 5.2
+        cropType:
+          $ref: '#/components/schemas/TypeCulture'
+        soilType:
+          $ref: '#/components/schemas/TypeSol'
+        irrigationMethod:
+          $ref: '#/components/schemas/MethodeIrrigation'
+        cropVariety:
+          type: string
+          maxLength: 100
+          nullable: true
+          example: "Arbequina"
+        flowRateM3h:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 2.5
+        treeAgeYears:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 10
+        treeDensityPerHa:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 400
+        centroid:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        polygon:
+          $ref: '#/components/schemas/GeoJsonPolygon'
+
+    UpdateParcelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 150
+          example: "Parcelle 1"
+        areaHa:
+          type: number
+          minimum: 0.01
+          example: 2.5
+        cropType:
+          $ref: '#/components/schemas/TypeCulture'
+        soilType:
+          $ref: '#/components/schemas/TypeSol'
+        irrigationMethod:
+          $ref: '#/components/schemas/MethodeIrrigation'
+        cropVariety:
+          type: string
+          maxLength: 100
+          example: "Picholine"
+        flowRateM3h:
+          type: number
+          minimum: 0
+          example: 15.5
+        treeAgeYears:
+          type: number
+          minimum: 0
+          example: 8
+        treeDensityPerHa:
+          type: number
+          minimum: 0
+          example: 300
+        centroid:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        polygon:
+          $ref: '#/components/schemas/GeoJsonPolygon'
+
+    Parcel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        farmId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          maxLength: 150
+          example: "Parcelle 1"
+        areaHa:
+          type: number
+          minimum: 0.01
+          example: 5.2
+        cropType:
+          $ref: '#/components/schemas/TypeCulture'
+        soilType:
+          $ref: '#/components/schemas/TypeSol'
+        irrigationMethod:
+          $ref: '#/components/schemas/MethodeIrrigation'
+        cropVariety:
+          type: string
+          maxLength: 100
+          nullable: true
+          example: "Arbequina"
+        flowRateM3h:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 2.5
+        treeAgeYears:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 10
+        treeDensityPerHa:
+          type: number
+          minimum: 0
+          nullable: true
+          example: 400
+        centroid:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        polygon:
+          $ref: '#/components/schemas/GeoJsonPolygon'
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AssociateSensorRequest:
+      type: object
+      required: [deviceId, parcelId]
+      properties:
+        deviceId:
+          type: string
+          description: >-
+            Identifiant physique du capteur (device_id ESP32, ex.
+            "esp32-sim-001") — correspond à la colonne deviceId de
+            sensor.entity.ts, pas à l'UUID technique interne de la table sensors.
+          example: "esp32-sim-001"
+        parcelId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+
+    SensorAssociation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        deviceId:
+          type: string
+          example: "esp32-sim-001"
+        parcelId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        deviceType:
+          type: string
+          example: "esp32-wroom-32"
+        healthStatus:
+          type: string
+          enum: [pending, active, inactive, failing]
+          example: active
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        batteryPct:
+          type: integer
+          nullable: true
+          example: 87
+        firmwareVersion:
+          type: string
+          nullable: true
+          example: "1.0.4"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Sensor:
+      type: object
+      description: >-
+        Entité capteur telle que sérialisée par le farm-service. Le statut
+        d'affichage est porté par healthStatus : pending, active, inactive ou
+        failing. Un heartbeat récent ramène le statut à active.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        parcelId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        deviceId:
+          type: string
+          example: "esp32-sim-001"
+        deviceType:
+          type: string
+          example: "esp32-wroom-32"
+        healthStatus:
+          type: string
+          enum: [pending, active, inactive, failing]
+          example: active
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        batteryPct:
+          type: integer
+          nullable: true
+          example: 87
+        firmwareVersion:
+          type: string
+          nullable: true
+          example: "1.0.4"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time

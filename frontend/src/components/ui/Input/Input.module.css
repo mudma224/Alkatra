@@ -1,0 +1,118 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  width: 100%;
+}
+
+.label {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-label);
+  color: var(--color-neutral-black);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--spacing-md);
+  background-color: var(--color-neutral-0);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-input);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.field:hover {
+  border-color: var(--color-primary-300);
+}
+
+.field:focus-within {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 2px var(--color-secondary-100);
+}
+
+.field.error {
+  border-color: var(--color-error-500);
+}
+
+.field.error:focus-within {
+  box-shadow: 0 0 0 2px var(--color-destructive-100);
+}
+
+.field:has(.input:disabled) {
+  background-color: var(--color-neutral-200);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.input {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-black);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.input::placeholder {
+  color: var(--color-neutral-grey);
+}
+
+.input:disabled {
+  cursor: not-allowed;
+}
+
+.prefix {
+  flex-shrink: 0;
+  margin-right: var(--spacing-sm);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  color: var(--color-neutral-black);
+}
+
+.searchIcon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-right: var(--spacing-sm);
+  color: var(--color-neutral-grey);
+}
+
+.clearButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  margin-right: calc(var(--spacing-xs) * -1);
+  padding: 0;
+  color: var(--color-neutral-grey);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.clearButton:hover {
+  color: var(--color-primary-500);
+  background-color: var(--color-secondary-100);
+}
+
+.clearButton:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 1px;
+}
+
+.clearButton svg {
+  width: 18px;
+  height: 18px;
+}

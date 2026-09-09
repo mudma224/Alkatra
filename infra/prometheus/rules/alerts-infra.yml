@@ -1,0 +1,115 @@
+# Alertes — infrastructure (Postgres, MongoDB, Redis, Kafka, probes)
+groups:
+  - name: alkatra-infra
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL injoignable par l'exporter"
+          description: >-
+            postgres-exporter ne peut pas se connecter à PostgreSQL
+            ({{ $labels.instance }}). Vérifier le conteneur alkatra-postgres
+            et le rôle postgres_exporter.
+
+      - alert: PostgresConnectionsHigh
+        expr: sum(pg_stat_activity_count) / clamp_min(pg_settings_max_connections, 1) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Connexions PostgreSQL > 85 % du maximum"
+          description: >-
+            {{ $value | humanizePercentage }} des connexions maximales sont
+            utilisées. Risque de rejets de connexion des services.
+
+      - alert: MongodbDown
+        expr: mongodb_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MongoDB injoignable par l'exporter"
+          description: >-
+            mongodb-exporter ne peut pas se connecter à MongoDB. Les
+            recommandations et les données capteurs ne sont plus persistées.
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis injoignable"
+          description: >-
+            redis-exporter ne peut pas se connecter à Redis. Les OTP
+            (auth-service) et l'état Spark sont impactés.
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mémoire Redis > 90 % du maximum"
+          description: >-
+            Redis approche de sa limite mémoire ({{ $value | humanizePercentage }})
+            — des évictions LRU massives peuvent dégrader les OTP et l'état Spark.
+
+      - alert: KafkaBrokerDown
+        expr: sum(kafka_brokers) < 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Aucun broker Kafka vu par l'exporter"
+          description: >-
+            kafka-exporter ne voit aucun broker. Le pipeline de streaming est
+            à l'arrêt.
+
+      - alert: KafkaConsumerLagHigh
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Lag Kafka élevé — {{ $labels.consumergroup }} sur {{ $labels.topic }}"
+          description: >-
+            Le consumer group {{ $labels.consumergroup }} accuse {{ $value }}
+            messages de retard sur {{ $labels.topic }} depuis 5 minutes.
+
+      - alert: KafkaConsumerLagCritical
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > 10000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lag Kafka critique — {{ $labels.consumergroup }} sur {{ $labels.topic }}"
+          description: >-
+            Le consumer group {{ $labels.consumergroup }} accuse {{ $value }}
+            messages de retard sur {{ $labels.topic }} : le traitement est
+            vraisemblablement bloqué.
+
+      - alert: BlackboxProbeFailed
+        expr: probe_success{job="blackbox-core"} == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Probe HTTP en échec — {{ $labels.instance }}"
+          description: >-
+            La sonde de disponibilité ne peut plus joindre
+            {{ $labels.instance }} depuis 3 minutes.
+
+      - alert: BlackboxSlowResponse
+        expr: probe_duration_seconds{job=~"blackbox-.*"} > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Probe HTTP lente — {{ $labels.instance }}"
+          description: >-
+            {{ $labels.instance }} répond en plus de 2 secondes
+            ({{ $value | humanize }}s).

@@ -1,0 +1,68 @@
+/* =========================================================================
+   SensorStatusPill — pill d'état capteur (maquettes Multi Sensors / SensorList).
+   Active = fond vert clair + pastille verte ; En attente = gris + pastille
+   creuse ; Désactivé = gris + pastille pleine grise (silence > 2 h) ;
+   Défaillant = rouge (silence > 24 h, alerte critique).
+   ========================================================================= */
+
+.active,
+.pending,
+.inactive,
+.failing {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-label);
+  border-radius: var(--radius-badge);
+}
+
+.active {
+  color: var(--color-primary-700);
+  background-color: var(--color-secondary-100);
+}
+
+.pending,
+.inactive {
+  color: var(--color-neutral-grey);
+  background-color: var(--color-neutral-200);
+}
+
+/* Silence > 24 h : état critique, même échelle rouge que les erreurs. */
+.failing {
+  color: var(--color-destructive-700);
+  background-color: var(--color-destructive-100);
+}
+
+.dotActive {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-accent-500);
+}
+
+/* Pastille creuse : capteur associé mais jamais vu. */
+.dotPending {
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--color-neutral-grey);
+}
+
+.dotInactive {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-neutral-grey);
+}
+
+.dotFailing {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-destructive-500);
+}

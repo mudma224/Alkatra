@@ -1,0 +1,20 @@
+{
+  "auth": {
+    "brandTitle": "Al katra bel qatra",
+    "brandSubtitle": "Ghadi nsiftou lik code dial ta2akkoud",
+    "phoneLabel": "Numero dial telephone",
+    "phonePlaceholder": "6XX XX XX XX",
+    "sendOtp": "Sift OTP",
+    "verifyOtp": "Ta2akkad mn OTP",
+    "invalidPhone": "Numero dial telephone machi sahih.",
+    "sendError": "Ma qderna nsiftouch code. ",
+    "retry": "3awed.",
+    "otpExpiresIn": "Code ghadi ykhls f {{time}}",
+    "otpExpired": "Code OTP salat sla7iyto.",
+    "otpNotReceived": "Ma jak walo code?",
+    "resend": "3awed sift",
+    "resendIn": "3awed sift f {{seconds}}s",
+    "backToPhone": "Beddel numero dial telephone",
+    "logout": "Khrouj"
+  }
+}

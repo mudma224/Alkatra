@@ -1,0 +1,76 @@
+/* =========================================================================
+   AssociateSensorDialog — maquette « ParcelDetail - Sensor Modal » (164:35).
+   Overlay + card centrée, mêmes conventions que ConfirmDialog.
+   ========================================================================= */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 340px;
+  max-width: 100%;
+  padding: var(--spacing-lg) var(--spacing-md) var(--spacing-md);
+  background-color: var(--color-neutral-0);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.dialog:focus {
+  outline: none;
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: var(--color-primary-700);
+  background-color: var(--color-secondary-100);
+  border-radius: 50%;
+}
+
+.title {
+  margin: var(--spacing-md) 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-heading-sm);
+  color: var(--color-neutral-black);
+  text-align: center;
+}
+
+.description {
+  margin: var(--spacing-xs) 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-grey);
+  text-align: center;
+}
+
+.field {
+  width: 100%;
+  margin-top: var(--spacing-md);
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  width: 100%;
+  margin-top: var(--spacing-md);
+}
+
+.actions > * {
+  flex: 1;
+}

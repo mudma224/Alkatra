@@ -1,0 +1,102 @@
+# Alertes — services applicatifs
+groups:
+  - name: alkatra-services
+    rules:
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Watchdog — vérifie la chaîne de notification en continu"
+          description: >-
+            Cette alerte est toujours firing. Si vous ne recevez plus ses
+            emails (toutes les 4 h), la chaîne Prometheus → Alertmanager → SMTP
+            est cassée.
+
+      - alert: ServiceDown
+        expr: up{job=~"auth-service|user-service|farm-service|recommendation-service|iot-service|alert-service|ml-inference-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} DOWN"
+          description: >-
+            La cible {{ $labels.instance }} ne répond plus au scrape Prometheus
+            depuis plus d'une minute.
+
+      - alert: AlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager DOWN"
+          description: >-
+            Alertmanager n'est plus scrapé — les notifications d'alertes ne
+            partent plus. Vérifier le conteneur alkatra-alertmanager.
+
+      - alert: PushgatewayDown
+        expr: up{job="pushgateway"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PushGateway DOWN"
+          description: >-
+            Les métriques Spark ne peuvent plus être poussées. Vérifier le
+            conteneur alkatra-pushgateway.
+
+      - alert: HighHttpErrorRate
+        expr: job:http_request_errors:ratio_rate5m > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taux d'erreurs 5xx élevé sur {{ $labels.job }}"
+          description: >-
+            Plus de 5 % des requêtes HTTP du service {{ $labels.job }}
+            retournent des erreurs 5xx depuis 5 minutes
+            ({{ $value | humanizePercentage }}).
+
+      - alert: HttpLatencyHigh
+        expr: job:http_request_duration_seconds:p95 > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latence p95 élevée sur {{ $labels.job }}"
+          description: >-
+            La latence p95 des requêtes HTTP de {{ $labels.job }} dépasse
+            1 seconde depuis 5 minutes ({{ $value | humanize }}s).
+
+      - alert: KafkaConsumerDisconnected
+        expr: '{__name__=~".+_kafka_consumer_connected"} == 0'
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Consumer Kafka déconnecté ({{ $labels.job }})"
+          description: >-
+            Le consumer Kafka du service {{ $labels.job }} est déconnecté
+            depuis plus de 2 minutes — les messages s'accumulent (lag).
+
+      - alert: PersistenceErrorsIncreasing
+        expr: increase({__name__=~".+_persistence_errors_total"}[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Erreurs de persistance sur {{ $labels.job }}"
+          description: >-
+            {{ $value }} erreur(s) de persistance PostgreSQL en 10 minutes sur
+            {{ $labels.job }}. Vérifier la base et les logs du service.
+
+      - alert: MqttDisconnected
+        expr: alkatra_iot_mqtt_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "iot-service déconnecté du broker MQTT"
+          description: >-
+            iot-service n'est plus connecté à Mosquitto depuis plus d'une
+            minute : aucune donnée capteur n'entre dans la plateforme.

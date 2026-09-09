@@ -1,0 +1,97 @@
+.page {
+  min-height: 100%;
+  width: 100%;
+  background-color: var(--color-neutral-white);
+}
+
+.content {
+  width: 100%;
+  margin: 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--spacing-md);
+}
+
+.headerRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+  margin-top: var(--spacing-lg);
+}
+
+.backButton {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 40px;
+
+  padding: 0;
+
+  border: none;
+  background: transparent;
+
+  color: var(--color-primary-500);
+
+  cursor: pointer;
+}
+
+.backButton svg {
+  width: 24px;
+  height: 24px;
+}
+
+.backButton:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+.title {
+  margin: 0;
+  width: 100%;
+
+  color: var(--color-primary-500);
+
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-title);
+  text-align: center;
+}
+
+.formWrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: var(--spacing-xl);
+}
+
+.profileHeader {
+  margin-top: var(--spacing-lg);
+}
+
+.form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  max-width: 480px;
+  margin-top: 0;
+}
+
+@media (min-width: 640px) {
+  .content {
+    padding-left: var(--spacing-lg);
+    padding-right: var(--spacing-lg);
+  }
+}

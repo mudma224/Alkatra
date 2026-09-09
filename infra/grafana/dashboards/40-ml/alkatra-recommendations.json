@@ -1,0 +1,104 @@
+{
+  "uid": "alkatra-recommendations",
+  "title": "Al Katra — Recommandations",
+  "tags": ["alkatra", "recommendations", "kafka", "postgres"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "recommendation-service : consommation Kafka avec idempotence, persistance PostgreSQL, feedbacks agriculteur.",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Consumer Kafka",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "CONNECTÉ", "color": "green" }, "0": { "text": "DÉCONNECTÉ", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(recommendation_kafka_consumer_connected)", "legendFormat": "consumer" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Recommandations persistées (cumul)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(recommendations_persisted_total)", "legendFormat": "persistées" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Feedbacks (cumul)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(recommendation_feedback_total)", "legendFormat": "feedbacks" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Service UP",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(up{job=\"recommendation-service\"})", "legendFormat": "up" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Messages consommés / min (par statut)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (status) (rate(recommendation_kafka_messages_consumed_total[5m])) * 60", "legendFormat": "{{status}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Recommandations persistées / min",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "sum(rate(recommendations_persisted_total[5m])) * 60", "legendFormat": "persistées" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Feedbacks par décision (/ min)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "description": "Boucle de ré-entraînement : accepted / rejected / ignored.",
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (decision) (rate(recommendation_feedback_total[5m])) * 60", "legendFormat": "{{decision}}" } ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Erreurs de persistance PostgreSQL",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "drawStyle": "bars" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "increase(recommendation_persistence_errors_total[10m])", "legendFormat": "erreurs" } ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Lag du consumer group",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 10000 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (consumergroup) (kafka_consumergroup_lag{topic=\"recommendations-generated\"})", "legendFormat": "{{consumergroup}}" } ]
+    }
+  ]
+}

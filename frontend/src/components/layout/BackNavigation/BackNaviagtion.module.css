@@ -1,0 +1,61 @@
+.backButton {
+  /* Shared 40px touch target for mobile and desktop. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 40px;
+
+  flex-shrink: 0;
+  padding: 0;
+
+  border: none;
+  border-radius: 50%;
+
+  background-color: transparent;
+  color: var(--color-primary-500);
+
+  cursor: pointer;
+
+  /* Keep the interaction consistent with the design system. */
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.backButton svg {
+  /* Standardize the icon size across all screens. */
+  width: 24px;
+  height: 24px;
+}
+
+.backButton:hover {
+  /* Use existing neutral token instead of introducing a new color. */
+  background-color: var(--color-neutral-100);
+}
+
+.backButton:focus-visible {
+  /* Keep keyboard focus clearly visible. */
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.backButton:active {
+  /* Provide lightweight pressed feedback without changing layout. */
+  transform: translateY(1px);
+}
+
+@media (max-width: 375px) {
+  .backButton {
+    /* Preserve the same touch target on very small screens. */
+    width: 40px;
+    height: 40px;
+  }
+
+  .backButton svg {
+    /* Keep icon dimensions stable on small screens. */
+    width: 22px;
+    height: 22px;
+  }
+}

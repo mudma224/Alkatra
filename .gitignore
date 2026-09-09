@@ -1,0 +1,75 @@
+# Dépendances
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+.next/
+out/
+
+# Environnement — NE JAMAIS COMMITTER
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+
+# Node
+node_modules/
+dist/
+build/
+.turbo/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+.eggs/
+venv/
+.venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Mosquitto
+infra/mosquitto/certs/*.crt
+infra/mosquitto/certs/*.key
+infra/mosquitto/certs/*.pem
+infra/mosquitto/log/
+
+# Secrets K8s — ne jamais committer les vraies valeurs
+# (secrets-template.yaml est OK car pas de vraies valeurs)
+
+# Spark checkpoints
+/tmp/spark-checkpoint/

@@ -1,0 +1,63 @@
+/* =========================================================================
+   SensorListItem — ligne capteur (deviceId + Dissocier / pill + métadonnées).
+   ========================================================================= */
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) 0;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.deviceId {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-label);
+  color: var(--color-neutral-black);
+  overflow-wrap: anywhere;
+}
+
+/* Lien rouge compact « Dissocier » — spécifique au domaine capteur,
+ * pas une variante du Button du design system. */
+.dissociate {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  font-weight: var(--font-weight-label);
+  color: var(--color-destructive-500);
+}
+
+.dissociate:hover {
+  color: var(--color-destructive-700);
+  text-decoration: underline;
+}
+
+.dissociate:focus-visible {
+  outline: 2px solid var(--color-destructive-500);
+  outline-offset: 2px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.metaText {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-grey);
+}

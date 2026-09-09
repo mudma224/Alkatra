@@ -1,0 +1,33 @@
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/**
+ * Le cercle utilise `currentColor` pour s'adapter à la couleur du texte
+ * du bouton hôte (primary = blanc, outline = vert, etc.).
+ * La teinte "track" (anneau de fond) utilise une opacité réduite de
+ * la même couleur, ce qui évite tout hack par variante.
+ */
+.circle {
+  width: 20px;
+  height: 20px;
+  border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .circle {
+    animation: none;
+    border-top-color: color-mix(in srgb, currentColor 50%, transparent);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

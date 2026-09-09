@@ -1,0 +1,95 @@
+{
+  "uid": "alkatra-redis",
+  "title": "Al Katra — Redis",
+  "tags": ["alkatra", "infra", "redis"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Redis 7.2 : OTP (auth-service) + état journalier Spark. maxmemory 256 MB, politique allkeys-lru.",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Statut exporter",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(redis_up)", "legendFormat": "redis_up" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Mémoire / max",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.75 }, { "color": "red", "value": 0.9 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(redis_memory_used_bytes) / clamp_min(max(redis_memory_max_bytes), 1)", "legendFormat": "usage" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Clients connectés",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "max(redis_connected_clients)", "legendFormat": "clients" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Mémoire utilisée",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "max(redis_memory_used_bytes)", "legendFormat": "used" },
+        { "refId": "B", "expr": "max(redis_memory_max_bytes)", "legendFormat": "max (maxmemory)" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Clés & évictions",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "description": "Évictions massives = risque de perte d'OTP / état Spark (allkeys-lru).",
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "sum(redis_db_keys)", "legendFormat": "clés", "targetUnit": "short" },
+        { "refId": "B", "expr": "rate(redis_evicted_keys_total[5m])", "legendFormat": "évictions/s" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Commandes / s",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "rate(redis_commands_processed_total[5m])", "legendFormat": "commandes/s" },
+        { "refId": "B", "expr": "rate(redis_commands_total[5m]) > 0", "legendFormat": "{{cmd}}" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Latence des opérations (avg)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "rate(redis_commands_duration_seconds_total[5m]) / clamp_min(rate(redis_commands_total[5m]), 0.000001)", "legendFormat": "{{cmd}} avg" }
+      ]
+    }
+  ]
+}

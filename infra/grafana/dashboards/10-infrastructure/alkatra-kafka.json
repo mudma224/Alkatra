@@ -1,0 +1,96 @@
+{
+  "uid": "alkatra-kafka",
+  "title": "Al Katra — Kafka",
+  "tags": ["alkatra", "infra", "kafka", "streaming"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Cluster KRaft single-node : lag des consumer groups (kafka-exporter), offsets par topic, DLQ applicatives. Le lag est la source de vérité (offsets broker).",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Brokers",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "sum(kafka_brokers)", "legendFormat": "brokers" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Topics",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "count(count by (topic) (kafka_topic_partitions))", "legendFormat": "topics" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Lag total",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 10000 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "sum(kafka_consumergroup_lag)", "legendFormat": "lag" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Partitions under-replicated",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "sum(kafka_topic_partition_under_replicated_partition)", "legendFormat": "under-replicated" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Lag par consumer group × topic",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 10000 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag)", "legendFormat": "{{consumergroup}} @ {{topic}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Messages / s par topic (delta offsets)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset[5m]))", "legendFormat": "{{topic}}" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "DLQ — messages routés (10 min)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "description": "alerts-dlq (consumer alert-service) et recommendations-generated-dlq (consumer recommendation-service).",
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "drawStyle": "bars" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "increase(alert_kafka_dlq_total[10m])", "legendFormat": "alerts-dlq" },
+        { "refId": "B", "expr": "sum(increase({__name__=~\".+_kafka_messages_consumed_total\", status=\"invalid\"}[10m]))", "legendFormat": "invalides consommés (tous services)" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Offsets courants par topic/partition",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "options": { "showHeader": true },
+      "targets": [ { "refId": "A", "expr": "kafka_topic_partition_current_offset", "format": "table", "instant": true } ]
+    }
+  ]
+}

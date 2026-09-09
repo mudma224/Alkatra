@@ -1,0 +1,123 @@
+# Alertes — pipeline IoT/ML et vigie métier
+groups:
+  - name: alkatra-pipeline
+    rules:
+      - alert: NoSensorData
+        expr: pipeline:last_message_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Aucune donnée capteur depuis plus de 5 minutes"
+          description: >-
+            Le dernier message capteur valide reçu par iot-service date de
+            {{ $value | humanize }} secondes. Vérifier les capteurs/simulateur
+            et Mosquitto.
+
+      - alert: InvalidSensorMessagesIncreasing
+        expr: sum(increase(alkatra_iot_messages_invalid_total[15m])) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rafale de messages capteur invalides"
+          description: >-
+            {{ $value }} messages rejetés par la validation (contrat capteur
+            sensor-ai-v2) en 15 minutes. Vérifier le firmware / le simulateur.
+
+      - alert: PredictionsStalled
+        expr: sum(increase(ml_predictions_total[30m])) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Aucune prédiction ML depuis 30 minutes"
+          description: >-
+            ml-inference-service n'a produit aucune prédiction en 30 minutes.
+            Vérifier le flux processed-sensor-data (Spark) et les modèles.
+
+      - alert: ModelsNotLoaded
+        expr: max(ml_models_loaded) < 2 and max(ml_demo_mode) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Modèles ML non chargés (et pas en mode démo)"
+          description: >-
+            ml-inference-service tourne sans ses modèles XGBoost et sans
+            mode démo : les prédictions échouent.
+
+      - alert: ModelsInDemoMode
+        expr: max(ml_demo_mode) == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ml-inference-service en mode démo"
+          description: >-
+            Les modèles de substitution (démo) sont utilisés — les
+            recommandations ne reposent pas sur les modèles MLflow Production.
+
+      - alert: SparkStreamStalled
+        expr: time() - max(push_time_seconds{job="spark-jobs"}) > 180
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Le job Spark ne pousse plus de métriques"
+          description: >-
+            Aucun push PushGateway depuis plus de 3 minutes : le job Spark
+            est arrêté ou bloqué. Le lag kafka-exporter confirme le blocage.
+
+      - alert: SparkBatchSlow
+        expr: max(spark_stream_batch_duration_seconds) > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Micro-batches Spark lents"
+          description: >-
+            Le dernier micro-batch a pris {{ $value | humanize }} secondes
+            (trigger nominal : 30 s) — le feature engineering prend du retard.
+
+      - alert: DlqMessages
+        expr: increase(alert_kafka_dlq_total[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Messages routés en DLQ (alert-service)"
+          description: >-
+            {{ $value }} message(s) envoyé(s) sur alerts-dlq en 10 minutes.
+            Inspecter la DLQ et les logs du consumer alert-service.
+
+      - alert: AlertPersistenceErrors
+        expr: increase(alert_persistence_errors_total[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Erreurs de persistance des alertes"
+          description: >-
+            alert-service n'arrive plus à persister en PostgreSQL
+            (notification_db). Les alertes fermiers risquent d'être perdues.
+
+      - alert: FcmFailuresIncreasing
+        expr: increase(fcm_failed_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Échecs de notifications push FCM"
+          description: >-
+            {{ $value }} envois push en échec en 15 minutes. Vérifier les
+            credentials Firebase et la validité des tokens device.
+
+      - alert: HeartbeatErrorsIncreasing
+        expr: sum(increase(farm_heartbeats_processed_total{result="error"}[30m])) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Heartbeats capteur rejetés par farm-service"
+          description: >-
+            {{ $value }} heartbeats rejetés en 30 minutes (capteurs inconnus ?).
+            Vérifier l'association capteur ↔ parcelle.

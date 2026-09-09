@@ -1,0 +1,144 @@
+/* =========================================================================
+   FarmDetailScreen — maquettes « FarmDetail » (83:71) et « Delete Modal » (83:93).
+   ========================================================================= */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+  min-height: 36px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-title);
+  color: var(--color-primary-500);
+}
+
+/* Info Card — lignes label/valeur séparées par des filets (maquette 83:71). */
+.infoCard {
+  padding: var(--spacing-xs) var(--spacing-md);
+}
+
+.infoRows {
+  margin: 0;
+}
+
+.infoRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) 0;
+
+  /* Filet entre les lignes, sauf la dernière. */
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+
+.infoRow:last-child {
+  border-bottom: none;
+}
+
+.infoLabel {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-footer);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-grey);
+}
+
+.infoValue {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-label);
+  color: var(--color-neutral-black);
+  text-align: right;
+}
+
+/* Modifier + Supprimer : deux boutons de 170px côte à côte (maquette 83:71). */
+.actions {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.actionButton {
+  flex: 1;
+}
+
+.sectionTitle {
+  margin: var(--spacing-sm) 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-heading-sm);
+  color: var(--color-neutral-black);
+}
+
+.parcelsCard {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+/* Liste des ParcelCards — maquette « FarmDetail - Parcels Populated ». */
+.parcelsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parcelsSkeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.skeletonParcelsButton {
+  height: 48px;
+  border-radius: var(--radius-button);
+}
+
+.skeletonParcelsCard {
+  height: 100px;
+  border-radius: var(--radius-card);
+}
+
+/* Squelettes de l'état loading. */
+.skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.skeletonTitle {
+  width: 60%;
+  height: 24px;
+}
+
+.skeletonCard {
+  height: 180px;
+  border-radius: var(--radius-card);
+}
+
+.skeletonActions {
+  height: 48px;
+  border-radius: var(--radius-button);
+}
+
+.retryButton {
+  width: 280px;
+  max-width: 100%;
+}

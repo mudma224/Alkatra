@@ -1,0 +1,33 @@
+import * as promClient from 'prom-client';
+import { KafkaMetrics } from '../src/kafka-metrics.util';
+
+describe('KafkaMetrics', () => {
+  it('expose compteur messages et gauge connexion avec le préfixe du service', async () => {
+    const registry = new promClient.Registry();
+    const kafka = new KafkaMetrics(registry, 'reco');
+
+    kafka.recordMessage('recommendations-generated', 'ok');
+    kafka.recordMessage('recommendations-generated', 'ok');
+    kafka.recordMessage('recommendations-generated', 'error');
+    kafka.setConnected(true);
+
+    const output = await registry.metrics();
+    expect(output).toContain(
+      '# TYPE reco_kafka_messages_consumed_total counter',
+    );
+    expect(output).toContain(
+      'reco_kafka_messages_consumed_total{topic="recommendations-generated",status="error"} 1',
+    );
+    expect(output).toContain('reco_kafka_consumer_connected 1');
+  });
+
+  it('positionne la gauge à 0 quand le consumer est déconnecté', async () => {
+    const registry = new promClient.Registry();
+    const kafka = new KafkaMetrics(registry, 'alert');
+
+    kafka.setConnected(false);
+
+    const output = await registry.metrics();
+    expect(output).toContain('alert_kafka_consumer_connected 0');
+  });
+});

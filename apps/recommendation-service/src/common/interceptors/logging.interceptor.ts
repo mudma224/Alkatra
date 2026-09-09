@@ -1,0 +1,49 @@
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  Logger,
+  NestInterceptor,
+} from '@nestjs/common';
+import { Request, Response } from 'express';
+import { Observable, tap } from 'rxjs';
+import { MetricsService } from '../../metrics/metrics.service';
+
+/**
+ * Intercepte chaque requête HTTP pour :
+ *  - logger la requête (méthode, URL, durée, statut)
+ *  - incrémenter les métriques Prometheus (compteur + latence)
+ *
+ * La "route" remontrée est la pattern URL Express (req.route?.path) plutôt que
+ * l'URL brute, afin d'éviter l'explosion de cardinalité des labels (une metric
+ * par :id distinct).
+ */
+@Injectable()
+export class LoggingInterceptor implements NestInterceptor {
+  private readonly logger = new Logger('HTTP');
+
+  constructor(private readonly metrics?: MetricsService) {}
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const req = context.switchToHttp().getRequest<Request>();
+    const res = context.switchToHttp().getResponse<Response>();
+    const { method, url } = req;
+    const startedAt = Date.now();
+
+    return next.handle().pipe(
+      tap({
+        next: () => {
+          const duration = Date.now() - startedAt;
+          this.logger.log(`${method} ${url} → ${res.statusCode} (${duration}ms)`);
+          this.metrics?.recordHttpDuration(duration);
+        },
+        error: (err) => {
+          const duration = Date.now() - startedAt;
+          const status = err?.status ?? 500;
+          this.logger.warn(`${method} ${url} → ${status} (${duration}ms)`);
+          this.metrics?.recordHttpDuration(duration);
+        },
+      }),
+    );
+  }
+}

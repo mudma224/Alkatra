@@ -1,0 +1,101 @@
+{
+  "uid": "alkatra-spark-streaming",
+  "title": "Al Katra — Spark Streaming",
+  "tags": ["alkatra", "spark", "streaming"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Feature engineering Spark (raw-sensor-data → processed-sensor-data) : durée des micro-batches, débit, rejets et vitalité (fraîcheur du dernier push PushGateway).",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Vitalité du job (dernier push)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "description": "Âge du dernier push PushGateway. > 3 min = job arrêté ou bloqué (le trigger nominal est de 30 s).",
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 90 }, { "color": "red", "value": 180 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "time() - max(push_time_seconds{job=\"spark-jobs\"})", "legendFormat": "âge du push" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Dernier batch — durée",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 30 }, { "color": "red", "value": 60 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(spark_stream_batch_duration_seconds)", "legendFormat": "durée" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Dernier batch — messages lus",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "max(spark_stream_num_input_rows)", "legendFormat": "input" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Dernier batch — messages rejetés",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "description": "JSON invalide ou parcel_id absent.",
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 10 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(spark_stream_rejected_messages)", "legendFormat": "rejetés" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Durée des micro-batches",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "description": "Trigger nominal : 30 s. Au-delà, le feature engineering prend du retard sur le flux.",
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 60 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "spark_stream_batch_duration_seconds", "legendFormat": "durée batch" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Identifiant de batch (progression)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "description": "Courbe plate = aucun batch traité (stream bloqué).",
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "drawStyle": "line" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "spark_stream_batch_id", "legendFormat": "batch" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Messages lus / publiés par batch",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "spark_stream_num_input_rows", "legendFormat": "lus (raw)" },
+        { "refId": "B", "expr": "spark_stream_num_output_rows", "legendFormat": "publiés (processed)" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Filet de sécurité — lag du groupe Spark",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "description": "Lag kafka-exporter : détecte un blocage Spark même si le push métrique échoue.",
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 10000 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (consumergroup) (kafka_consumergroup_lag{topic=\"raw-sensor-data\"})", "legendFormat": "{{consumergroup}}" } ]
+    }
+  ]
+}

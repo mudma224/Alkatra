@@ -1,0 +1,55 @@
+/* =========================================================================
+   SensorSection — maquettes « ParcelDetail - Multi Sensors » (188:28) et
+   « ParcelDetail - Many Sensors » (188:102) : bouton Associer au-dessus de
+   la card, lignes séparées par des filets, mode compact + lien au-delà de 3.
+   ========================================================================= */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.sensorsCard {
+  padding: var(--spacing-xs) var(--spacing-md);
+}
+
+/* Filet entre les lignes complètes, sauf la dernière. */
+.sensorsCard > * + * {
+  border-top: 1px solid var(--color-neutral-200);
+}
+
+.compactRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+}
+
+.compactDeviceId {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-label);
+  color: var(--color-neutral-black);
+  overflow-wrap: anywhere;
+}
+
+.seeAll {
+  width: 100%;
+  margin-top: var(--spacing-xs);
+}
+
+/* État sans capteur — maquette « ParcelDetail - Sensor Modal » (164:35). */
+.emptyCard {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.emptyText {
+  margin: 0;
+  padding: var(--spacing-sm) 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-body);
+  color: var(--color-neutral-grey);
+}

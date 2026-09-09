@@ -1,0 +1,65 @@
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { AlertsController } from '../src/alerts/alerts.controller';
+import { AlertsService } from '../src/alerts/alerts.service';
+import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
+import { ListAlertsQueryDto } from '../src/alerts/dto/list-alerts.query.dto';
+
+describe('AlertsController', () => {
+  let controller: AlertsController;
+  let alertsService: jest.Mocked<AlertsService>;
+
+  beforeEach(async () => {
+    const mockAlertsService = {
+      findAll: jest.fn(),
+      countUnread: jest.fn(),
+      markRead: jest.fn(),
+      markAllRead: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AlertsController],
+      providers: [{ provide: AlertsService, useValue: mockAlertsService }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+
+    controller = module.get<AlertsController>(AlertsController);
+    alertsService = module.get(AlertsService);
+
+    jest.clearAllMocks();
+  });
+
+  it('✅ Devrait lister les alertes pour l\'utilisateur du JWT', async () => {
+    const query = new ListAlertsQueryDto();
+    alertsService.findAll.mockResolvedValueOnce({
+      data: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    });
+
+    await controller.findAll('user-1', query);
+    expect(alertsService.findAll).toHaveBeenCalledWith('user-1', query);
+  });
+
+  it('✅ Devrait exposer le compteur de non-lues', async () => {
+    alertsService.countUnread.mockResolvedValueOnce(3);
+    await expect(controller.countUnread('user-1')).resolves.toEqual({ count: 3 });
+    expect(alertsService.countUnread).toHaveBeenCalledWith('user-1');
+  });
+
+  it('✅ Devrait marquer une alerte comme lue avec isolation user', async () => {
+    await controller.markRead('user-1', '550e8400-e29b-41d4-a716-446655440000');
+    expect(alertsService.markRead).toHaveBeenCalledWith(
+      'user-1',
+      '550e8400-e29b-41d4-a716-446655440000',
+    );
+  });
+
+  it('✅ Devrait marquer toutes les alertes comme lues', async () => {
+    alertsService.markAllRead.mockResolvedValueOnce({ updated: 2 });
+    await expect(controller.markAllRead('user-1')).resolves.toEqual({ updated: 2 });
+  });
+});

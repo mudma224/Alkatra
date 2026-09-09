@@ -1,0 +1,110 @@
+{
+  "uid": "alkatra-alerts-fcm",
+  "title": "Al Katra — Alertes & FCM",
+  "tags": ["alkatra", "services", "alert", "fcm"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "alert-service : ingestion API + consumer Kafka, fan-out FCM, DLQ et erreurs de persistance.",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Consumer Kafka",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "CONNECTÉ", "color": "green" }, "0": { "text": "DÉCONNECTÉ", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(alert_kafka_consumer_connected)", "legendFormat": "consumer" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Canal FCM",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "ACTIF", "color": "green" }, "0": { "text": "DÉSACTIVÉ (no-op)", "color": "orange" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "orange", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(fcm_enabled)", "legendFormat": "fcm" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Push envoyés (cumul)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(fcm_sent_total)", "legendFormat": "envoyés" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Taux d'échec FCM (1 h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.1 }, { "color": "red", "value": 0.3 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "sum(increase(fcm_failed_total[1h])) / clamp_min(sum(increase(fcm_sent_total[1h])) + sum(increase(fcm_failed_total[1h])), 1)", "legendFormat": "échecs" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Messages consommés / min (par statut)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (status) (rate(alert_kafka_messages_consumed_total[5m])) * 60", "legendFormat": "{{status}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "DLQ + erreurs de persistance",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "drawStyle": "bars" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "increase(alert_kafka_dlq_total[10m])", "legendFormat": "DLQ (10 min)" },
+        { "refId": "B", "expr": "increase(alert_persistence_errors_total[10m])", "legendFormat": "erreurs PG (10 min)" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Push FCM — envoyés / échecs (/ min)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(fcm_sent_total[5m])) * 60", "legendFormat": "envoyés" },
+        { "refId": "B", "expr": "sum(rate(fcm_failed_total[5m])) * 60", "legendFormat": "échecs" }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Événements publiés sur alerts-outbound (/ min)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "description": "Topic de traçabilité, réservé à la passerelle SMS Phase 2 et à l'observabilité.",
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "sum(rate(alerts_outbound_published_total[5m])) * 60", "legendFormat": "outbound" } ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Latence p95 des routes",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (route, le) (rate(alert_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{route}}" } ]
+    }
+  ]
+}

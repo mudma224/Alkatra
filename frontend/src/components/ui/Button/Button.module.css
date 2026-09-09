@@ -1,0 +1,210 @@
+/* =========================================================================
+   Base — styles communs à toutes les variantes.
+   L'attribut [data-block] gère la largeur pleine (fill).
+   ========================================================================= */
+.button {
+  display:block;
+  align-items: center;
+  justify-content: center;
+  gap :10px;
+  font-family: var(--font-family-base);
+  font-weight: var(--font-weight-button);
+  font-size: var(--font-size-button);
+  line-height: 1;
+
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+
+  /* Override de l'outline par défaut du navigateur : le focus-visible est
+     géré plus bas, par variante, pour rester lisible sur chaque fond. */
+  outline: none;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   Tailles — `md` par défaut (alignée sur la maquette Figma 48px de haut).
+   `sm` est plus compact pour les actions secondaires dans les en-têtes.
+   ========================================================================= */
+.sm {
+  padding: 8px 12px;
+  min-height: 36px;
+}
+
+.md {
+  padding: 12px 16px;
+  min-height: 48px;
+}
+
+/* =========================================================================
+   Bloc — bouton pleine largeur (fill). S'applique via la prop `block`.
+   ========================================================================= */
+.block {
+  display: flex;
+  width: 100%;
+}
+
+/* =========================================================================
+   États désactivé et chargement — communs à toutes les variantes.
+   On neutralise le curseur et on applique l'apparence gris clair conforme
+   au Figma (texte gris sur fond gris).
+   ========================================================================= */
+.button:disabled,
+.button[aria-busy='true'] {
+  cursor: not-allowed;
+}
+
+.button:disabled {
+  background-color: var(--color-neutral-200);
+  border-color: var(--color-neutral-200);
+  color: var(--color-neutral-grey);
+}
+
+.button:disabled:hover {
+  /* Aucun effet de survol à l'état disabled — fige l'apparence. */
+  background-color: var(--color-neutral-200);
+  border-color: var(--color-neutral-200);
+}
+
+/* =========================================================================
+   Variante Primary — vert foncé plein.
+   Action principale (CTA) : "Envoyer OTP", "Enregistrer", etc.
+   ========================================================================= */
+.primary {
+  background-color: var(--color-primary-500);
+  color: var(--color-neutral-0);
+}
+
+.primary:not(:disabled):not([aria-busy='true']):hover {
+  background-color: var(--color-primary-700);
+}
+
+.primary:not(:disabled):not([aria-busy='true']):active {
+  background-color: var(--color-primary-700);
+  transform: translateY(1px);
+}
+
+/* =========================================================================
+   Variante Secondary — vert clair plein, texte vert foncé.
+   Action secondaire : alternative au CTA principal.
+   ========================================================================= */
+.secondary {
+  background-color: var(--color-secondary-100);
+  color: var(--color-primary-700);
+}
+
+.secondary:not(:disabled):not([aria-busy='true']):hover {
+  background-color: var(--color-primary-300);
+}
+
+.secondary:not(:disabled):not([aria-busy='true']):active {
+  background-color: var(--color-primary-300);
+  transform: translateY(1px);
+}
+
+/* =========================================================================
+   Variante Outline — bordure verte sur fond transparent.
+   Alternative légère (ex. "Voir détails", "Annuler").
+   ========================================================================= */
+.outline {
+  background-color: transparent;
+  border-color: var(--color-primary-500);
+  color: var(--color-primary-500);
+}
+
+.outline:not(:disabled):not([aria-busy='true']):hover {
+  background-color: var(--color-secondary-100);
+}
+
+.outline:not(:disabled):not([aria-busy='true']):active {
+  background-color: var(--color-secondary-100);
+  transform: translateY(1px);
+}
+
+/* =========================================================================
+   Variante Ghost — transparent, texte vert, sans bordure.
+   Navigation ou retour (ex. "Retour").
+   ========================================================================= */
+.ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--color-primary-500);
+  
+}
+
+.ghost:not(:disabled):not([aria-busy='true']):hover {
+  background-color: var(--color-secondary-100);
+}
+
+.ghost:not(:disabled):not([aria-busy='true']):active {
+  background-color: var(--color-secondary-100);
+  transform: translateY(1px);
+}
+
+/* =========================================================================
+   Variante Destructive — rouge plein.
+   Action irréversible (ex. "Supprimer une ferme").
+   ========================================================================= */
+.destructive {
+  background-color: var(--color-destructive-500);
+  color: var(--color-neutral-0);
+}
+
+.destructive:not(:disabled):not([aria-busy='true']):hover {
+  background-color: var(--color-destructive-700);
+}
+
+.destructive:not(:disabled):not([aria-busy='true']):active {
+  background-color: var(--color-destructive-700);
+  transform: translateY(1px);
+}
+
+/* =========================================================================
+   Variante Link — texte avec accent, sans fond ni bordure.
+   Lien d'action secondaire (ex. "Sign up", "Réessayez.").
+   ========================================================================= */
+.link {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--color-accent-500);
+  padding: 4px 8px;
+  min-height: auto;
+}
+
+.link:not(:disabled):not([aria-busy='true']):hover {
+  text-decoration: underline;
+  color: var(--color-primary-300);
+}
+
+.link:not(:disabled):not([aria-busy='true']):active {
+  color: var(--color-primary-500);
+}
+
+.link:focus-visible {
+  outline-color: var(--color-accent-500);
+}
+
+/* =========================================================================
+   Icônes — sizing cohérent avec la taille du bouton.
+   ========================================================================= */
+.iconSm {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.iconMd {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}

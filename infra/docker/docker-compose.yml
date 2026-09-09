@@ -1,0 +1,933 @@
+# Docker Compose v2 — pas de directive "version:" (dépréciée)
+# Al Katra Bel Qatra — Stack de développement complète
+
+name: al-katra-bel-qatra
+
+
+networks:
+  alkatra-net:
+    driver: bridge
+    name: alkatra-net
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  kafka_data:
+  mosquitto_data:
+  grafana_data:
+  prometheus_data:
+  mlflow_data:
+  minio_data:
+  keycloak_data:
+  spark-job:
+  loki_data:
+  alertmanager_data:
+
+services:
+
+  # ==========================================
+  # POSTGRESQL — Base de données principale
+  # ==========================================
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: alkatra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alkatra_postgres_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-alkatra_db}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_dev_pass}
+      FARM_DB_PASSWORD: ${FARM_DB_PASSWORD:-farm_dev_pass}
+      RECOMMENDATION_DB_PASSWORD: ${RECOMMENDATION_DB_PASSWORD:-recommendation_dev_pass}
+      NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:-notify_dev_pass}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_pass}
+      MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_dev_pass}
+      POSTGRES_EXPORTER_PASSWORD: ${POSTGRES_EXPORTER_PASSWORD:-postgres_exporter_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../postgres/00-create-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh
+      - ../postgres/schemas:/scripts/schemas
+
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-alkatra_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # MONGODB — Données IoT time-series
+  # ==========================================
+  mongodb:
+    image: mongo:7.0
+    container_name: alkatra-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-alkatra}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-123}
+      MONGO_INITDB_DATABASE: alkatra_iot
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # REDIS — Cache + Sessions
+  # ==========================================
+  redis:
+    image: redis:7.2-alpine
+    container_name: alkatra-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-alkatra_redis_pass}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-alkatra_redis_pass}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # KAFKA — KRaft mode (Apache officiel 3.7.0)
+  # ==========================================
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: alkatra-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CLUSTER_ID: "MkQkTkRETkDTkT"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+    networks:
+      - alkatra-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: alkatra-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: alkatra
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8090:8080"
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  # ==========================================
+  # MAILHOG — Email dev (OTP test Phase 1)
+  # ==========================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: alkatra-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # MINIO — S3-compatible object storage
+  # ==========================================
+  minio:
+    image: minio/minio:latest
+    container_name: alkatra-minio
+    restart: unless-stopped
+    command: minio server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # MOSQUITTO — MQTT Broker
+  # ==========================================
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: alkatra-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9010:9010"
+    volumes:
+      - ./../../infra/mosquitto/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck -W 3"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # MLFLOW — Model Registry + Tracking
+  # ==========================================
+  mlflow:
+    build:
+      context: ../../infra/mlflow
+      dockerfile: Dockerfile
+    container_name: alkatra-mlflow
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - minio
+    volumes:
+      - mlflow_data:/mlruns
+    environment:
+      POSTGRES_USER: mlflow_user
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD:-mlflow_dev_pass}
+      POSTGRES_DB: mlflow_db
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request, sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:5001/', timeout=5).getcode()==200 else sys.exit(1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # KEYCLOAK — Auth OIDC
+  # ==========================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: alkatra-keycloak
+    restart: unless-stopped
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_pass}
+      KC_DB_SCHEMA: keycloak
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-123}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "8081:8080"                   # Port host changé à 8081 pour éviter conflit avec la gateway (8080)
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    networks:
+      - alkatra-net
+    profiles:
+      - phase1
+
+  # ==========================================
+  # PROMETHEUS — Métriques
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    container_name: alkatra-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./../../infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./../../infra/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # GRAFANA — Dashboards
+  # ==========================================
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: alkatra-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD requis — définissez-le dans .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./../../infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./../../infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # ALERTMANAGER — Routage des alertes infra (email MailHog en dev)
+  # ==========================================
+  alertmanager:
+    build:
+      context: ./../../infra/alertmanager
+      dockerfile: Dockerfile
+    container_name: alkatra-alertmanager
+    restart: unless-stopped
+    environment:
+      ALERT_SMTP_HOST: ${ALERT_SMTP_HOST:-mailhog}
+      ALERT_SMTP_PORT: ${ALERT_SMTP_PORT:-1025}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-alertmanager@alkatra.local}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-dev-team@alkatra.local}
+    ports:
+      - "9093:9093"
+    volumes:
+      - alertmanager_data:/alertmanager
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9093/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # PUSHGATEWAY — Métriques des jobs non scrapables (spark-jobs)
+  # ==========================================
+  pushgateway:
+    image: prom/pushgateway:v1.8.0
+    container_name: alkatra-pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9091/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # BLACKBOX EXPORTER — Probes HTTP de disponibilité
+  # ==========================================
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: alkatra-blackbox
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+    volumes:
+      - ./../../infra/blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9115/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # POSTGRES EXPORTER — Métriques PostgreSQL (rôle pg_monitor dédié)
+  # ==========================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: alkatra-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres_exporter:${POSTGRES_EXPORTER_PASSWORD:-postgres_exporter_pass}@postgres:5432/postgres?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9187/metrics || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # MONGODB EXPORTER — Métriques MongoDB
+  # ==========================================
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.43.1
+    container_name: alkatra-mongodb-exporter
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://${MONGO_USER:-alkatra}:${MONGO_PASSWORD:-123}@mongodb:27017/admin
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    command:
+      - "--collector.dbstats"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+    # Pas de healthcheck : l'image percona est minimaliste (pas de wget/curl).
+    # Le scrape Prometheus (job mongodb-exporter, métrique mongodb_up) tient
+    # lieu de sonde de santé.
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # REDIS EXPORTER — Métriques Redis
+  # ==========================================
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: alkatra-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Pas de healthcheck : l'image est minimaliste (scratch, pas de wget/sh).
+    # Le scrape Prometheus (métrique redis_up) tient lieu de sonde de santé.
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # KAFKA EXPORTER — Lag des consumer groups + offsets par topic
+  # ==========================================
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.8.0
+    container_name: alkatra-kafka-exporter
+    restart: unless-stopped
+    command:
+      - "--kafka.server=kafka:9092"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9308/metrics || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # LOKI — Centralisation des logs
+  # ==========================================
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: alkatra-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./../../infra/loki/loki-config.yml:/etc/loki/local-config.yml:ro
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # PROMTAIL — Collecte des logs des conteneurs Docker
+  # ==========================================
+  promtail:
+    image: grafana/promtail:3.4.2
+    container_name: alkatra-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./../../infra/loki/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - alkatra-net
+
+  # ==========================================
+  # iot-service
+  # ==========================================
+  iot-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/iot-service/Dockerfile
+      target: development
+    container_name: alkatra-iot
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USER:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      KAFKA_BROKERS: kafka:9092
+      MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
+      ML_INFERENCE_URL: http://ml-inference-service:8000
+      # Heartbeat capteurs → endpoint interne du farm-service (last_seen_at / health_status)
+      FARM_SERVICE_URL: http://farm-service:3003
+    ports:
+      - "3005:3005"
+    volumes:
+      - ./../../apps/iot-service/src:/workspace/apps/iot-service/src
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3005/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    networks:
+      - alkatra-net  
+
+
+  spark-job:
+    build:
+      context: ./../../apps/spark-jobs
+      dockerfile: Dockerfile
+    container_name: alkatra-spark
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_INPUT_TOPIC: raw-sensor-data
+      KAFKA_OUTPUT_TOPIC: processed-sensor-data
+      KAFKA_STARTING_OFFSETS: ${KAFKA_STARTING_OFFSETS:-latest}
+      KAFKA_FAIL_ON_DATA_LOSS: ${KAFKA_FAIL_ON_DATA_LOSS:-false}
+      DRY_RUN: ${SPARK_DRY_RUN:-0}
+      SPARK_CHECKPOINT_DIR: /tmp/spark-checkpoint
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
+      PUSHGATEWAY_URL: http://pushgateway:9091
+    volumes:
+      - ./../../apps/spark-jobs/jobs:/app/jobs
+      - spark-job:/tmp/spark-checkpoint
+    networks:
+      - alkatra-net
+  
+  # ==========================================
+  # ML INFERENCE SERVICE — FastAPI + XGBoost
+  # ==========================================
+  ml-inference-service:
+    build:
+      context: ./../../apps/ml-inference-service
+      dockerfile: Dockerfile
+    container_name: alkatra-ml
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: INFO
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+      MLFLOW_CLASSIFIER_NAME: AlKatra-Classifier
+      MLFLOW_REGRESSOR_NAME: AlKatra-Regressor
+      MLFLOW_MODEL_STAGE: Production
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_INPUT_TOPIC: processed-sensor-data
+      KAFKA_OUTPUT_TOPIC: recommendations-generated
+      KAFKA_GROUP_ID: ml-inference-group
+      MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/alkatra_iot?authSource=admin
+      MONGO_DB: alkatra_iot
+      MONGO_RECO_COLLECTION: irrigation_recommendations
+      CLASSIFICATION_THRESHOLD: "0.35"
+      ENABLE_KAFKA_CONSUMER: "true"
+      ENABLE_KAFKA_PRODUCER: "true"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8000:8000"
+    volumes:
+      - mlflow_data:/mlruns
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # NGINX API GATEWAY — Point d'entrée unique
+  # ==========================================
+  gateway:
+    build:
+      context: ./../../infra/nginx
+      dockerfile: Dockerfile
+    image: alkatra-gateway:latest
+    container_name: alkatra-gateway
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST:-auth-service}
+      AUTH_SERVICE_PORT: ${AUTH_SERVICE_PORT:-3001}
+      USER_SERVICE_HOST: ${USER_SERVICE_HOST:-user-service}
+      USER_SERVICE_PORT: ${USER_SERVICE_PORT:-3002}
+      FARM_SERVICE_HOST: ${FARM_SERVICE_HOST:-farm-service}
+      FARM_SERVICE_PORT: ${FARM_SERVICE_PORT:-3003}
+      RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST:-recommendation-service}
+      RECOMMENDATION_SERVICE_PORT: ${RECOMMENDATION_SERVICE_PORT:-3004}
+      ALERT_SERVICE_HOST: ${ALERT_SERVICE_HOST:-alert-service}
+      ALERT_SERVICE_PORT: ${ALERT_SERVICE_PORT:-3006}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      farm-service:
+        condition: service_healthy
+      recommendation-service:
+        condition: service_healthy
+      alert-service:
+        condition: service_healthy
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  user-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/user-service/Dockerfile
+    container_name: alkatra-user
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3002:3002"                # Accessible en direct ET via Gateway
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      # --- Auth-service (service-to-service) ---
+      AUTH_SERVICE_HOST: auth-service
+      AUTH_SERVICE_PORT: 3001
+      # --- JWT (doit matcher auth-service) ---
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      # CORS : origines du frontend autorisées (dev Vite + fallback historique)
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/api/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+    
+  auth-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/auth-service/Dockerfile
+      target: development
+    container_name: alkatra-auth
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    environment:
+      NODE_ENV: development
+      AUTH_SERVICE_PORT: 3001
+      DATABASE_URL: postgresql://auth_user:${AUTH_DB_PASSWORD:-auth_dev_pass}@postgres:5432/auth_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-alkatra_redis_pass}
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-CHANGE_ME_REFRESH_SECRET_32_CHARS}
+      JWT_ACCESS_EXPIRATION: 3600
+      JWT_REFRESH_EXPIRATION: 2592000
+      OTP_TTL_SECONDS: 300
+      OTP_MAX_ATTEMPTS: 3
+      OTP_BLOCK_DURATION_SECONDS: 1800
+      INFOBIP_API_KEY: ${INFOBIP_API_KEY:-}
+      INFOBIP_BASE_URL: ${INFOBIP_BASE_URL:-https://api.infobip.com}
+      INFOBIP_SENDER: ${INFOBIP_SENDER:-AlKatra}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: alkatra
+      KEYCLOAK_CLIENT_ID: alkatra-web
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./../../apps/auth-service/src:/workspace/apps/auth-service/src
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - alkatra-net
+    profiles:
+      - phase1
+
+  # ==========================================
+  # FARM SERVICE — Farm, Parcels & Sensors CRUD
+  # ==========================================
+  farm-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/farm-service/Dockerfile
+    container_name: alkatra-farm
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgresql://farm_user:${FARM_DB_PASSWORD:-farm_dev_pass}@postgres:5432/farm_db
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      AUTH_SERVICE_URL: http://auth-service:3001
+      # --- alert-service (notification capteur silencieux / défaillant / batterie faible) ---
+      ALERT_SERVICE_URL: http://alert-service:3006
+      # Token inter-services partagé (header X-Internal-Token) — vide = isolation réseau uniquement
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      LOW_BATTERY_THRESHOLD: "20"
+      # --- Santé capteurs : seuils configurables (heures, décimales acceptées)
+      # + cadence du cycle — surchargeables via le .env racine ---
+      SENSOR_INACTIVE_HOURS: ${SENSOR_INACTIVE_HOURS:-2}
+      SENSOR_FAILING_HOURS: ${SENSOR_FAILING_HOURS:-24}
+      SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES: ${SENSOR_ACTIVITY_CHECK_INTERVAL_MINUTES:-15}
+      # CORS : origines du frontend autorisées (dev Vite + fallback historique)
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - alkatra-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3003/api/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# ==========================================
+# RECOMMENDATION SERVICE — API REST + Kafka Sync
+# ==========================================
+  recommendation-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/recommendation-service/Dockerfile
+      target: development
+    container_name: alkatra-recommendation
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      TZ: Africa/Casablanca
+      DATABASE_URL: postgresql://recommendation_user:${RECOMMENDATION_DB_PASSWORD:-recommendation_dev_pass}@postgres:5432/recommendation_db
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: recommendation-service
+      KAFKA_GROUP_ID: recommendation-sync-group
+      KAFKA_RECOMMENDATIONS_TOPIC: recommendations-generated
+      KAFKA_TOPIC_DLQ: recommendations-generated-dlq
+      KAFKA_CONSUMER_ENABLED: "true"
+      FARM_SERVICE_URL: http://farm-service:3003
+      FARM_SERVICE_TIMEOUT_MS: "5000"
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      farm-service:
+        condition: service_healthy
+    volumes:
+      - ./../../apps/recommendation-service/src:/workspace/apps/recommendation-service/src
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3004/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - alkatra-net
+
+# ==========================================
+# ALERT SERVICE — Notifications (in-app + FCM + Kafka)
+# ==========================================
+  alert-service:
+    build:
+      context: ../..
+      dockerfile: ./apps/alert-service/Dockerfile
+      target: development
+    container_name: alkatra-alert
+    restart: unless-stopped
+    profiles: ["phase1"]
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: development
+      PORT: 3006
+      TZ: Africa/Casablanca
+      DATABASE_URL: postgresql://notify_user:${NOTIFY_DB_PASSWORD:-notify_dev_pass}@postgres:5432/notification_db
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_JWT_SECRET_32_CHARS}
+      # Token inter-services (header X-Internal-Token) — vide = isolation réseau uniquement
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: alert-service
+      KAFKA_GROUP_ID: alert-service-group
+      KAFKA_RECOMMENDATIONS_TOPIC: recommendations-generated
+      KAFKA_TOPIC_DLQ: alerts-dlq
+      KAFKA_OUTBOUND_TOPIC: alerts-outbound
+      KAFKA_CONSUMER_ENABLED: "true"
+      FARM_SERVICE_URL: http://farm-service:3003
+      FARM_SERVICE_TIMEOUT_MS: "5000"
+      # Règle stress hydrique critique
+      HYDRIC_STRESS_PROBABILITY_THRESHOLD: "0.75"
+      HYDRIC_STRESS_SOIL_HUMIDITY_MAX_PCT: "25"
+      # Dédup fenêtre glissante (heures)
+      DEDUP_WINDOW_HOURS: "24"
+      # FCM — vides = canal push désactivé (mode in-app uniquement)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      CORS_ORIGINS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      farm-service:
+        condition: service_healthy
+    volumes:
+      - ./../../apps/alert-service/src:/workspace/apps/alert-service/src
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3006/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - alkatra-net
+

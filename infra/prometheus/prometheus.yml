@@ -1,0 +1,144 @@
+# Prometheus — configuration de scrape Al Katra
+#
+# Conventions :
+#  - interval global 15 s (dashboards/infra), override 5 s pour les jobs
+#    du pipeline temps réel (iot, ml-inference)
+#  - règles dans rules/ (recording + alertes), évaluées toutes les 15 s
+#  - alertes routées vers Alertmanager (email MailHog en dev)
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: development
+    project: alkatra
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # ── Auto-supervision ──────────────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]
+
+  - job_name: "pushgateway"
+    honor_labels: true # conserve les labels job/instance posés par spark-jobs
+    static_configs:
+      - targets: ["pushgateway:9091"]
+
+  # ── Services applicatifs (pipeline temps réel : 5 s) ──────────
+  - job_name: "iot-service"
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["iot-service:3005"]
+    metrics_path: /metrics
+
+  - job_name: "ml-inference-service"
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["ml-inference-service:8000"]
+    metrics_path: /metrics
+
+  # ── Services métier (15 s) ────────────────────────────────────
+  - job_name: "auth-service"
+    static_configs:
+      - targets: ["auth-service:3001"]
+    metrics_path: /metrics
+
+  - job_name: "user-service"
+    static_configs:
+      - targets: ["user-service:3002"]
+    metrics_path: /metrics
+
+  - job_name: "alert-service"
+    static_configs:
+      - targets: ["alert-service:3006"]
+    metrics_path: /metrics
+
+  - job_name: "farm-service"
+    static_configs:
+      - targets: ["farm-service:3003"]
+    metrics_path: /metrics
+
+  - job_name: "recommendation-service"
+    static_configs:
+      - targets: ["recommendation-service:3004"]
+    metrics_path: /metrics
+
+  # ── Exporters d'infrastructure ────────────────────────────────
+  - job_name: "postgres-exporter"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "mongodb-exporter"
+    static_configs:
+      - targets: ["mongodb-exporter:9216"]
+
+  - job_name: "redis-exporter"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: "kafka-exporter"
+    scrape_interval: 30s # les offsets évoluent lentement
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  # ── Probes de disponibilité (blackbox) ────────────────────────
+  # Core : services toujours démarrés (stack de base) — alertés.
+  - job_name: "blackbox-core"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://prometheus:9090/-/healthy
+          - http://grafana:3000/api/health
+          - http://loki:3100/ready
+          - http://pushgateway:9091/-/healthy
+          - http://alertmanager:9093/-/healthy
+          - http://mlflow:5001/health
+          - http://minio:9000/minio/health/live
+          - http://kafka-ui:8080/actuator/health
+          - http://mailhog:8025
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # Phase1 : services métier (profil compose phase1) — dashboards
+  # uniquement, PAS d'alerte par défaut (sinon fausses alertes quand la
+  # stack tourne sans le profil).
+  - job_name: "blackbox-phase1"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://gateway:8080/health
+          - http://keycloak:8080/
+          - http://auth-service:3001/health
+          - http://user-service:3002/api/v1/health/live
+          - http://farm-service:3003/api/v1/health/live
+          - http://recommendation-service:3004/health/live
+          - http://alert-service:3006/health/live
+          - http://iot-service:3005/health
+          - http://ml-inference-service:8000/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

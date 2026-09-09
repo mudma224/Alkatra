@@ -1,0 +1,88 @@
+{
+  "uid": "alkatra-mongodb",
+  "title": "Al Katra — MongoDB",
+  "tags": ["alkatra", "infra", "mongodb"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "Base alkatra_iot (collections ai_sensor_features TTL 90 j, irrigation_recommendations) via mongodb-exporter.",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Statut exporter",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(mongodb_up)", "legendFormat": "mongodb_up" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Connexions",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "max(mongodb_connections{state=\"current\"})", "legendFormat": "current" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Opérations / s",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(mongodb_op_counters_total[5m]))", "legendFormat": "ops/s" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Opérations par type",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (type) (rate(mongodb_op_counters_total[5m]))", "legendFormat": "{{type}}" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Mémoire resident / virtuelle",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "max(mongodb_memory_resident_bytes)", "legendFormat": "resident" },
+        { "refId": "B", "expr": "max(mongodb_memory_virtual_bytes)", "legendFormat": "virtual" }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Taille des données par base",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "mongodb_db_stats_dataSize", "legendFormat": "{{db}} data" } ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Objets par collection",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "mongodb_collection_count", "legendFormat": "{{database}}.{{collection}}" } ]
+    }
+  ]
+}

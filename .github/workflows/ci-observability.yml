@@ -1,0 +1,112 @@
+name: CI - Observabilité
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'infra/prometheus/**'
+      - 'infra/alertmanager/**'
+      - 'infra/grafana/**'
+      - 'infra/loki/**'
+      - 'infra/blackbox/**'
+      - 'packages/observability/**'
+      - 'infra/docker/docker-compose.yml'
+      - '.github/workflows/ci-observability.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'infra/prometheus/**'
+      - 'infra/alertmanager/**'
+      - 'infra/grafana/**'
+      - 'infra/loki/**'
+      - 'infra/blackbox/**'
+      - 'packages/observability/**'
+      - 'infra/docker/docker-compose.yml'
+
+jobs:
+  prometheus:
+    name: promtool — config + règles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Vérifier la configuration Prometheus et les règles
+        run: |
+          docker run --rm \
+            -v "$PWD/infra/prometheus:/etc/prometheus" \
+            --entrypoint promtool \
+            prom/prometheus:v2.53.1 \
+            check config /etc/prometheus/prometheus.yml
+
+  alertmanager:
+    name: amtool — template rendu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rendre le template avec des valeurs factices puis valider
+        run: |
+          mkdir -p /tmp/am
+          sed -e 's/\${ALERT_SMTP_HOST}/mailhog/' \
+              -e 's/\${ALERT_SMTP_PORT}/1025/' \
+              -e 's/\${ALERT_EMAIL_FROM}/ci@alkatra.local/' \
+              -e 's/\${ALERT_EMAIL_TO}/ci@alkatra.local/' \
+              infra/alertmanager/alertmanager.yml.template > /tmp/am/alertmanager.yml
+          docker run --rm \
+            -v "/tmp/am:/am" \
+            --entrypoint amtool \
+            prom/alertmanager:v0.27.0 \
+            check-config /am/alertmanager.yml
+
+  grafana:
+    name: Dashboards — conventions & uid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Valider les dashboards
+        run: node scripts/validate-dashboards.mjs infra/grafana/dashboards
+
+      - name: Valider le provisioning YAML (datasources/provider)
+        run: |
+          python3 -c "
+          import yaml
+          for f in ['infra/grafana/provisioning/datasources/datasources.yml',
+                    'infra/grafana/provisioning/dashboards/dashboards.yml',
+                    'infra/loki/loki-config.yml',
+                    'infra/loki/promtail-config.yml',
+                    'infra/blackbox/config.yml']:
+              with open(f) as fh:
+                yaml.safe_load(fh)
+              print('✓', f)
+          "
+
+  package:
+    name: Package @alkatra/observability
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Build
+        run: npm run build --workspace @alkatra/observability
+
+      - name: Tests
+        run: npm test --workspace @alkatra/observability

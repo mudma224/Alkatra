@@ -1,0 +1,74 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { ExecutionContextHost } from '@nestjs/core';
+import { HttpException, HttpStatus } from '@nestjs/common';
+
+import { InternalAlertsController } from '../src/alerts/internal-alerts.controller';
+import { AlertDispatcher } from '../src/alerts/alert-dispatcher.service';
+import { InternalTokenGuard } from '../src/common/guards/internal-token.guard';
+import { DispatchAlertDto } from '../src/alerts/dto/dispatch-alert.dto';
+
+describe('InternalAlertsController + InternalTokenGuard', () => {
+  let controller: InternalAlertsController;
+  let dispatcher: { dispatch: jest.Mock };
+  let guard: InternalTokenGuard;
+
+  const dto = new DispatchAlertDto();
+  Object.assign(dto, {
+    alertType: 'sensor_offline',
+    userId: 'user-1',
+    message: 'Capteur hors ligne.',
+  });
+
+  beforeEach(async () => {
+    dispatcher = { dispatch: jest.fn().mockResolvedValue({ id: 'alert-1' }) };
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [InternalAlertsController],
+      providers: [{ provide: AlertDispatcher, useValue: dispatcher }],
+    })
+      .overrideGuard(InternalTokenGuard)
+      .useClass(InternalTokenGuard)
+      .compile();
+
+    controller = module.get<InternalAlertsController>(InternalAlertsController);
+    guard = new InternalTokenGuard();
+  });
+
+  it('✅ Devrait déléguer au dispatcher et renvoyer l\'alerte créée', async () => {
+    await expect(controller.dispatch(dto)).resolves.toEqual({ id: 'alert-1' });
+    expect(dispatcher.dispatch).toHaveBeenCalledWith(dto);
+  });
+
+  describe('InternalTokenGuard', () => {
+    const makeContext = (headers: Record<string, string>) =>
+      new ExecutionContextHost([
+        { headers },
+      ] as never);
+
+    afterEach(() => {
+      delete process.env.INTERNAL_TOKEN;
+    });
+
+    it('✅ Devrait laisser passer sans INTERNAL_TOKEN défini (isolation réseau dev)', () => {
+      delete process.env.INTERNAL_TOKEN;
+      expect(guard.canActivate(makeContext({}))).toBe(true);
+    });
+
+    it('✅ Devrait accepter le bon header X-Internal-Token', () => {
+      process.env.INTERNAL_TOKEN = 'secret';
+      expect(
+        guard.canActivate(makeContext({ 'x-internal-token': 'secret' })),
+      ).toBe(true);
+    });
+
+    it('❌ Devrait rejeter (401) avec un token erroné ou absent', () => {
+      process.env.INTERNAL_TOKEN = 'secret';
+      expect(() => guard.canActivate(makeContext({}))).toThrow(HttpException);
+      expect(() =>
+        guard.canActivate(makeContext({ 'x-internal-token': 'wrong' })),
+      ).toThrow(
+        new HttpException('Accès interne non autorisé.', HttpStatus.UNAUTHORIZED),
+      );
+    });
+  });
+});

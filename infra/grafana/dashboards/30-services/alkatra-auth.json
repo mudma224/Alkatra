@@ -1,0 +1,108 @@
+{
+  "uid": "alkatra-auth",
+  "title": "Al Katra — Authentification",
+  "tags": ["alkatra", "services", "auth", "otp"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "description": "auth-service : flux OTP (demandes, vérifications, échecs), connexions, utilisateurs, latence des routes.",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Utilisateurs totaux",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "max(auth_users_total)", "legendFormat": "utilisateurs" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Taux d'échec OTP (1 h)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.3 }, { "color": "red", "value": 0.6 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "sum(increase(auth_otp_failed_total[1h])) / clamp_min(sum(increase(auth_otp_verified_total[1h])) + sum(increase(auth_otp_failed_total[1h])), 1)", "legendFormat": "échecs" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Connexions (cumul)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [ { "refId": "A", "expr": "sum(auth_login_total)", "legendFormat": "logins" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Service UP",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [ { "refId": "A", "expr": "max(up{job=\"auth-service\"})", "legendFormat": "up" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Flux OTP (par statut, / min)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(auth_otp_requests_total[5m])) * 60", "legendFormat": "demandes" },
+        { "refId": "B", "expr": "sum(rate(auth_otp_verified_total[5m])) * 60", "legendFormat": "vérifiés" },
+        { "refId": "C", "expr": "sum(rate(auth_otp_failed_total[5m])) * 60", "legendFormat": "échecs" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Connexions / min (verify-otp + refresh)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } },
+      "targets": [ { "refId": "A", "expr": "sum(rate(auth_login_total[5m])) * 60", "legendFormat": "logins" } ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Requêtes / min par route",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (route) (rate(auth_http_requests_total[5m])) * 60", "legendFormat": "{{route}}" } ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Latence p95 (routes auth)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (route, le) (rate(auth_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{route}}" } ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Proxy user-service → auth (appels par statut)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 20 },
+      "description": "Vigie de la dépendance BFF : user_auth_calls_total{operation, status}.",
+      "fieldConfig": { "defaults": { "unit": "rpm", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [ { "refId": "A", "expr": "sum by (operation, status) (rate(user_auth_calls_total[5m])) * 60", "legendFormat": "{{operation}} · {{status}}" } ]
+    }
+  ]
+}

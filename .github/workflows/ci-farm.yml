@@ -1,0 +1,89 @@
+name: CI - Farm Service
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'apps/farm-service/**'
+      - 'packages/shared-types/**'
+      - 'packages/shared-utils/**'
+      - '.github/workflows/ci-farm.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'apps/farm-service/**'
+      - 'packages/shared-types/**'
+      - 'packages/shared-utils/**'
+      - '.github/workflows/ci-farm.yml'
+
+jobs:
+  test:
+    name: Lint, Build & Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_USER: farm_user
+          POSTGRES_PASSWORD: farm_dev_pass
+          POSTGRES_DB: farm_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configuration Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Installation des dépendances (monorepo)
+        run: npm ci
+
+      - name: Build shared-types
+        run: npm run build --workspace=@alkatra/shared-types
+
+      - name: Lint farm-service
+        run: npm run lint --workspace=farm-service
+
+      - name: Build farm-service
+        run: npm run build --workspace=farm-service
+
+      - name: Initialisation de la base de test
+        run: |
+          psql -h localhost -U farm_user -d farm_db -f infra/postgres/schemas/farm-db.sql
+        env:
+          PGPASSWORD: farm_dev_pass
+
+      - name: Tests unitaires farm-service
+        run: npm run test --workspace=farm-service
+        env:
+          NODE_ENV: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          FARM_DB_USER: farm_user
+          FARM_DB_PASSWORD: farm_dev_pass
+          FARM_DB_NAME: farm_db
+          AUTH_SERVICE_URL: http://localhost:3001
+          JWT_SECRET: test_jwt_secret_for_ci
+
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Build image farm-service
+        run: docker build apps/farm-service --target development -t alkatra-farm:ci

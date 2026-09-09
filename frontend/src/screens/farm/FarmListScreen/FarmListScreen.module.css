@@ -1,0 +1,57 @@
+/* =========================================================================
+   FarmListScreen — colonne mobile centrée (maquettes 390×844).
+   Titre → recherche → bouton → cards, espacement 16 (md).
+   ========================================================================= */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.title {
+  margin: var(--spacing-sm) 0 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-title);
+  color: var(--color-primary-500);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Squelettes — mêmes dimensions que les éléments réels (maquette 110:33). */
+.skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.skeletonSearch {
+  height: 45px;
+}
+
+.skeletonButton {
+  height: 48px;
+  border-radius: var(--radius-button);
+}
+
+.skeletonCard {
+  height: 100px;
+  border-radius: var(--radius-card);
+}
+
+/* Bouton d'action des états vides/erreur : 280px centré (maquettes 83:45 / 111:39). */
+.retryButton {
+  width: 280px;
+  max-width: 100%;
+}

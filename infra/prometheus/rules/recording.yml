@@ -1,0 +1,45 @@
+# Recording rules Al Katra — agrégats standardisés interrogés par les dashboards.
+#
+# Les règles HTTP sont génériques (regex sur les noms de métriques) : tout
+# service respectant la convention `<prefix>_http_requests_total` /
+# `<prefix>_http_request_duration_seconds` est couvert automatiquement,
+# sans modifier ce fichier.
+groups:
+  - name: alkatra-recording-http
+    interval: 30s
+    rules:
+      - record: job:http_requests:rate5m
+        expr: sum by (job) (rate({__name__=~".+_http_requests_total"}[5m]))
+
+      - record: job:http_requests_5xx:rate5m
+        expr: sum by (job) (rate({__name__=~".+_http_requests_total", status=~"5.."}[5m]))
+
+      - record: job:http_request_errors:ratio_rate5m
+        expr: job:http_requests_5xx:rate5m / clamp_min(job:http_requests:rate5m, 0.000000001)
+
+      - record: job:http_request_duration_seconds:p95
+        expr: histogram_quantile(0.95, sum by (job, le) (rate({__name__=~".+_http_request_duration_seconds_bucket"}[5m])))
+
+      - record: job:http_request_duration_seconds:p50
+        expr: histogram_quantile(0.50, sum by (job, le) (rate({__name__=~".+_http_request_duration_seconds_bucket"}[5m])))
+
+  - name: alkatra-recording-pipeline
+    interval: 30s
+    rules:
+      - record: pipeline:iot_messages:rate5m
+        expr: sum(rate(alkatra_iot_messages_received_total[5m]))
+
+      - record: pipeline:iot_forwarded:rate5m
+        expr: sum(rate(alkatra_iot_messages_forwarded_total[5m]))
+
+      - record: pipeline:predictions:rate5m
+        expr: sum(rate(ml_predictions_total[5m]))
+
+      - record: pipeline:recommendations:rate5m
+        expr: sum(rate(recommendations_persisted_total[5m]))
+
+      - record: pipeline:last_message_age_seconds
+        expr: time() - max(alkatra_iot_last_message_timestamp_seconds)
+
+      - record: pipeline:kafka_lag:max
+        expr: max(kafka_consumergroup_lag)

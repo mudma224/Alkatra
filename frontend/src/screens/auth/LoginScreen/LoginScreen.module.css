@@ -1,0 +1,142 @@
+/* =========================================================================
+   LoginScreen — Layout
+   --------------------------------------------------------------------------
+   Structure (alignée sur la maquette Figma "Login interface v1" 390×844) :
+
+     ┌──────────────────────────────┐
+     │         HERO (image)         │  height: 337px (mobile)
+     │  border-radius bas: 20px     │
+     └──────────────────────────────┘
+                  ┌────────────────┐
+                  │     CARD       │  ← margin-top: -170px (chevauche le hero)
+                  │  (formulaire)  │
+                  └────────────────┘
+     ┌──────────────────────────────┐
+     │   FOOTER vert ("Sign up")    │  ← collé sous la card
+     └──────────────────────────────┘
+
+   Le fond de page est BLANC. Le vert primary n'apparaît que dans le footer
+   (et le bouton), pas sur toute la page.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   .page — conteneur racine, flex column.
+   - `min-height: 100vh` : occupe au minimum toute la hauteur de l'écran.
+   - `background` : BLANC (avant c'était vert, ce qui écrasait le visuel).
+   - NE PAS mettre `justify-content: space-between` : on ne veut PAS que le
+     footer soit poussé en bas de l'écran (ça laissait un grand vide sous la card).
+   --------------------------------------------------------------------------- */
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-neutral-0);
+}
+
+/* ---------------------------------------------------------------------------
+   .hero — image en pleine largeur en haut de la page.
+   - `height` : hauteur du hero. Figma = 337px. À augmenter si vous voulez
+     plus d'image visible, à réduire sinon.
+   - `background-image` : dégradé vert (pour la lisibilité du titre si ajouté
+     dessus) + l'image `/images/login-hero.jpg`. Pour changer l'image,
+     modifiez l'URL ci-dessous ou remplacez le fichier dans `public/images/`.
+   - `background-size: cover` : l'image remplit le cadre sans déformation.
+   - `background-position: center` : centre l'image (utile si le ratio de
+     l'image ne correspond pas exactement au cadre).
+   - `border-radius` : coins arrondis en BAS uniquement (`0 0 20px 20px`),
+     pour un effet "feuille qui descend" sous la card.
+   - `flex-shrink: 0` : empêche le hero de rétrécir si la page manque de place.
+   --------------------------------------------------------------------------- */
+.hero {
+  height: 337px;
+  background-color: var(--color-secondary-100); /* fallback si l'image ne charge pas */
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(27, 67, 50, 0.1),
+      rgba(27, 67, 50, 0.55)
+    ),
+    url('/images/login-hero.jpg');
+  background-size: cover;
+  background-position: center;
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   .card — carte blanche contenant le titre + le formulaire.
+   - `margin: -170px ... 0` : le `-170px` fait REMONTER la card pour qu'elle
+     chevauche le hero. Plus la valeur est négative, plus la card monte.
+     170px = environ la moitié du hero (337/2 ≈ 168).
+   - `padding` : espace intérieur de la card. `xl` (32px) en haut/gauche,
+     `lg` (24px) sur les côtés. Ajustez si le contenu semble trop serré.
+   - `box-shadow` : ombre légère sous la card pour la détacher du fond blanc.
+   - `z-index: 1` : place la card AU-DESSUS du hero (sinon l'image masquerait
+     le bord arrondi de la card).
+   - `position: relative` : requis pour que `z-index` fonctionne.
+   --------------------------------------------------------------------------- */
+.card {
+  background: var(--color-neutral-0);
+  border-radius: var(--radius-card);
+  margin: -170px var(--spacing-lg) 0;
+  padding: var(--spacing-xl) var(--spacing-lg) var(--spacing-xl);
+  position: relative;
+  z-index: 1;
+  box-shadow: var(--shadow-card);
+  flex:1;
+}
+
+/* ---------------------------------------------------------------------------
+   .form — le formulaire à l'intérieur de la card.
+   - `gap` : espace entre chaque enfant direct (label, input, bouton, message).
+   - `margin-top` : espace entre le titre (Brand) et le formulaire.
+   --------------------------------------------------------------------------- */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+/* ---------------------------------------------------------------------------
+   .success — message de confirmation affiché après envoi de l'OTP.
+   --------------------------------------------------------------------------- */
+.success {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-error);
+  color: var(--color-primary-500);
+}
+
+
+
+
+
+
+/* =========================================================================
+   Responsive — desktop (≥ 640px)
+   --------------------------------------------------------------------------
+   Sur grand écran, on plafonne la largeur du contenu à 480px et on centre.
+   Le hero est réduit (260px au lieu de 337px) pour ne pas occuper trop
+   d'espace vertical dans une fenêtre large. Le chevauchement de la card
+   est réduit proportionnellement (-120px au lieu de -170px).
+   ========================================================================= */
+@media (min-width: 640px) {
+  .page {
+    align-items: center;
+  }
+
+  .hero,
+  .card,
+
+  /* Hero plus court sur desktop pour préserver l'équilibre visuel. */
+  .hero {
+    height: 260px;
+  }
+
+  /* Chevauchement réduit proportionnellement au hero desktop. */
+  .card {
+    margin-top: -120px;
+    flex:1;
+  }
+}
