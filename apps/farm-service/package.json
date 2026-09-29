@@ -25,7 +25,7 @@
     "@nestjs/core": "^11.1.26",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.0",
-    "@nestjs/platform-express": "^11.1.26",
+    "@nestjs/platform-express": "^11.2.6",
     "@nestjs/typeorm": "^11.0.0",
     "axios": "^1.18.1",
     "class-transformer": "^0.5.1",
